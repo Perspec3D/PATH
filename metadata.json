@@ -1,0 +1,7 @@
+{
+  "name": "PATH Project Control",
+  "description": "A professional project management system for engineering and architecture firms with tiered authentication and automated coding.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
