@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { Client, InternalUser, Project } from '../types';
-import { getNextClientCode, addAuditLog } from '../storage';
+import { getNextClientCode, addAuditLog, syncClient } from '../storage';
 
 interface ClientsProps {
   db: any;
@@ -23,7 +23,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
   const [phone, setPhone] = useState('');
   const [customCode, setCustomCode] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
-  
+
   // Address Fields
   const [zipCode, setZipCode] = useState('');
   const [address, setAddress] = useState('');
@@ -94,10 +94,10 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
     setShowModal(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const nextCode = customCode || (editingClient ? editingClient.code : getNextClientCode(db.clients));
-    
+
     if (db.clients.some((c: Client) => c.code === nextCode && c.id !== editingClient?.id)) {
       alert('Código já existe!');
       return;
@@ -105,6 +105,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
 
     const clientData: Client = {
       id: editingClient?.id || Math.random().toString(36).substr(2, 9),
+      workspaceId: currentUser.workspaceId,
       code: nextCode,
       name,
       type,
@@ -121,18 +122,24 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
       state
     };
 
-    let newClients;
-    if (editingClient) {
-      newClients = db.clients.map((c: Client) => c.id === editingClient.id ? clientData : c);
-      addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'CLIENT', clientData.id, clientData);
-    } else {
-      newClients = [...db.clients, clientData];
-      addAuditLog(currentUser.id, currentUser.username, 'CREATE', 'CLIENT', clientData.id, clientData);
-    }
+    try {
+      await syncClient(clientData);
 
-    setDb({ ...db, clients: newClients });
-    setShowModal(false);
-    resetForm();
+      let newClients;
+      if (editingClient) {
+        newClients = db.clients.map((c: Client) => c.id === editingClient.id ? clientData : c);
+        await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'CLIENT', clientData.id, clientData);
+      } else {
+        newClients = [...db.clients, clientData];
+        await addAuditLog(currentUser.id, currentUser.username, 'CREATE', 'CLIENT', clientData.id, clientData);
+      }
+
+      setDb({ ...db, clients: newClients });
+      setShowModal(false);
+      resetForm();
+    } catch (err: any) {
+      alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+    }
   };
 
   const clientProjectCounts = useMemo(() => {
@@ -144,8 +151,8 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
   }, [db.projects]);
 
   const filteredClients = useMemo(() => {
-    return db.clients.filter((c: Client) => 
-      c.name.toLowerCase().includes(search.toLowerCase()) || 
+    return db.clients.filter((c: Client) =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.code.includes(search)
     ).sort((a: Client, b: Client) => parseInt(a.code) - parseInt(b.code));
   }, [db.clients, search]);
@@ -154,27 +161,27 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h1 className="text-2xl font-black text-white tracking-tight">Base de Clientes</h1>
-        <button 
+        <button
           onClick={() => { resetForm(); setShowModal(true); }}
           className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition flex items-center"
         >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
           Adicionar Cliente
         </button>
       </div>
 
       <div className="bg-[#1e293b] rounded-2xl shadow-xl border border-slate-800 overflow-hidden">
         <div className="p-6 border-b border-slate-800">
-           <div className="relative max-w-md">
-              <input
-                type="text"
-                placeholder="Pesquisar por nome ou código..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-              />
-              <svg className="w-5 h-5 absolute left-3 top-2.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-           </div>
+          <div className="relative max-w-md">
+            <input
+              type="text"
+              placeholder="Pesquisar por nome ou código..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+            <svg className="w-5 h-5 absolute left-3 top-2.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -198,31 +205,29 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
                   </td>
                   <td className="px-8 py-5">
                     <div className="flex items-center space-x-3">
-                       {client.photoUrl ? (
-                         <img src={client.photoUrl} className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700" />
-                       ) : (
-                         <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                            {client.name.charAt(0).toUpperCase()}
-                         </div>
-                       )}
-                       <span className="font-bold text-slate-100">{client.name}</span>
+                      {client.photoUrl ? (
+                        <img src={client.photoUrl} className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
+                          {client.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="font-bold text-slate-100">{client.name}</span>
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <span className={`inline-block px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border shadow-sm ${
-                      client.type === 'PF' 
-                        ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' 
+                    <span className={`inline-block px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border shadow-sm ${client.type === 'PF'
+                        ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
                         : 'bg-violet-500/10 text-violet-400 border-violet-500/20'
-                    }`}>
+                      }`}>
                       {client.type}
                     </span>
                   </td>
                   <td className="px-8 py-5 text-center">
-                    <span className={`inline-block min-w-[80px] px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                      client.status === 'ACTIVE' 
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                    <span className={`inline-block min-w-[80px] px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${client.status === 'ACTIVE'
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                         : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                    }`}>
+                      }`}>
                       {client.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
                     </span>
                   </td>
@@ -232,11 +237,11 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
                     </span>
                   </td>
                   <td className="px-8 py-5 text-right">
-                    <button 
+                    <button
                       onClick={() => openEdit(client)}
                       className="p-2 text-slate-500 hover:text-white transition-colors bg-slate-800/50 rounded-lg shadow-sm"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                     </button>
                   </td>
                 </tr>
@@ -253,49 +258,49 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
             <div className="px-8 py-6 border-b border-slate-800 flex items-center justify-between bg-slate-800/30">
               <h3 className="font-black text-white text-sm uppercase tracking-widest">{editingClient ? 'Atualizar Cliente' : 'Novo Cadastro'}</h3>
               <button onClick={() => setShowModal(false)} className="text-slate-500 hover:text-white transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
             <form onSubmit={handleSave} className="p-8 space-y-8 max-h-[85vh] overflow-y-auto">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
                 {/* Coluna da Foto com Overlay de Botões */}
                 <div className="flex flex-col items-center space-y-4">
-                   <div className="relative group w-48 h-48 rounded-[40px] bg-slate-900 border-2 border-slate-700 border-dashed overflow-hidden flex items-center justify-center transition-all hover:border-indigo-500/50">
-                      {photoUrl ? (
-                        <div className="relative w-full h-full group">
-                           <img src={photoUrl} className="w-full h-full object-cover transition-all duration-300 group-hover:scale-105" />
-                           <div className="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-3 p-4">
-                              <button 
-                                type="button" 
-                                onClick={() => fileInputRef.current?.click()}
-                                className="w-full py-2 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-indigo-700 transition active:scale-95"
-                              >
-                                Alterar Foto
-                              </button>
-                              <button 
-                                type="button" 
-                                onClick={removePhoto}
-                                className="w-full py-2 bg-rose-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-rose-700 transition active:scale-95"
-                              >
-                                Remover Imagem
-                              </button>
-                           </div>
+                  <div className="relative group w-48 h-48 rounded-[40px] bg-slate-900 border-2 border-slate-700 border-dashed overflow-hidden flex items-center justify-center transition-all hover:border-indigo-500/50">
+                    {photoUrl ? (
+                      <div className="relative w-full h-full group">
+                        <img src={photoUrl} className="w-full h-full object-cover transition-all duration-300 group-hover:scale-105" />
+                        <div className="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-3 p-4">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full py-2 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-indigo-700 transition active:scale-95"
+                          >
+                            Alterar Foto
+                          </button>
+                          <button
+                            type="button"
+                            onClick={removePhoto}
+                            className="w-full py-2 bg-rose-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-rose-700 transition active:scale-95"
+                          >
+                            Remover Imagem
+                          </button>
                         </div>
-                      ) : (
-                        <div className="flex flex-col items-center text-slate-600 pointer-events-none">
-                           <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                           <span className="text-[9px] font-black uppercase tracking-widest text-center px-4">Carregar Foto do Cliente</span>
-                        </div>
-                      )}
-                      <input 
-                        ref={fileInputRef}
-                        type="file" 
-                        accept="image/*" 
-                        onChange={handlePhotoUpload} 
-                        className={`absolute inset-0 cursor-pointer ${photoUrl ? 'hidden' : 'opacity-0'}`} 
-                      />
-                   </div>
-                   <p className="text-[9px] font-bold text-slate-500 text-center uppercase tracking-widest leading-relaxed">Formatos: JPG, PNG<br/>Máximo 1MB</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center text-slate-600 pointer-events-none">
+                        <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-center px-4">Carregar Foto do Cliente</span>
+                      </div>
+                    )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      className={`absolute inset-0 cursor-pointer ${photoUrl ? 'hidden' : 'opacity-0'}`}
+                    />
+                  </div>
+                  <p className="text-[9px] font-bold text-slate-500 text-center uppercase tracking-widest leading-relaxed">Formatos: JPG, PNG<br />Máximo 1MB</p>
                 </div>
 
                 <div className="md:col-span-2 space-y-6">

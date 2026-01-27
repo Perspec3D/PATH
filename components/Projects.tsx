@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { Project, ProjectStatus, Client, InternalUser } from '../types';
-import { getNextGlobalProjectSeq, addAuditLog } from '../storage';
+import { getNextGlobalProjectSeq, addAuditLog, syncProject } from '../storage';
 
 interface ProjectsProps {
   db: any;
@@ -107,7 +107,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     setShowModal(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientId) {
       alert("Selecione um cliente");
@@ -125,6 +125,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
 
     const projectData: Project = {
       id: editingProject?.id || Math.random().toString(36).substr(2, 9),
+      workspaceId: currentUser.workspaceId,
       clientId,
       assigneeId,
       code: finalCode,
@@ -139,18 +140,24 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
       createdAt: editingProject?.createdAt || Date.now(),
     };
 
-    let newProjects;
-    if (editingProject) {
-      newProjects = db.projects.map((p: Project) => p.id === editingProject.id ? projectData : p);
-      addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'PROJECT', projectData.id, projectData);
-    } else {
-      newProjects = [...db.projects, projectData];
-      addAuditLog(currentUser.id, currentUser.username, 'CREATE', 'PROJECT', projectData.id, projectData);
-    }
+    try {
+      await syncProject(projectData);
 
-    setDb({ ...db, projects: newProjects });
-    setShowModal(false);
-    resetForm();
+      let newProjects;
+      if (editingProject) {
+        newProjects = db.projects.map((p: Project) => p.id === editingProject.id ? projectData : p);
+        await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'PROJECT', projectData.id, projectData);
+      } else {
+        newProjects = [...db.projects, projectData];
+        await addAuditLog(currentUser.id, currentUser.username, 'CREATE', 'PROJECT', projectData.id, projectData);
+      }
+
+      setDb({ ...db, projects: newProjects });
+      setShowModal(false);
+      resetForm();
+    } catch (err: any) {
+      alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+    }
   };
 
   const getDeliveryDateStyle = (dateStr: string, currentStatus: ProjectStatus) => {
@@ -161,11 +168,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     const delivery = new Date(y, m - 1, d);
     delivery.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((delivery.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays <= 0) return 'text-rose-500 font-black';
     if (diffDays === 1) return 'text-orange-500 font-black';
     if (diffDays === 2) return 'text-amber-400 font-black';
-    
+
     return 'text-slate-500 font-black';
   };
 
@@ -179,7 +186,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
   }, [db.projects, search, statusFilter, clientFilter]);
 
   const getStatusStyle = (s: ProjectStatus) => {
-    switch(s) {
+    switch (s) {
       case ProjectStatus.DONE: return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
       case ProjectStatus.IN_PROGRESS: return 'bg-blue-600/10 text-blue-400 border border-blue-500/20';
       case ProjectStatus.PAUSED: return 'bg-purple-600/10 text-purple-400 border border-purple-500/20';
@@ -201,11 +208,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h1 className="text-2xl font-black text-white tracking-tight">Gestão de Projetos</h1>
-        <button 
+        <button
           onClick={() => { resetForm(); setShowModal(true); }}
           className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 flex items-center font-bold text-sm"
         >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"/></svg>
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
           Criar Projeto
         </button>
       </div>
@@ -219,9 +226,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-12 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition text-sm text-white"
           />
-          <svg className="w-5 h-5 absolute left-4 top-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <svg className="w-5 h-5 absolute left-4 top-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
         </div>
-        <select 
+        <select
           className="bg-slate-900/50 border border-slate-700 text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
@@ -229,7 +236,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
           <option value="ALL">Status: Todos</option>
           {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <select 
+        <select
           className="bg-slate-900/50 border border-slate-700 text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer"
           value={clientFilter}
           onChange={(e) => setClientFilter(e.target.value)}
@@ -261,15 +268,15 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                 const assignee = db.users.find((u: InternalUser) => u.id === project.assigneeId);
                 const workingDays = calculateWorkingDays(project.startDate || '', project.deliveryDate || '');
                 const dateStyle = getDeliveryDateStyle(project.deliveryDate || '', project.status);
-                
+
                 return (
                   <tr key={project.id} className="hover:bg-slate-700/20 transition-colors group relative border-l-4 border-transparent">
                     <td className="w-2 p-0">
-                       <div className={`absolute left-0 top-0 bottom-0 w-1 ${project.status === ProjectStatus.DONE ? 'bg-emerald-500' : project.status === ProjectStatus.IN_PROGRESS ? 'bg-blue-500' : project.status === ProjectStatus.PAUSED ? 'bg-purple-500' : project.status === ProjectStatus.CANCELED ? 'bg-orange-500' : 'bg-slate-600'}`}></div>
+                      <div className={`absolute left-0 top-0 bottom-0 w-1 ${project.status === ProjectStatus.DONE ? 'bg-emerald-500' : project.status === ProjectStatus.IN_PROGRESS ? 'bg-blue-500' : project.status === ProjectStatus.PAUSED ? 'bg-purple-500' : project.status === ProjectStatus.CANCELED ? 'bg-orange-500' : 'bg-slate-600'}`}></div>
                     </td>
                     <td className="px-2.5 py-4 text-center">
                       <div className="flex justify-center">
-                        <div 
+                        <div
                           className="cursor-pointer transition-transform hover:scale-110 active:scale-95"
                           onClick={() => project.photoUrl && setShowImageZoom(project.photoUrl)}
                         >
@@ -277,7 +284,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                             <img src={project.photoUrl} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-700 shadow-lg mx-auto" />
                           ) : (
                             <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-600 border border-slate-700/50 mx-auto">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                             </div>
                           )}
                         </div>
@@ -295,7 +302,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                       </div>
                     </td>
                     <td className="px-2.5 py-4">
-                      <button 
+                      <button
                         onClick={() => client && setViewingClient(client)}
                         className="text-[11px] text-slate-400 font-medium hover:text-indigo-400 transition-colors outline-none text-left truncate max-w-[150px] block"
                       >
@@ -308,36 +315,36 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                       </span>
                     </td>
                     <td className="px-2.5 py-4">
-                       {assignee ? (
-                         <div className="flex items-center space-x-1.5">
-                            <div className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[8px] font-black text-indigo-400 uppercase">
-                               {assignee.username.charAt(0)}
-                            </div>
-                            <span className="text-[11px] text-slate-300 font-bold truncate max-w-[100px]">{assignee.username}</span>
-                         </div>
-                       ) : (
-                         <span className="text-[11px] text-slate-600 italic">---</span>
-                       )}
+                      {assignee ? (
+                        <div className="flex items-center space-x-1.5">
+                          <div className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[8px] font-black text-indigo-400 uppercase">
+                            {assignee.username.charAt(0)}
+                          </div>
+                          <span className="text-[11px] text-slate-300 font-bold truncate max-w-[100px]">{assignee.username}</span>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-600 italic">---</span>
+                      )}
                     </td>
                     <td className="px-2.5 py-4 text-center">
-                       <div className="flex flex-col items-center space-y-0.5">
-                          <div className="flex items-center text-[9px] font-bold text-slate-500 whitespace-nowrap">
-                             <span className="text-emerald-500 mr-1.5 font-black">→</span>
-                             {formatDate(project.startDate)}
-                          </div>
-                          <div className={`text-[11px] font-black flex items-center whitespace-nowrap ${dateStyle}`}>
-                             {formatDate(project.deliveryDate)}
-                             <span className="text-rose-500 ml-1.5 font-black">→</span>
-                          </div>
-                          <div className="text-[8px] font-black text-slate-600 bg-slate-800/60 px-2 py-0.5 rounded-full border border-slate-700/50 uppercase tracking-tighter mt-0.5">
-                             {workingDays.split(' ')[0]}d úteis
-                          </div>
-                       </div>
+                      <div className="flex flex-col items-center space-y-0.5">
+                        <div className="flex items-center text-[9px] font-bold text-slate-500 whitespace-nowrap">
+                          <span className="text-emerald-500 mr-1.5 font-black">→</span>
+                          {formatDate(project.startDate)}
+                        </div>
+                        <div className={`text-[11px] font-black flex items-center whitespace-nowrap ${dateStyle}`}>
+                          {formatDate(project.deliveryDate)}
+                          <span className="text-rose-500 ml-1.5 font-black">→</span>
+                        </div>
+                        <div className="text-[8px] font-black text-slate-600 bg-slate-800/60 px-2 py-0.5 rounded-full border border-slate-700/50 uppercase tracking-tighter mt-0.5">
+                          {workingDays.split(' ')[0]}d úteis
+                        </div>
+                      </div>
                     </td>
                     <td className="px-2.5 py-4 text-right">
-                       <button onClick={() => openEdit(project)} className="p-1.5 text-slate-500 hover:text-white transition-colors bg-slate-800/40 hover:bg-slate-800 rounded-lg">
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                       </button>
+                      <button onClick={() => openEdit(project)} className="p-1.5 text-slate-500 hover:text-white transition-colors bg-slate-800/40 hover:bg-slate-800 rounded-lg">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      </button>
                     </td>
                   </tr>
                 );
@@ -354,19 +361,19 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
           <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200 border border-slate-700 my-8">
             <div className="px-8 py-6 border-b border-slate-800 flex items-center justify-between bg-slate-800/30">
               <h3 className="font-black text-white uppercase tracking-widest text-sm">{editingProject ? 'Editar Detalhes' : 'Novo Projeto'}</h3>
-              <button onClick={() => setShowModal(false)} className="text-slate-500 hover:text-white"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+              <button onClick={() => setShowModal(false)} className="text-slate-500 hover:text-white"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             <form onSubmit={handleSave} className="p-8 space-y-6">
               {/* Conteúdo do Formulário */}
               <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50 flex items-center justify-between mb-2">
                 <div className="flex items-center space-x-3">
-                   <div className="w-10 h-10 rounded-xl bg-indigo-600/20 flex items-center justify-center">
-                      <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
-                   </div>
-                   <div>
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Código Informativo (Auto)</p>
-                      <p className="text-sm font-mono text-indigo-400 font-bold">{editingProject ? editingProject.code : getPreviewCode()}</p>
-                   </div>
+                  <div className="w-10 h-10 rounded-xl bg-indigo-600/20 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Código Informativo (Auto)</p>
+                    <p className="text-sm font-mono text-indigo-400 font-bold">{editingProject ? editingProject.code : getPreviewCode()}</p>
+                  </div>
                 </div>
               </div>
 
@@ -417,21 +424,21 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                   <div>
                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Imagem do Projeto</label>
                     <div className="relative h-56 w-full rounded-2xl bg-slate-900 border-2 border-slate-700 border-dashed overflow-hidden flex items-center justify-center group transition-all hover:border-indigo-500/50">
-                       {photoUrl ? (
-                         <div className="relative w-full h-full">
-                           <img src={photoUrl} className="absolute inset-0 w-full h-full object-cover" />
-                           <div className="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-3 p-4">
-                             <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-indigo-700 transition">Alterar Foto</button>
-                             <button type="button" onClick={removePhoto} className="w-full py-2 bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-rose-700 transition">Remover Imagem</button>
-                           </div>
-                         </div>
-                       ) : (
-                         <div className="flex flex-col items-center pointer-events-none text-center px-4">
-                            <svg className="w-10 h-10 text-slate-700 mb-2 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                            <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest text-center">Clique para Carregar Foto</span>
-                         </div>
-                       )}
-                       <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className={`absolute inset-0 cursor-pointer ${photoUrl ? 'hidden' : 'opacity-0'}`} />
+                      {photoUrl ? (
+                        <div className="relative w-full h-full">
+                          <img src={photoUrl} className="absolute inset-0 w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-3 p-4">
+                            <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-indigo-700 transition">Alterar Foto</button>
+                            <button type="button" onClick={removePhoto} className="w-full py-2 bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-rose-700 transition">Remover Imagem</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center pointer-events-none text-center px-4">
+                          <svg className="w-10 h-10 text-slate-700 mb-2 group-hover:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                          <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest text-center">Clique para Carregar Foto</span>
+                        </div>
+                      )}
+                      <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className={`absolute inset-0 cursor-pointer ${photoUrl ? 'hidden' : 'opacity-0'}`} />
                     </div>
                   </div>
                 </div>
@@ -439,10 +446,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
 
               <div>
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Anotações do Projeto</label>
-                <textarea 
-                  value={notes} 
-                  onChange={(e) => setNotes(e.target.value)} 
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium min-h-[100px] resize-none" 
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium min-h-[100px] resize-none"
                   placeholder="Observações técnicas, contatos adicionais ou notas de andamento..."
                 />
               </div>
@@ -469,11 +476,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
           <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-700">
             <div className="px-8 py-6 border-b border-slate-800 flex items-center justify-between bg-indigo-600">
               <h3 className="font-black uppercase tracking-widest text-sm text-white">Ficha do Cliente</h3>
-              <button onClick={() => setViewingClient(null)} className="text-white/70 hover:text-white"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+              <button onClick={() => setViewingClient(null)} className="text-white/70 hover:text-white"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             <div className="p-8 space-y-4">
-               <p className="text-xl font-bold text-white">{viewingClient.name}</p>
-               <button onClick={() => setViewingClient(null)} className="w-full py-4 bg-slate-800 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest">Fechar Ficha</button>
+              <p className="text-xl font-bold text-white">{viewingClient.name}</p>
+              <button onClick={() => setViewingClient(null)} className="w-full py-4 bg-slate-800 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest">Fechar Ficha</button>
             </div>
           </div>
         </div>

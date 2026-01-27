@@ -1,9 +1,10 @@
 
 import { Company, InternalUser, Client, Project, Task, AuditLog, LicenseStatus, UserRole } from './types';
+import { supabase } from './lib/supabase';
 
 const STORAGE_KEY = 'PATH_APP_DATA';
 
-interface AppDB {
+export interface AppDB {
   company: Company | null;
   users: InternalUser[];
   clients: Client[];
@@ -21,6 +22,7 @@ const initialDB: AppDB = {
   auditLogs: [],
 };
 
+// --- Local Storage Helpers (Keep for session/cache if needed) ---
 export const getDB = (): AppDB => {
   const data = localStorage.getItem(STORAGE_KEY);
   return data ? JSON.parse(data) : initialDB;
@@ -30,31 +32,164 @@ export const saveDB = (db: AppDB) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
 };
 
-export const addAuditLog = (
-  userId: string, 
-  username: string, 
-  action: AuditLog['action'], 
-  entity: AuditLog['entity'], 
-  entityId: string | undefined, 
+// --- Supabase Sync Functions ---
+
+export const fetchAllData = async (): Promise<Partial<AppDB>> => {
+  const { data: clients } = await supabase.from('clients').select('*');
+  const { data: projects } = await supabase.from('projects').select('*');
+  const { data: tasks } = await supabase.from('tasks').select('*');
+  const { data: auditLogs } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false });
+  const { data: users } = await supabase.from('internal_users').select('*');
+
+  // Map snake_case from DB to camelCase in types
+  return {
+    clients: (clients || []).map((c: any) => ({
+      id: c.id,
+      workspaceId: c.workspace_id,
+      code: c.code,
+      name: c.name,
+      type: c.type,
+      status: c.status,
+      photoUrl: c.photo_url,
+      cpfCnpj: c.cpf_cnpj,
+      email: c.email,
+      phone: c.phone,
+      zipCode: c.zip_code,
+      address: c.address,
+      number: c.number,
+      neighborhood: c.neighborhood,
+      city: c.city,
+      state: c.state
+    })),
+    projects: (projects || []).map((p: any) => ({
+      id: p.id,
+      workspaceId: p.workspace_id,
+      clientId: p.client_id,
+      assigneeId: p.assignee_id,
+      code: p.code,
+      name: p.name,
+      photoUrl: p.photo_url,
+      revision: p.revision,
+      status: p.status,
+      startDate: p.start_date,
+      deliveryDate: p.delivery_date,
+      dueDate: p.due_date,
+      notes: p.notes,
+      createdAt: new Date(p.created_at).getTime()
+    })),
+    users: (users || []).map((u: any) => ({
+      id: u.id,
+      workspaceId: u.workspace_id,
+      username: u.username,
+      passwordHash: u.password_hash,
+      role: u.role,
+      isActive: u.is_active,
+      mustChangePassword: u.must_change_password
+    })),
+    auditLogs: (auditLogs || []).map((l: any) => ({
+      id: l.id,
+      workspaceId: l.workspace_id,
+      userId: l.user_id,
+      username: l.username,
+      action: l.action,
+      entity: l.entity,
+      entityId: l.entity_id,
+      details: l.details,
+      timestamp: l.timestamp
+    }))
+  };
+};
+
+export const syncClient = async (client: Client) => {
+  const { error } = await supabase.from('clients').upsert({
+    id: client.id,
+    workspace_id: client.workspaceId,
+    code: client.code,
+    name: client.name,
+    type: client.type,
+    status: client.status,
+    photo_url: client.photoUrl,
+    cpf_cnpj: client.cpfCnpj,
+    email: client.email,
+    phone: client.phone,
+    zip_code: client.zipCode,
+    address: client.address,
+    number: client.number,
+    neighborhood: client.neighborhood,
+    city: client.city,
+    state: client.state
+  });
+  if (error) throw error;
+};
+
+export const syncProject = async (project: Project) => {
+  const { error } = await supabase.from('projects').upsert({
+    id: project.id,
+    workspace_id: project.workspaceId,
+    client_id: project.clientId,
+    assignee_id: project.assigneeId,
+    code: project.code,
+    name: project.name,
+    photo_url: project.photoUrl,
+    revision: project.revision,
+    status: project.status,
+    start_date: project.startDate,
+    delivery_date: project.deliveryDate,
+    due_date: project.dueDate,
+    notes: project.notes,
+    created_at: new Date(project.createdAt).toISOString()
+  });
+  if (error) throw error;
+};
+
+export const syncUser = async (user: InternalUser) => {
+  // Ensure we are sending a valid UUID or let DB handle it
+  const { error } = await supabase.from('internal_users').upsert({
+    id: user.id.includes('-') && user.id.length >= 36 ? user.id : undefined, // Check if it's a valid UUID
+    username: user.username,
+    password_hash: user.passwordHash,
+    role: user.role,
+    is_active: user.isActive,
+    must_change_password: user.mustChangePassword
+  }, { onConflict: 'username' }); // Assuming username is unique per workspace context
+  if (error) throw error;
+};
+
+export const syncCompany = async (company: Company) => {
+  const { error } = await supabase.from('profiles').update({
+    name: company.name,
+    email: company.email
+  }).eq('id', company.id);
+  if (error) throw error;
+};
+
+export const addAuditLog = async (
+  userId: string,
+  username: string,
+  action: AuditLog['action'],
+  entity: AuditLog['entity'],
+  entityId: string | undefined,
   details: any
 ) => {
-  const db = getDB();
-  const log: AuditLog = {
-    id: Math.random().toString(36).substr(2, 9),
-    userId,
+  const log = {
+    user_id: userId,
     username,
     action,
     entity,
-    entityId,
+    entity_id: entityId,
     details: JSON.stringify(details),
-    timestamp: Date.now(),
+    timestamp: Date.now()
   };
-  db.auditLogs.unshift(log);
-  saveDB(db);
+
+  await supabase.from('audit_logs').insert(log);
+
+  // Also update local state for immediate feedback if needed, 
+  // but better to let the App component handle its state
 };
 
+// --- Helper Functions ---
 export const getNextClientCode = (clients: Client[]): string => {
-  const codes = clients.map(c => parseInt(c.code)).sort((a, b) => a - b);
+  const codes = clients.map(c => parseInt(c.code)).filter(n => !isNaN(n)).sort((a, b) => a - b);
   let next = 1;
   for (const code of codes) {
     if (code === next) next++;
@@ -65,13 +200,13 @@ export const getNextClientCode = (clients: Client[]): string => {
 
 export const getNextGlobalProjectSeq = (projects: Project[]): number => {
   if (projects.length === 0) return 1;
-  
+
   const seqs = projects.map(p => {
     const parts = p.code.split('-');
     // Padrão: [CLIENTE]-[SEQ GLOBAL]-[ANO]
     return parts.length >= 2 ? parseInt(parts[1]) : 0;
   }).filter(n => !isNaN(n));
-  
+
   if (seqs.length === 0) return 1;
   return Math.max(...seqs) + 1;
 };

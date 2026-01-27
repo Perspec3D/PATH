@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { InternalUser, UserRole, LicenseStatus } from '../types';
-import { addAuditLog } from '../storage';
+import { addAuditLog, syncUser, syncCompany } from '../storage';
 
 interface SettingsProps {
   db: any;
@@ -28,15 +28,20 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
     setEditingUser(null);
   };
 
-  const handleSaveCompany = (e: React.FormEvent) => {
+  const handleSaveCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     const newCompany = { ...db.company, name: companyName };
-    setDb({ ...db, company: newCompany });
-    addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'USER', 'COMPANY', { name: companyName });
-    alert('Configurações da empresa salvas!');
+    try {
+      await syncCompany(newCompany);
+      setDb({ ...db, company: newCompany });
+      await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'USER', 'COMPANY', { name: companyName });
+      alert('Configurações da empresa salvas!');
+    } catch (err: any) {
+      alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+    }
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || (!editingUser && !password)) {
       alert('Preencha os campos obrigatórios');
@@ -45,6 +50,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
 
     const userData: InternalUser = {
       id: editingUser?.id || Math.random().toString(36).substr(2, 9),
+      workspaceId: currentUser.workspaceId,
       username,
       passwordHash: password || editingUser?.passwordHash || '',
       role,
@@ -52,34 +58,46 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       mustChangePassword: editingUser ? editingUser.mustChangePassword : true
     };
 
-    let newUsers;
-    if (editingUser) {
-      newUsers = db.users.map((u: InternalUser) => u.id === editingUser.id ? userData : u);
-      addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'USER', userData.id, userData);
-    } else {
-      if (db.users.some((u: any) => u.username === username)) {
-        alert('Username já existe');
-        return;
-      }
-      newUsers = [...db.users, userData];
-      addAuditLog(currentUser.id, currentUser.username, 'CREATE', 'USER', userData.id, userData);
-    }
+    try {
+      await syncUser(userData);
 
-    setDb({ ...db, users: newUsers });
-    setShowUserModal(false);
-    resetUserForm();
+      let newUsers;
+      if (editingUser) {
+        newUsers = db.users.map((u: InternalUser) => u.id === editingUser.id ? userData : u);
+        await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'USER', userData.id, userData);
+      } else {
+        if (db.users.some((u: any) => u.username === username)) {
+          alert('Username já existe');
+          return;
+        }
+        newUsers = [...db.users, userData];
+        await addAuditLog(currentUser.id, currentUser.username, 'CREATE', 'USER', userData.id, userData);
+      }
+
+      setDb({ ...db, users: newUsers });
+      setShowUserModal(false);
+      resetUserForm();
+    } catch (err: any) {
+      alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+    }
   };
 
-  const toggleUserStatus = (user: InternalUser) => {
+  const toggleUserStatus = async (user: InternalUser) => {
     if (user.id === currentUser.id) {
       alert('Você não pode desativar seu próprio usuário');
       return;
     }
-    const newUsers = db.users.map((u: InternalUser) => 
-      u.id === user.id ? { ...u, isActive: !u.isActive } : u
-    );
-    setDb({ ...db, users: newUsers });
-    addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'USER', user.id, { isActive: !user.isActive });
+    const updatedUser = { ...user, isActive: !user.isActive };
+    try {
+      await syncUser(updatedUser);
+      const newUsers = db.users.map((u: InternalUser) =>
+        u.id === user.id ? updatedUser : u
+      );
+      setDb({ ...db, users: newUsers });
+      await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'USER', user.id, { isActive: updatedUser.isActive });
+    } catch (err: any) {
+      alert("Erro ao atualizar status: " + err.message);
+    }
   };
 
   return (
@@ -120,7 +138,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       <section className="bg-[#1e293b] rounded-3xl shadow-xl border border-slate-800 overflow-hidden">
         <div className="px-8 py-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/30">
           <h2 className="font-black text-xs text-slate-400 uppercase tracking-widest">Usuários Internos</h2>
-          <button 
+          <button
             onClick={() => { resetUserForm(); setShowUserModal(true); }}
             className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition"
           >
@@ -146,13 +164,13 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                     <span className={`inline-block w-2 h-2 rounded-full ${user.isActive ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-700'}`}></span>
                   </td>
                   <td className="px-8 py-5 text-right space-x-4">
-                    <button 
+                    <button
                       onClick={() => { setEditingUser(user); setUsername(user.username); setRole(user.role); setIsActive(user.isActive); setShowUserModal(true); }}
                       className="text-[10px] text-indigo-400 font-black uppercase tracking-widest hover:text-indigo-300 transition"
                     >
                       Editar
                     </button>
-                    <button 
+                    <button
                       onClick={() => toggleUserStatus(user)}
                       className={`text-[10px] font-black uppercase tracking-widest transition ${user.isActive ? 'text-rose-500 hover:text-rose-400' : 'text-emerald-500 hover:text-emerald-400'}`}
                     >
@@ -172,7 +190,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
             <div className="px-8 py-6 border-b border-slate-800 bg-slate-800/30 flex justify-between items-center">
               <h3 className="font-black text-white uppercase tracking-widest text-sm">{editingUser ? 'Configurar Usuário' : 'Novo Perfil'}</h3>
               <button onClick={() => setShowUserModal(false)} className="text-slate-500 hover:text-white transition-colors">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
             <form onSubmit={handleSaveUser} className="p-8 space-y-5">
