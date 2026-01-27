@@ -12,12 +12,6 @@ export enum ProjectStatus {
   CANCELED = 'Cancelado'
 }
 
-export enum TaskStatus {
-  TODO = 'TODO',
-  DOING = 'DOING',
-  DONE = 'DONE'
-}
-
 export enum LicenseStatus {
   TRIAL = 'TRIAL',
   ACTIVE = 'ACTIVE',
@@ -46,7 +40,7 @@ export interface InternalUser {
 export interface Client {
   id: string;
   workspaceId: string;
-  code: string; 
+  code: string;
   name: string;
   type: 'PF' | 'PJ';
   status: 'ACTIVE' | 'INACTIVE';
@@ -77,27 +71,4 @@ export interface Project {
   dueDate?: string;
   notes?: string;
   createdAt: number;
-}
-
-export interface Task {
-  id: string;
-  workspaceId: string;
-  projectId: string;
-  title: string;
-  startDate?: string;
-  endDate?: string;
-  status: TaskStatus;
-  assignee?: string;
-}
-
-export interface AuditLog {
-  id: string;
-  workspaceId: string;
-  userId: string;
-  username: string;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT';
-  entity: 'CLIENT' | 'PROJECT' | 'TASK' | 'USER' | 'AUTH';
-  entityId?: string;
-  details: string; 
-  timestamp: number;
 }

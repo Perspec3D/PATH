@@ -2,10 +2,11 @@
 import React, { useState } from 'react';
 import { Company, LicenseStatus, UserRole } from '../types';
 import { supabase } from '../lib/supabase';
+import { AppDB } from '../storage';
 
 interface CompanyLoginProps {
-  db: any;
-  setDb: any;
+  db: AppDB;
+  setDb: (db: AppDB) => void;
   onLogin: (company: Company) => void;
 }
 

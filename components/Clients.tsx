@@ -1,11 +1,11 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { Client, InternalUser, Project } from '../types';
-import { getNextClientCode, addAuditLog, syncClient } from '../storage';
+import { getNextClientCode, syncClient, AppDB } from '../storage';
 
 interface ClientsProps {
-  db: any;
-  setDb: any;
+  db: AppDB;
+  setDb: (db: AppDB) => void;
   currentUser: InternalUser;
 }
 
@@ -128,10 +128,8 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
       let newClients;
       if (editingClient) {
         newClients = db.clients.map((c: Client) => c.id === editingClient.id ? clientData : c);
-        await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'CLIENT', clientData.id, clientData);
       } else {
         newClients = [...db.clients, clientData];
-        await addAuditLog(currentUser.id, currentUser.username, 'CREATE', 'CLIENT', clientData.id, clientData);
       }
 
       setDb({ ...db, clients: newClients });

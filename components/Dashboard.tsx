@@ -1,9 +1,10 @@
 
 import React, { useMemo } from 'react';
 import { ProjectStatus, Project, InternalUser, Client } from '../types';
+import { AppDB } from '../storage';
 
 interface DashboardProps {
-  db: any;
+  db: AppDB;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
@@ -15,10 +16,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
   next7Days.setDate(now.getDate() + 7);
 
   // 1. Métricas de Saúde
-  const activeProjects = projects.filter((p: Project) => 
+  const activeProjects = projects.filter((p: Project) =>
     [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status)
   );
-  
+
   const overdueProjects = projects.filter((p: Project) => {
     if (!p.deliveryDate || p.status === ProjectStatus.DONE || p.status === ProjectStatus.CANCELED) return false;
     const [y, m, d] = p.deliveryDate.split('-').map(Number);
@@ -70,10 +71,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       if (p.assigneeId) {
         const user = users.find((u: InternalUser) => u.id === p.assigneeId);
         const name = user ? user.username : 'Indefinido';
-        if (!matrix[name]) matrix[name] = { 
-          [ProjectStatus.QUEUE]: 0, 
-          [ProjectStatus.IN_PROGRESS]: 0, 
-          [ProjectStatus.PAUSED]: 0 
+        if (!matrix[name]) matrix[name] = {
+          [ProjectStatus.QUEUE]: 0,
+          [ProjectStatus.IN_PROGRESS]: 0,
+          [ProjectStatus.PAUSED]: 0
         };
         matrix[name][p.status] = (matrix[name][p.status] || 0) + 1;
       }
@@ -104,9 +105,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       {/* SEÇÃO 1: SAÚDE DO ESCRITÓRIO - REDESENHADA PARA IMPACTO MÁXIMO */}
       <div className="bg-[#1e293b] p-12 rounded-[48px] shadow-2xl border border-slate-800 overflow-hidden relative group">
         <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none transition-opacity group-hover:opacity-10 scale-150">
-           <svg className="w-48 h-48 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
+          <svg className="w-48 h-48 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z" /></svg>
         </div>
-        
+
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-12 relative z-10">
           <div className="flex flex-col items-start">
             <h3 className="text-[12px] font-black text-slate-500 uppercase tracking-[0.3em] mb-4 px-2">Saúde Estratégica da Operação</h3>
@@ -114,46 +115,46 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
               {health}%
             </span>
           </div>
-          
+
           <div className="flex-1 lg:max-w-4xl w-full pt-10">
-             <div className="flex justify-between mb-6 px-4">
-                <span className="text-[11px] font-black text-rose-500 uppercase tracking-[0.2em]">Crítico</span>
-                <span className="text-[11px] font-black text-amber-500 uppercase tracking-[0.2em]">Estável</span>
-                <span className="text-[11px] font-black text-emerald-500 uppercase tracking-[0.2em]">Excelente</span>
-             </div>
-             
-             <div className="h-12 w-full bg-slate-900/90 rounded-3xl overflow-hidden relative border-2 border-slate-700 shadow-[inset_0_4px_12px_rgba(0,0,0,0.6)] p-1.5">
-                {/* Gradiente Real de Fundo */}
-                <div className="absolute inset-0 bg-gradient-to-r from-rose-900 via-amber-900 to-emerald-900 opacity-20"></div>
-                {/* Barra de Progresso Encorpada - AUMENTADA */}
-                <div 
-                  className={`h-full rounded-2xl transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)] relative shadow-[0_0_30px_rgba(0,0,0,0.7)] ${health > 80 ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : health > 50 ? 'bg-gradient-to-r from-amber-600 to-amber-400' : 'bg-gradient-to-r from-rose-700 to-rose-500'}`}
-                  style={{ width: `${health}%` }}
-                >
-                   <div className="absolute top-0 right-0 bottom-0 w-3 bg-white/30 blur-[2px] animate-pulse"></div>
-                   <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent"></div>
-                </div>
-             </div>
+            <div className="flex justify-between mb-6 px-4">
+              <span className="text-[11px] font-black text-rose-500 uppercase tracking-[0.2em]">Crítico</span>
+              <span className="text-[11px] font-black text-amber-500 uppercase tracking-[0.2em]">Estável</span>
+              <span className="text-[11px] font-black text-emerald-500 uppercase tracking-[0.2em]">Excelente</span>
+            </div>
+
+            <div className="h-12 w-full bg-slate-900/90 rounded-3xl overflow-hidden relative border-2 border-slate-700 shadow-[inset_0_4px_12px_rgba(0,0,0,0.6)] p-1.5">
+              {/* Gradiente Real de Fundo */}
+              <div className="absolute inset-0 bg-gradient-to-r from-rose-900 via-amber-900 to-emerald-900 opacity-20"></div>
+              {/* Barra de Progresso Encorpada - AUMENTADA */}
+              <div
+                className={`h-full rounded-2xl transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)] relative shadow-[0_0_30px_rgba(0,0,0,0.7)] ${health > 80 ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : health > 50 ? 'bg-gradient-to-r from-amber-600 to-amber-400' : 'bg-gradient-to-r from-rose-700 to-rose-500'}`}
+                style={{ width: `${health}%` }}
+              >
+                <div className="absolute top-0 right-0 bottom-0 w-3 bg-white/30 blur-[2px] animate-pulse"></div>
+                <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent"></div>
+              </div>
+            </div>
           </div>
         </div>
-        
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 pt-12 mt-12 border-t border-slate-800/80 relative z-10">
-           <div className="text-center group/card">
-              <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-400">Tempo Médio</p>
-              <p className="text-4xl font-black text-white">{avgExecutionTime} <span className="text-[14px] text-slate-600 font-bold uppercase tracking-tighter">dias</span></p>
-           </div>
-           <div className="text-center border-l border-slate-800/80 group/card">
-              <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-rose-400">Atraso Crítico</p>
-              <p className="text-4xl font-black text-rose-500">{overdueProjects.length}</p>
-           </div>
-           <div className="text-center border-l border-slate-800/80 group/card">
-              <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-400">Projetos Ativos</p>
-              <p className="text-4xl font-black text-indigo-400">{activeProjects.length}</p>
-           </div>
-           <div className="text-center border-l border-slate-800/80 group/card">
-              <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-emerald-400">Finalizados</p>
-              <p className="text-4xl font-black text-emerald-500">{projects.filter((p: any) => p.status === ProjectStatus.DONE).length}</p>
-           </div>
+          <div className="text-center group/card">
+            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-400">Tempo Médio</p>
+            <p className="text-4xl font-black text-white">{avgExecutionTime} <span className="text-[14px] text-slate-600 font-bold uppercase tracking-tighter">dias</span></p>
+          </div>
+          <div className="text-center border-l border-slate-800/80 group/card">
+            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-rose-400">Atraso Crítico</p>
+            <p className="text-4xl font-black text-rose-500">{overdueProjects.length}</p>
+          </div>
+          <div className="text-center border-l border-slate-800/80 group/card">
+            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-400">Projetos Ativos</p>
+            <p className="text-4xl font-black text-indigo-400">{activeProjects.length}</p>
+          </div>
+          <div className="text-center border-l border-slate-800/80 group/card">
+            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-emerald-400">Finalizados</p>
+            <p className="text-4xl font-black text-emerald-500">{projects.filter((p: any) => p.status === ProjectStatus.DONE).length}</p>
+          </div>
         </div>
       </div>
 
@@ -161,41 +162,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         {/* RANKING TOP 10 CLIENTES - REFINADO */}
         <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden flex flex-col">
           <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
-             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white">Top 10 Clientes em Volume</h3>
-             <svg className="w-6 h-6 text-indigo-500 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white">Top 10 Clientes em Volume</h3>
+            <svg className="w-6 h-6 text-indigo-500 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
           </div>
           <div className="p-10 flex-1">
-             {topClients.length === 0 ? (
-               <div className="h-64 flex flex-col items-center justify-center text-slate-600 font-black uppercase text-[12px] tracking-widest italic opacity-40">Dados insuficientes</div>
-             ) : (
-               <div className="space-y-6">
-                 {topClients.map(([name, count], idx) => (
-                   <div key={name} className="group/item">
-                     <div className="flex justify-between items-end mb-2">
-                       <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[75%] transition-colors group-hover/item:text-indigo-400">
-                         <span className="text-slate-600 mr-2">{String(idx + 1).padStart(2, '0')}.</span>
-                         {name}
-                       </span>
-                       <span className="text-[12px] font-black text-indigo-400 group-hover/item:scale-110 transition-transform">{count} <span className="text-[9px] uppercase tracking-tighter text-slate-500">Projetos</span></span>
-                     </div>
-                     <div className="h-2.5 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800 shadow-inner">
-                       <div 
-                         className="h-full bg-gradient-to-r from-indigo-700 via-indigo-500 to-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.3)] transition-all duration-1000 ease-out"
-                         style={{ width: `${(count / topClients[0][1]) * 100}%` }}
-                       ></div>
-                     </div>
-                   </div>
-                 ))}
-               </div>
-             )}
+            {topClients.length === 0 ? (
+              <div className="h-64 flex flex-col items-center justify-center text-slate-600 font-black uppercase text-[12px] tracking-widest italic opacity-40">Dados insuficientes</div>
+            ) : (
+              <div className="space-y-6">
+                {topClients.map(([name, count], idx) => (
+                  <div key={name} className="group/item">
+                    <div className="flex justify-between items-end mb-2">
+                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[75%] transition-colors group-hover/item:text-indigo-400">
+                        <span className="text-slate-600 mr-2">{String(idx + 1).padStart(2, '0')}.</span>
+                        {name}
+                      </span>
+                      <span className="text-[12px] font-black text-indigo-400 group-hover/item:scale-110 transition-transform">{count} <span className="text-[9px] uppercase tracking-tighter text-slate-500">Projetos</span></span>
+                    </div>
+                    <div className="h-2.5 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800 shadow-inner">
+                      <div
+                        className="h-full bg-gradient-to-r from-indigo-700 via-indigo-500 to-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.3)] transition-all duration-1000 ease-out"
+                        style={{ width: `${(count / topClients[0][1]) * 100}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         {/* CARGA DE TRABALHO POR STATUS */}
         <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden">
           <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
-             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white">Carga Ativa por Usuário</h3>
-             <svg className="w-6 h-6 text-indigo-500 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white">Carga Ativa por Usuário</h3>
+            <svg className="w-6 h-6 text-indigo-500 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
           </div>
           <div className="p-10">
             <div className="space-y-8">
@@ -220,9 +221,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
               )}
             </div>
             <div className="mt-12 flex justify-center space-x-8 bg-slate-900/60 p-4 rounded-3xl border border-slate-800/80">
-               <div className="flex items-center"><div className="w-3 h-3 bg-slate-700 rounded-full mr-3 border border-white/10"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Fila</span></div>
-               <div className="flex items-center"><div className="w-3 h-3 bg-indigo-600 rounded-full mr-3 shadow-[0_0_8px_rgba(79,70,229,0.4)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Andamento</span></div>
-               <div className="flex items-center"><div className="w-3 h-3 bg-purple-600 rounded-full mr-3 shadow-[0_0_8px_rgba(147,51,234,0.4)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Pausado</span></div>
+              <div className="flex items-center"><div className="w-3 h-3 bg-slate-700 rounded-full mr-3 border border-white/10"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Fila</span></div>
+              <div className="flex items-center"><div className="w-3 h-3 bg-indigo-600 rounded-full mr-3 shadow-[0_0_8px_rgba(79,70,229,0.4)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Andamento</span></div>
+              <div className="flex items-center"><div className="w-3 h-3 bg-purple-600 rounded-full mr-3 shadow-[0_0_8px_rgba(147,51,234,0.4)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Pausado</span></div>
             </div>
           </div>
         </div>

@@ -1,11 +1,11 @@
 
 import React, { useState } from 'react';
 import { InternalUser, UserRole, LicenseStatus } from '../types';
-import { addAuditLog, syncUser, syncCompany } from '../storage';
+import { syncUser, syncCompany, AppDB } from '../storage';
 
 interface SettingsProps {
-  db: any;
-  setDb: any;
+  db: AppDB;
+  setDb: (db: AppDB) => void;
   currentUser: InternalUser;
 }
 
@@ -34,7 +34,6 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
     try {
       await syncCompany(newCompany);
       setDb({ ...db, company: newCompany });
-      await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'USER', 'COMPANY', { name: companyName });
       alert('Configurações da empresa salvas!');
     } catch (err: any) {
       alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
@@ -64,14 +63,12 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       let newUsers;
       if (editingUser) {
         newUsers = db.users.map((u: InternalUser) => u.id === editingUser.id ? userData : u);
-        await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'USER', userData.id, userData);
       } else {
         if (db.users.some((u: any) => u.username === username)) {
           alert('Username já existe');
           return;
         }
         newUsers = [...db.users, userData];
-        await addAuditLog(currentUser.id, currentUser.username, 'CREATE', 'USER', userData.id, userData);
       }
 
       setDb({ ...db, users: newUsers });
@@ -94,7 +91,6 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
         u.id === user.id ? updatedUser : u
       );
       setDb({ ...db, users: newUsers });
-      await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'USER', user.id, { isActive: updatedUser.isActive });
     } catch (err: any) {
       alert("Erro ao atualizar status: " + err.message);
     }

@@ -1,11 +1,11 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { Project, ProjectStatus, Client, InternalUser } from '../types';
-import { getNextGlobalProjectSeq, addAuditLog, syncProject } from '../storage';
+import { getNextGlobalProjectSeq, syncProject, AppDB } from '../storage';
 
 interface ProjectsProps {
-  db: any;
-  setDb: any;
+  db: AppDB;
+  setDb: (db: AppDB) => void;
   currentUser: InternalUser;
 }
 
@@ -146,10 +146,8 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
       let newProjects;
       if (editingProject) {
         newProjects = db.projects.map((p: Project) => p.id === editingProject.id ? projectData : p);
-        await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'PROJECT', projectData.id, projectData);
       } else {
         newProjects = [...db.projects, projectData];
-        await addAuditLog(currentUser.id, currentUser.username, 'CREATE', 'PROJECT', projectData.id, projectData);
       }
 
       setDb({ ...db, projects: newProjects });

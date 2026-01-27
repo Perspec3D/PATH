@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Company, InternalUser, LicenseStatus, UserRole } from './types';
-import { AppDB, fetchAllData, addAuditLog, syncUser } from './storage';
+import { AppDB, fetchAllData, syncUser } from './storage';
 import { supabase } from './lib/supabase';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -20,8 +20,6 @@ const App: React.FC = () => {
     users: [],
     clients: [],
     projects: [],
-    tasks: [],
-    auditLogs: [],
   });
   const [companySession, setCompanySession] = useState<Company | null>(null);
   const [userSession, setUserSession] = useState<InternalUser | null>(null);
@@ -79,21 +77,7 @@ const App: React.FC = () => {
         };
         setCompanySession(company);
 
-        setDb(prev => {
-          const newState = { ...prev };
-          if (!newState.company) newState.company = company;
-          if (newState.users.length === 0) {
-            newState.users = [{
-              id: 'admin-' + session.user.id,
-              username: 'admin',
-              passwordHash: 'admin',
-              role: UserRole.ADMIN,
-              isActive: true,
-              mustChangePassword: true
-            }];
-          }
-          return newState;
-        });
+        setDb(prev => ({ ...prev, company }));
       } else {
         setCompanySession(null);
         setUserSession(null);
@@ -113,10 +97,7 @@ const App: React.FC = () => {
           trialStart: Date.now(),
         };
         setCompanySession(company);
-        setDb(prev => ({
-          ...prev,
-          company: prev.company || company
-        }));
+        setDb(prev => ({ ...prev, company }));
       }
       setIsLoading(false);
     });
@@ -156,26 +137,19 @@ const App: React.FC = () => {
     setCompanySession(company);
   };
 
-  const handleUserLogin = async (user: InternalUser) => {
+  const handleUserLogin = (user: InternalUser) => {
     setUserSession(user);
     localStorage.setItem('PATH_USER_SESSION', JSON.stringify(user));
-    await addAuditLog(user.id, user.username, 'LOGIN', 'AUTH', undefined, { timestamp: Date.now() });
   };
 
   const handleLogout = async () => {
-    if (userSession) {
-      await addAuditLog(userSession.id, userSession.username, 'LOGOUT', 'AUTH', undefined, { timestamp: Date.now() });
-    }
     await supabase.auth.signOut();
     setUserSession(null);
     setCompanySession(null);
     localStorage.removeItem('PATH_USER_SESSION');
   };
 
-  const switchUser = async () => {
-    if (userSession) {
-      await addAuditLog(userSession.id, userSession.username, 'LOGOUT', 'AUTH', undefined, { timestamp: Date.now() });
-    }
+  const switchUser = () => {
     setUserSession(null);
     localStorage.removeItem('PATH_USER_SESSION');
   };

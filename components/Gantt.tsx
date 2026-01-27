@@ -1,11 +1,11 @@
 
 import React, { useMemo, useState, useRef } from 'react';
 import { Project, ProjectStatus, Client, InternalUser } from '../types';
-import { addAuditLog, syncProject } from '../storage';
+import { syncProject, AppDB } from '../storage';
 
 interface GanttProps {
-  db: any;
-  setDb: any;
+  db: AppDB;
+  setDb: (db: AppDB) => void;
   currentUser: InternalUser;
 }
 
@@ -55,7 +55,6 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
     try {
       await syncProject(projectData);
       const newProjects = db.projects.map((p: Project) => p.id === editingProject.id ? projectData : p);
-      await addAuditLog(currentUser.id, currentUser.username, 'UPDATE', 'PROJECT', projectData.id, projectData);
       setDb({ ...db, projects: newProjects });
       setEditingProject(null);
     } catch (err: any) {

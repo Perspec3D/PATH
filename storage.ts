@@ -1,44 +1,18 @@
-
-import { Company, InternalUser, Client, Project, Task, AuditLog, LicenseStatus, UserRole } from './types';
+import { Company, InternalUser, Client, Project, LicenseStatus, UserRole } from './types';
 import { supabase } from './lib/supabase';
-
-const STORAGE_KEY = 'PATH_APP_DATA';
 
 export interface AppDB {
   company: Company | null;
   users: InternalUser[];
   clients: Client[];
   projects: Project[];
-  tasks: Task[];
-  auditLogs: AuditLog[];
 }
-
-const initialDB: AppDB = {
-  company: null,
-  users: [],
-  clients: [],
-  projects: [],
-  tasks: [],
-  auditLogs: [],
-};
-
-// --- Local Storage Helpers (Keep for session/cache if needed) ---
-export const getDB = (): AppDB => {
-  const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : initialDB;
-};
-
-export const saveDB = (db: AppDB) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-};
 
 // --- Supabase Sync Functions ---
 
 export const fetchAllData = async (): Promise<Partial<AppDB>> => {
   const { data: clients } = await supabase.from('clients').select('*');
   const { data: projects } = await supabase.from('projects').select('*');
-  const { data: tasks } = await supabase.from('tasks').select('*');
-  const { data: auditLogs } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false });
   const { data: users } = await supabase.from('internal_users').select('*');
 
   // Map snake_case from DB to camelCase in types
@@ -85,17 +59,6 @@ export const fetchAllData = async (): Promise<Partial<AppDB>> => {
       role: u.role,
       isActive: u.is_active,
       mustChangePassword: u.must_change_password
-    })),
-    auditLogs: (auditLogs || []).map((l: any) => ({
-      id: l.id,
-      workspaceId: l.workspace_id,
-      userId: l.user_id,
-      username: l.username,
-      action: l.action,
-      entity: l.entity,
-      entityId: l.entity_id,
-      details: l.details,
-      timestamp: l.timestamp
     }))
   };
 };
@@ -144,7 +107,8 @@ export const syncProject = async (project: Project) => {
 
 export const syncUser = async (user: InternalUser) => {
   const { error } = await supabase.from('internal_users').upsert({
-    id: user.id, // Now guaranteed to be UUID from frontend
+    id: user.id,
+    workspace_id: user.workspaceId,
     username: user.username,
     password_hash: user.passwordHash,
     role: user.role,
@@ -160,30 +124,6 @@ export const syncCompany = async (company: Company) => {
     email: company.email
   }).eq('id', company.id);
   if (error) throw error;
-};
-
-export const addAuditLog = async (
-  userId: string,
-  username: string,
-  action: AuditLog['action'],
-  entity: AuditLog['entity'],
-  entityId: string | undefined,
-  details: any
-) => {
-  const log = {
-    user_id: userId,
-    username,
-    action,
-    entity,
-    entity_id: entityId,
-    details: JSON.stringify(details),
-    timestamp: Date.now()
-  };
-
-  await supabase.from('audit_logs').insert(log);
-
-  // Also update local state for immediate feedback if needed, 
-  // but better to let the App component handle its state
 };
 
 // --- Helper Functions ---
