@@ -100,7 +100,7 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
       <div className="w-full max-w-md bg-[#1e293b] rounded-[32px] shadow-2xl overflow-hidden p-10 border border-slate-800">
         <div className="text-center mb-10">
           <img
-            src="PATH_logo.png"
+            src="/PATH_logo.png"
             className="inline-block w-24 h-24 object-contain mb-6 drop-shadow-[0_0_15px_rgba(204,255,0,0.1)]"
             alt="Logo PERSPEC PATH"
           />
