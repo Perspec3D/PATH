@@ -33,25 +33,30 @@ const App: React.FC = () => {
         setIsLoading(true);
         try {
           const remoteData = await fetchAllData();
-          setDb(prev => {
-            const newState = { ...prev, ...remoteData, company: companySession };
+          let finalUsers = remoteData.users || [];
 
-            // If no users exist, create default admin
-            if (newState.users.length === 0) {
-              const adminUser: InternalUser = {
-                id: companySession.id,
-                workspaceId: companySession.id,
-                username: 'admin',
-                passwordHash: 'admin',
-                role: UserRole.ADMIN,
-                isActive: true,
-                mustChangePassword: true
-              };
-              newState.users = [adminUser];
-              // Persist default admin to DB to avoid FK errors in projects
-              syncUser(adminUser).catch(err => console.error("Falha ao criar admin inicial:", err));
-            }
-            return newState;
+          if (finalUsers.length === 0) {
+            const adminUser: InternalUser = {
+              id: companySession.id,
+              workspaceId: companySession.id,
+              username: 'admin',
+              passwordHash: 'admin',
+              role: UserRole.ADMIN,
+              isActive: true,
+              mustChangePassword: true
+            };
+
+            // Wait for sync to avoid FK errors in projects
+            await syncUser(adminUser);
+            finalUsers = [adminUser];
+          }
+
+          setDb({
+            ...remoteData,
+            users: finalUsers,
+            company: companySession,
+            clients: remoteData.clients || [],
+            projects: remoteData.projects || [],
           });
         } catch (err) {
           console.error("Erro ao carregar dados do Supabase:", err);

@@ -96,9 +96,9 @@ export const syncProject = async (project: Project) => {
     photo_url: project.photoUrl,
     revision: project.revision,
     status: project.status,
-    start_date: project.startDate,
-    delivery_date: project.deliveryDate,
-    due_date: project.dueDate,
+    start_date: project.startDate || null,
+    delivery_date: project.deliveryDate || null,
+    due_date: project.dueDate || null,
     notes: project.notes,
     created_at: new Date(project.createdAt).toISOString()
   });
@@ -114,7 +114,7 @@ export const syncUser = async (user: InternalUser) => {
     role: user.role,
     is_active: user.isActive,
     must_change_password: user.mustChangePassword
-  }, { onConflict: 'username' });
+  }, { onConflict: 'id' });
   if (error) throw error;
 };
 
