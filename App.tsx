@@ -121,8 +121,21 @@ const App: React.FC = () => {
       setIsLoading(false);
     });
 
-    const savedUser = localStorage.getItem('PATH_USER_SESSION');
-    if (savedUser) setUserSession(JSON.parse(savedUser));
+    const savedUserStr = localStorage.getItem('PATH_USER_SESSION');
+    if (savedUserStr) {
+      try {
+        const savedUser = JSON.parse(savedUserStr);
+        // Simple UUID regex check
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(savedUser.workspaceId)) {
+          setUserSession(savedUser);
+        } else {
+          localStorage.removeItem('PATH_USER_SESSION');
+        }
+      } catch (e) {
+        localStorage.removeItem('PATH_USER_SESSION');
+      }
+    }
 
     return () => {
       subscription.unsubscribe();
