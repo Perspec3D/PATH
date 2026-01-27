@@ -127,7 +127,7 @@ export const syncProject = async (project: Project) => {
     id: project.id,
     workspace_id: project.workspaceId,
     client_id: project.clientId,
-    assignee_id: project.assigneeId,
+    assignee_id: project.assigneeId || null,
     code: project.code,
     name: project.name,
     photo_url: project.photoUrl,

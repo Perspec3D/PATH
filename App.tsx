@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Company, InternalUser, LicenseStatus, UserRole } from './types';
-import { AppDB, fetchAllData, addAuditLog } from './storage';
+import { AppDB, fetchAllData, addAuditLog, syncUser } from './storage';
 import { supabase } from './lib/supabase';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -41,7 +41,7 @@ const App: React.FC = () => {
             // If no users exist, create default admin
             if (newState.users.length === 0) {
               const adminUser: InternalUser = {
-                id: companySession.id, // Using company session ID directly (it's a UUID)
+                id: companySession.id,
                 workspaceId: companySession.id,
                 username: 'admin',
                 passwordHash: 'admin',
@@ -50,8 +50,8 @@ const App: React.FC = () => {
                 mustChangePassword: true
               };
               newState.users = [adminUser];
-              // Note: We don't auto-save to Supabase here to avoid unverified inserts,
-              // but it will be available in local state.
+              // Persist default admin to DB to avoid FK errors in projects
+              syncUser(adminUser).catch(err => console.error("Falha ao criar admin inicial:", err));
             }
             return newState;
           });
