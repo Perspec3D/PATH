@@ -104,7 +104,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
     }
 
     const clientData: Client = {
-      id: editingClient?.id || Math.random().toString(36).substr(2, 9),
+      id: editingClient?.id || crypto.randomUUID(),
       workspaceId: currentUser.workspaceId,
       code: nextCode,
       name,
@@ -217,16 +217,16 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
                   </td>
                   <td className="px-8 py-5">
                     <span className={`inline-block px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border shadow-sm ${client.type === 'PF'
-                        ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
-                        : 'bg-violet-500/10 text-violet-400 border-violet-500/20'
+                      ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
+                      : 'bg-violet-500/10 text-violet-400 border-violet-500/20'
                       }`}>
                       {client.type}
                     </span>
                   </td>
                   <td className="px-8 py-5 text-center">
                     <span className={`inline-block min-w-[80px] px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${client.status === 'ACTIVE'
-                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                       }`}>
                       {client.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
                     </span>

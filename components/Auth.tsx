@@ -52,7 +52,7 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
         };
 
         const adminUser = {
-          id: 'admin-' + data.user.id,
+          id: data.user.id, // Using the auth user ID directly as it's a valid UUID
           username: 'admin',
           passwordHash: 'admin',
           role: UserRole.ADMIN,

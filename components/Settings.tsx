@@ -49,7 +49,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
     }
 
     const userData: InternalUser = {
-      id: editingUser?.id || Math.random().toString(36).substr(2, 9),
+      id: editingUser?.id || crypto.randomUUID(),
       workspaceId: currentUser.workspaceId,
       username,
       passwordHash: password || editingUser?.passwordHash || '',

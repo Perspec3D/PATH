@@ -41,7 +41,7 @@ const App: React.FC = () => {
             // If no users exist, create default admin
             if (newState.users.length === 0) {
               const adminUser: InternalUser = {
-                id: 'admin-' + companySession.id,
+                id: companySession.id, // Using company session ID directly (it's a UUID)
                 workspaceId: companySession.id,
                 username: 'admin',
                 passwordHash: 'admin',

@@ -143,15 +143,14 @@ export const syncProject = async (project: Project) => {
 };
 
 export const syncUser = async (user: InternalUser) => {
-  // Ensure we are sending a valid UUID or let DB handle it
   const { error } = await supabase.from('internal_users').upsert({
-    id: user.id.includes('-') && user.id.length >= 36 ? user.id : undefined, // Check if it's a valid UUID
+    id: user.id, // Now guaranteed to be UUID from frontend
     username: user.username,
     password_hash: user.passwordHash,
     role: user.role,
     is_active: user.isActive,
     must_change_password: user.mustChangePassword
-  }, { onConflict: 'username' }); // Assuming username is unique per workspace context
+  }, { onConflict: 'username' });
   if (error) throw error;
 };
 

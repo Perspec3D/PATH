@@ -124,7 +124,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     }
 
     const projectData: Project = {
-      id: editingProject?.id || Math.random().toString(36).substr(2, 9),
+      id: editingProject?.id || crypto.randomUUID(),
       workspaceId: currentUser.workspaceId,
       clientId,
       assigneeId,
