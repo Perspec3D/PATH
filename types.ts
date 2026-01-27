@@ -25,7 +25,7 @@ export enum LicenseStatus {
 }
 
 export interface Company {
-  id: string;
+  id: string; // This is the user id and also the unique workspace identifier
   name: string;
   email: string;
   passwordHash: string;
@@ -35,6 +35,7 @@ export interface Company {
 
 export interface InternalUser {
   id: string;
+  workspaceId: string;
   username: string;
   passwordHash: string;
   role: UserRole;
@@ -44,6 +45,7 @@ export interface InternalUser {
 
 export interface Client {
   id: string;
+  workspaceId: string;
   code: string; 
   name: string;
   type: 'PF' | 'PJ';
@@ -62,6 +64,7 @@ export interface Client {
 
 export interface Project {
   id: string;
+  workspaceId: string;
   clientId: string;
   assigneeId?: string; // ID do usuário responsável
   code: string; // [client_code]-[project_seq]-[year]
@@ -78,6 +81,7 @@ export interface Project {
 
 export interface Task {
   id: string;
+  workspaceId: string;
   projectId: string;
   title: string;
   startDate?: string;
@@ -88,6 +92,7 @@ export interface Task {
 
 export interface AuditLog {
   id: string;
+  workspaceId: string;
   userId: string;
   username: string;
   action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT';
