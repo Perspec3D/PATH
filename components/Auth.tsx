@@ -14,8 +14,7 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [error, setError] = useState('');
-
-  const isSignup = !db.company;
+  const [isSignup, setIsSignup] = useState(!db.company);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,6 +163,18 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
             {isSignup ? 'Criar Workspace' : 'Entrar Agora'}
           </button>
         </form>
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => {
+              setIsSignup(!isSignup);
+              setError('');
+            }}
+            className="text-indigo-400 hover:text-indigo-300 text-xs font-bold transition-colors"
+          >
+            {isSignup ? 'Já tem um Workspace? Faça login' : 'Não tem um Workspace? Criar novo'}
+          </button>
+        </div>
 
         <div className="mt-10 text-center space-y-4">
           <button
