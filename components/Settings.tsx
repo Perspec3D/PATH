@@ -21,6 +21,61 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
   const [isProcessingSubscription, setIsProcessingSubscription] = useState(false);
   const [showSeatModal, setShowSeatModal] = useState(false);
   const [targetSeatCount, setTargetSeatCount] = useState(db.company?.userLimit || 1);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [returnStatus, setReturnStatus] = useState<'success' | 'pending' | 'failure' | null>(null);
+
+  // Check for payment return parameters
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('status');
+    const paymentId = params.get('payment_id') || params.get('preapproval_id');
+
+    if (status && paymentId) {
+      if (status === 'approved' || status === 'authorized') setReturnStatus('success');
+      else if (status === 'pending' || status === 'in_process') setReturnStatus('pending');
+      else setReturnStatus('failure');
+
+      // Clear params from URL to prevent re-triggering
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      // Auto-trigger sync
+      handleManualSync();
+    }
+  }, []);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      // 1. Try to verify directly with MP via Edge Function if we have a subscriptionId
+      if (db.company?.subscriptionId) {
+        await supabase.functions.invoke('verify-subscription', {
+          body: { companyId: db.company.id, subscriptionId: db.company.subscriptionId }
+        });
+      }
+
+      // 2. Refresh the company profile from Supabase
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', db.company?.id).single();
+      if (error) throw error;
+      if (data) {
+        setDb({
+          ...db, company: {
+            id: data.id,
+            name: data.name,
+            email: data.email,
+            licenseStatus: data.license_status,
+            userLimit: data.user_limit,
+            subscriptionId: data.subscription_id,
+            subscriptionEnd: data.subscription_end,
+            trialStart: data.trial_start
+          }
+        });
+      }
+    } catch (err: any) {
+      console.error("Erro ao sincronizar:", err);
+    } finally {
+      setTimeout(() => setIsSyncing(false), 2000); // Visual buffer
+    }
+  };
 
   const resetUserForm = () => {
     setUsername('');
@@ -264,7 +319,12 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
             </div>
             <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50 space-y-4">
               <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Usuários Contratados</span>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Usuários Contratados</span>
+                  {isSyncing && (
+                    <span className="text-[9px] text-indigo-400 font-bold animate-pulse mt-1">Sincronizando...</span>
+                  )}
+                </div>
                 <span className="text-sm font-black text-white">{db.company?.licenseStatus === LicenseStatus.TRIAL ? 5 : (db.company?.userLimit || 0)}</span>
               </div>
 
@@ -274,6 +334,35 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                   {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((db.company?.userLimit || 0) * 29.9)}
                 </span>
               </div>
+
+              <div className="pt-4 border-t border-slate-800/50">
+                <button
+                  onClick={handleManualSync}
+                  disabled={isSyncing}
+                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center space-x-2"
+                >
+                  <svg className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  <span>{isSyncing ? 'Sincronizando...' : 'Atualizar Status'}</span>
+                </button>
+              </div>
+
+              {returnStatus && (
+                <div className={`p-4 rounded-xl text-xs font-bold flex items-center space-x-3 animate-in slide-in-from-top-2 duration-500 ${returnStatus === 'success' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                  returnStatus === 'pending' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                    'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                  }`}>
+                  <div className={`w-2 h-2 rounded-full animate-pulse ${returnStatus === 'success' ? 'bg-emerald-500' :
+                    returnStatus === 'pending' ? 'bg-amber-500' :
+                      'bg-rose-500'
+                    }`}></div>
+                  <span>
+                    {returnStatus === 'success' && 'Pagamento concluído! Sincronizando sua conta...'}
+                    {returnStatus === 'pending' && 'Pagamento em análise. Em breve sua licença será atualizada.'}
+                    {returnStatus === 'failure' && 'Ocorreu um problema com o pagamento. Tente novamente.'}
+                  </span>
+                  <button onClick={() => setReturnStatus(null)} className="ml-auto opacity-50 hover:opacity-100">✕</button>
+                </div>
+              )}
 
               {db.company?.licenseStatus === LicenseStatus.TRIAL && (
                 <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
