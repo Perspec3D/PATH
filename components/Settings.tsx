@@ -130,6 +130,51 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
         </form>
       </section>
 
+      {/* Billing Section */}
+      <section className="bg-[#1e293b] rounded-3xl shadow-xl border border-slate-800 overflow-hidden relative">
+        <div className="px-8 py-6 border-b border-slate-800 bg-slate-800/30 flex justify-between items-center">
+          <h2 className="font-black text-xs text-slate-400 uppercase tracking-widest">Plano e Faturamento</h2>
+          {db.company?.licenseStatus === LicenseStatus.TRIAL && (
+            <span className="text-[10px] font-black bg-amber-500/20 text-amber-500 px-3 py-1 rounded-full uppercase tracking-widest animate-pulse">
+              Período de Teste
+            </span>
+          )}
+        </div>
+        <div className="p-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+            <div>
+              <p className="text-sm text-slate-300 font-medium mb-2">
+                Você está utilizando o plano <span className="text-indigo-400 font-black uppercase">{db.company?.licenseStatus === LicenseStatus.ACTIVE ? 'Premium Mensal' : 'Gratuito (Trial)'}</span>.
+              </p>
+              <p className="text-xs text-slate-500 leading-relaxed mb-6">
+                Tenha acesso ilimitado a projetos, clientes e suporte prioritário. A cobrança é feita mensalmente via Stripe ou Cartão de Crédito.
+              </p>
+              <div className="flex space-x-4">
+                {db.company?.licenseStatus === LicenseStatus.ACTIVE ? (
+                  <button className="px-6 py-3 bg-slate-800 text-slate-400 rounded-xl text-xs font-black uppercase tracking-widest hover:text-white transition">
+                    Gerenciar Assinatura
+                  </button>
+                ) : (
+                  <button onClick={() => alert('Integração com Stripe Checkout em desenvolvimento.')} className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20">
+                    Assinar Agora - R$ 99/mês
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50 space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Próxima Fatura</span>
+                <span className="text-sm font-bold text-white">-- / --</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Método de Pagamento</span>
+                <span className="text-xs text-slate-400 italic">Não vinculado</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Users Section */}
       <section className="bg-[#1e293b] rounded-3xl shadow-xl border border-slate-800 overflow-hidden">
         <div className="px-8 py-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/30">

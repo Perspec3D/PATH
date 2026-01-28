@@ -32,7 +32,7 @@ const App: React.FC = () => {
       const loadData = async () => {
         setIsLoading(true);
         try {
-          const remoteData = await fetchAllData();
+          const remoteData = await fetchAllData(companySession.id);
           let finalUsers = remoteData.users || [];
 
           if (finalUsers.length === 0) {
@@ -59,7 +59,9 @@ const App: React.FC = () => {
             clients: remoteData.clients || [],
             projects: remoteData.projects || [],
           });
-          setCompanySession(mergedCompany);
+          if (mergedCompany && JSON.stringify(mergedCompany) !== JSON.stringify(companySession)) {
+            setCompanySession(mergedCompany);
+          }
         } catch (err) {
           console.error("Erro ao carregar dados do Supabase:", err);
         } finally {

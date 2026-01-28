@@ -10,11 +10,16 @@ export interface AppDB {
 
 // --- Supabase Sync Functions ---
 
-export const fetchAllData = async (): Promise<Partial<AppDB>> => {
+export const fetchAllData = async (companyId?: string): Promise<Partial<AppDB>> => {
   const { data: clients } = await supabase.from('clients').select('*');
   const { data: projects } = await supabase.from('projects').select('*');
   const { data: users } = await supabase.from('internal_users').select('*');
-  const { data: profile } = await supabase.from('profiles').select('*').single();
+
+  let profile = null;
+  if (companyId) {
+    const { data } = await supabase.from('profiles').select('*').eq('id', companyId).maybeSingle();
+    profile = data;
+  }
 
   // Map snake_case from DB to camelCase in types
   return {
