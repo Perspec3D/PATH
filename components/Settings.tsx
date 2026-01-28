@@ -214,7 +214,10 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                 </button>
                 {db.company?.licenseStatus === LicenseStatus.TRIAL && (
                   <button
-                    onClick={() => handleActivateSubscription(db.users.length > 1 ? db.users.length : 1)}
+                    onClick={() => {
+                      setTargetSeatCount(Math.max(db.users.length, 1));
+                      setShowSeatModal(true);
+                    }}
                     disabled={isProcessingSubscription}
                     className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20 disabled:opacity-50"
                   >
@@ -392,7 +395,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
             <div className="p-10 space-y-8">
               <div className="flex items-center justify-center space-x-6">
                 <button
-                  onClick={() => setTargetSeatCount(Math.max(1, targetSeatCount - 1))}
+                  onClick={() => setTargetSeatCount(Math.max(db.users.length, 1, targetSeatCount - 1))}
                   className="w-12 h-12 rounded-2xl bg-slate-800 text-white hover:bg-slate-700 flex items-center justify-center transition"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" /></svg>
