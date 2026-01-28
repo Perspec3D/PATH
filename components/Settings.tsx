@@ -141,7 +141,19 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       setDb({ ...db, company: updatedCompany });
 
     } catch (err: any) {
-      alert("Erro ao cancelar: " + (err.message || "Erro desconhecido"));
+      let errorMessage = err.message || "Erro desconhecido";
+      // Tenta extrair a mensagem real da Edge Function
+      try {
+        if (err.context && typeof err.context.json === 'function') {
+          const body = await err.context.json();
+          if (body && body.error) {
+            errorMessage = body.error;
+          }
+        }
+      } catch (e) {
+        console.error("Erro ao ler resposta de erro", e);
+      }
+      alert("Erro ao cancelar: " + errorMessage);
     } finally {
       setIsProcessingSubscription(false);
     }
