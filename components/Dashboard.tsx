@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState } from 'react';
 import { ProjectStatus, Project, InternalUser, Client } from '../types';
 import { AppDB } from '../storage';
@@ -12,7 +11,9 @@ interface DashboardProps {
   db: AppDB;
 }
 
-const InfoTooltip: React.FC<{ title: string; content: string; calculation?: string }> = ({ title, content, calculation }) => {
+const InfoTooltip: React.FC<{ title: string; content: string; calculation?: string; position?: 'top' | 'bottom' }> = ({
+  title, content, calculation, position = 'top'
+}) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -26,7 +27,7 @@ const InfoTooltip: React.FC<{ title: string; content: string; calculation?: stri
         <Info size={14} />
       </button>
       {isOpen && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-4 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] z-[100] w-72 pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200 ring-1 ring-white/10">
+        <div className={`absolute ${position === 'top' ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'} left-1/2 -translate-x-1/2 p-4 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] z-[100] w-72 pointer-events-none animate-in fade-in duration-200 ring-1 ring-white/10`}>
           <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 border-b border-slate-800 pb-2">{title}</p>
           <p className="text-[11px] text-slate-300 font-medium leading-relaxed mb-3">{content}</p>
           {calculation && (
@@ -35,7 +36,7 @@ const InfoTooltip: React.FC<{ title: string; content: string; calculation?: stri
               <p className="text-[10px] text-indigo-300/80 font-mono italic">{calculation}</p>
             </div>
           )}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-[#0f172a]"></div>
+          <div className={`absolute ${position === 'top' ? 'top-full border-t-[#0f172a]' : 'bottom-full border-b-[#0f172a]'} left-1/2 -translate-x-1/2 border-8 border-transparent`}></div>
         </div>
       )}
     </div>
@@ -201,6 +202,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 title="Saúde da Operação"
                 content="Métrica de integridade que reflete a pontualidade das entregas ativas. Quanto maior a porcentagem, menos atrasos críticos existem no sistema."
                 calculation="(Total_Ativos - Total_Atrasados) / Total_Ativos * 100"
+                position="bottom"
               />
             </h3>
             <span className={`text-[10rem] leading-none font-black tracking-tighter transition-all duration-1000 drop-shadow-2xl ${getHealthColor(health)}`}>
