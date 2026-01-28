@@ -209,10 +209,9 @@ const App: React.FC = () => {
                 </ul>
               </div>
 
-              <div className="bg-emerald-600 rounded-3xl p-1 flex flex-col shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer" onClick={() => alert('Checkout Stripe em desenvolvimento')}>
+              <div className="bg-emerald-600 rounded-3xl p-1 flex flex-col shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer h-24" onClick={() => alert('Checkout Stripe em desenvolvimento')}>
                 <div className="flex-1 flex flex-col items-center justify-center text-white">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 opacity-80">Assinar Estilo</span>
-                  <span className="text-lg font-black uppercase tracking-tight">Ativar Agora</span>
+                  <span className="text-lg font-black uppercase tracking-tight">Assinar Agora</span>
                 </div>
               </div>
             </div>
