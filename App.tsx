@@ -137,7 +137,7 @@ const App: React.FC = () => {
     if (db.company.licenseStatus === LicenseStatus.EXPIRED) return true;
     if (db.company.licenseStatus === LicenseStatus.TRIAL) {
       const daysPassed = (Date.now() - db.company.trialStart) / (1000 * 60 * 60 * 24);
-      return daysPassed > 14;
+      return daysPassed > 7; // Reduzido para 7 dias
     }
     return false;
   }, [db.company]);
@@ -171,18 +171,59 @@ const App: React.FC = () => {
 
   if (isExpired) {
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-900 text-white p-6 text-center">
-        <div>
-          <h1 className="text-4xl font-bold mb-4">Licença Expirada</h1>
-          <p className="text-slate-400 mb-8 max-w-md mx-auto">
-            O seu período de teste ou licença do PERSPEC PATH expirou. Entre em contato com o suporte para reativar seu acesso.
-          </p>
-          <button
-            onClick={handleLogout}
-            className="px-6 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition"
-          >
-            Sair do Workspace
-          </button>
+      <div className="h-screen flex items-center justify-center bg-[#0f172a] text-white p-6 overflow-hidden">
+        <div className="relative w-full max-w-2xl">
+          {/* Background Decorations */}
+          <div className="absolute -top-24 -left-24 w-64 h-64 bg-indigo-600/20 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-emerald-600/20 rounded-full blur-3xl animate-pulse"></div>
+
+          <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-700 p-12 text-center relative z-10 backdrop-blur-xl">
+            <div className="w-20 h-20 bg-rose-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-rose-500/20">
+              <svg className="w-10 h-10 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m0 0v2m0-2h2m-2 0H10m11 3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+
+            <h1 className="text-3xl font-black mb-4 tracking-tight uppercase">Licença Expirada</h1>
+            <p className="text-slate-400 mb-10 max-w-md mx-auto text-sm leading-relaxed font-medium">
+              O seu período de teste de 07 dias do <span className="text-white font-bold">PERSPEC PATH</span> chegou ao fim.
+              Mantenha o controle total dos seus projetos assinando nosso plano Premium.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
+              <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 text-left hover:border-indigo-500/50 transition-colors group">
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 group-hover:text-indigo-400">Plano Premium</h3>
+                <div className="flex items-baseline space-x-1 mb-4">
+                  <span className="text-2xl font-black text-white">R$ 99</span>
+                  <span className="text-xs text-slate-500 font-bold">/mês</span>
+                </div>
+                <ul className="text-[10px] text-slate-400 space-y-2 uppercase font-black tracking-wider">
+                  <li className="flex items-center space-x-2">
+                    <svg className="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                    <span>Projetos Ilimitados</span>
+                  </li>
+                  <li className="flex items-center space-x-2">
+                    <svg className="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                    <span>Dashboard Avançado</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="bg-emerald-600 rounded-3xl p-1 flex flex-col shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer" onClick={() => alert('Checkout Stripe em desenvolvimento')}>
+                <div className="flex-1 flex flex-col items-center justify-center text-white">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] mb-1 opacity-80">Assinar Estilo</span>
+                  <span className="text-lg font-black uppercase tracking-tight">Ativar Agora</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="text-xs font-black text-slate-500 uppercase tracking-widest hover:text-white transition"
+            >
+              Sair do Workspace
+            </button>
+          </div>
         </div>
       </div>
     );

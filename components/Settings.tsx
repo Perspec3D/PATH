@@ -163,10 +163,26 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
             </div>
             <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50 space-y-4">
               <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Próxima Fatura</span>
-                <span className="text-sm font-bold text-white">-- / --</span>
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Status da Conta</span>
+                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded ${db.company?.licenseStatus === LicenseStatus.ACTIVE ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                  {db.company?.licenseStatus}
+                </span>
               </div>
-              <div className="flex justify-between items-center">
+
+              {db.company?.licenseStatus === LicenseStatus.TRIAL && (
+                <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tempo Restante</span>
+                  <span className="text-sm font-black text-white">
+                    {(() => {
+                      const daysPassed = (Date.now() - (db.company?.trialStart || Date.now())) / (1000 * 60 * 60 * 24);
+                      const remaining = Math.max(0, Math.ceil(7 - daysPassed));
+                      return `${remaining} ${remaining === 1 ? 'dia' : 'dias'}`;
+                    })()}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Método de Pagamento</span>
                 <span className="text-xs text-slate-400 italic">Não vinculado</span>
               </div>
