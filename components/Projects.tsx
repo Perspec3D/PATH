@@ -421,7 +421,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                   </div>
                   <div>
                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Imagem do Projeto</label>
-                    <div className="relative h-56 w-full rounded-2xl bg-slate-900 border-2 border-slate-700 border-dashed overflow-hidden flex items-center justify-center group transition-all hover:border-indigo-500/50">
+                    <div className="relative h-56 w-full rounded-2xl bg-slate-900 border-2 border-slate-700 border-dashed overflow-hidden flex flex-col items-center justify-center group transition-all hover:border-indigo-500/50">
                       {photoUrl ? (
                         <div className="relative w-full h-full">
                           <img src={photoUrl} className="absolute inset-0 w-full h-full object-cover" />
@@ -438,6 +438,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                       )}
                       <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className={`absolute inset-0 cursor-pointer ${photoUrl ? 'hidden' : 'opacity-0'}`} />
                     </div>
+                    <p className="text-[9px] font-bold text-slate-500 text-center uppercase tracking-widest leading-relaxed mt-2">
+                      Formatos: JPG, PNG | Máximo 2MB
+                    </p>
                   </div>
                 </div>
               </div>
