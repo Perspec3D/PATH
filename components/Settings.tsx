@@ -202,17 +202,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                 Valor atual: <span className="text-white font-bold">R$ 29,90 / usuário</span>.
               </p>
               <div className="flex space-x-4">
-                <button
-                  onClick={() => {
-                    setTargetSeatCount(db.company?.userLimit || 1);
-                    setShowSeatModal(true);
-                  }}
-                  disabled={isProcessingSubscription}
-                  className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 disabled:opacity-50"
-                >
-                  {isProcessingSubscription ? 'Processando...' : 'Adicionar Usuários'}
-                </button>
-                {db.company?.licenseStatus === LicenseStatus.TRIAL && (
+                {db.company?.licenseStatus === LicenseStatus.TRIAL ? (
                   <button
                     onClick={() => {
                       setTargetSeatCount(Math.max(db.users.length, 1));
@@ -222,6 +212,17 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                     className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20 disabled:opacity-50"
                   >
                     {isProcessingSubscription ? 'Processando...' : 'Ativar Assinatura'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setTargetSeatCount(db.company?.userLimit || 1);
+                      setShowSeatModal(true);
+                    }}
+                    disabled={isProcessingSubscription}
+                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+                  >
+                    {isProcessingSubscription ? 'Processando...' : 'Alterar Assinatura'}
                   </button>
                 )}
               </div>

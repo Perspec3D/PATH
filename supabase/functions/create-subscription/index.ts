@@ -1,20 +1,16 @@
 
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-
 const MP_ACCESS_TOKEN = Deno.env.get('MP_ACCESS_TOKEN') || 'APP_USR-6265238305428901-012722-15149a2c3d23eaa16f972ef607f58d7a-1693333949';
 
-const getCorsHeaders = (origin: string | null) => ({
-    'Access-Control-Allow-Origin': origin || '*',
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
-});
+    'Access-Control-Max-Age': '86400',
+}
 
-serve(async (req) => {
-    const origin = req.headers.get('Origin');
-    const corsHeaders = getCorsHeaders(origin);
-
+Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders });
+        return new Response(null, { status: 204, headers: corsHeaders });
     }
 
     try {
