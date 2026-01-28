@@ -65,7 +65,8 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
   // Filtragem operacional (Projetos em andamento ou ativos)
   const activeProjects = useMemo(() => {
     return allProjects.filter((p: Project) =>
-      [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status)
+      [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status) &&
+      p.startDate && p.deliveryDate // Apenas com datas definidas
     );
   }, [allProjects]);
 
@@ -107,17 +108,8 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
   const dayWidth = 64;
   const todayStr = new Date().toDateString();
 
-  const headerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  const handleHorizontalScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (headerRef.current) {
-      headerRef.current.scrollLeft = e.currentTarget.scrollLeft;
-    }
-  };
-
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 flex flex-col h-[calc(100vh-170px)]">
+    <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
         <div>
           <h1 className="text-2xl font-black text-white tracking-tight">Cronograma de Fluxo</h1>
@@ -125,23 +117,24 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
         </div>
       </div>
 
-      <div className="bg-[#1e293b] rounded-[32px] shadow-2xl border border-slate-700 overflow-hidden flex flex-col flex-1 min-h-[400px]">
-        {/* HEADER FIXO (LINHA SUPERIOR) */}
-        <div className="flex border-b border-slate-700/80 bg-slate-800/50 shrink-0">
-          {/* Sidebar Header */}
-          <div className="w-full md:w-80 border-r border-slate-700/80 px-6 h-16 flex items-center shrink-0">
-            <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-400">Projetos Ativos</span>
-          </div>
-          {/* Timeline Header Container */}
-          <div ref={headerRef} className="flex-1 overflow-hidden h-16 relative">
-            <div style={{ width: `${timelineDates.length * dayWidth}px` }} className="h-full flex relative">
+      <div className="bg-[#1e293b] rounded-[32px] shadow-2xl border border-slate-700 overflow-auto max-h-[calc(100vh-220px)] relative scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+        <div style={{ minWidth: `${320 + timelineDates.length * dayWidth}px` }} className="flex flex-col">
+          {/* HEADER FIXO (TOP E LEFT) */}
+          <div className="flex sticky top-0 z-50 bg-[#1e293b]">
+            {/* Canto superior esquerdo fixo */}
+            <div className="w-80 border-r border-b border-slate-700/80 px-6 h-16 flex items-center shrink-0 sticky left-0 z-[60] bg-slate-800/80 backdrop-blur-md">
+              <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-400">Projetos Ativos</span>
+            </div>
+
+            {/* Cabeçalho de Datas fixo no Topo */}
+            <div className="flex border-b border-slate-700/80 bg-slate-800/50 flex-1 h-16 relative">
               {/* Hoje Highlight no Header */}
               <div className="absolute inset-0 flex pointer-events-none z-10">
                 {timelineDates.map((date, i) => (
                   <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/10 border-x border-orange-500/40' : ''}`}></div>
                 ))}
               </div>
-              <div className="flex h-full relative z-20">
+              <div className="flex items-stretch relative z-20">
                 {timelineDates.map((date, idx) => {
                   const isToday = date.toDateString() === todayStr;
                   return (
@@ -158,85 +151,69 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
               </div>
             </div>
           </div>
-        </div>
 
-        {/* ÁREA DE CONTEÚDO (SCROLL VERTICAL ÚNICO) */}
-        <div className="flex-1 overflow-y-auto flex min-w-0">
-          {/* Sidebar Projetos */}
-          <div className="w-full md:w-80 border-r border-slate-700/80 shrink-0 bg-[#1e293b] z-20 shadow-2xl">
-            <div className="divide-y divide-slate-700/80">
-              {activeProjects.map((project: Project) => {
-                const client = allClients.find((c: Client) => c.id === project.clientId);
-                return (
-                  <div key={project.id} className="h-20 px-6 flex flex-col justify-center border-l-4 border-transparent hover:bg-slate-800/60 transition-all cursor-pointer group" onClick={() => openEdit(project)}>
+          {/* CONTEÚDO */}
+          <div className="flex flex-col divide-y divide-slate-700/80 relative">
+            {activeProjects.map((project: Project) => {
+              const client = allClients.find((c: Client) => c.id === project.clientId);
+              const start = project.startDate ? new Date(project.startDate + 'T12:00:00') : null;
+              const end = project.deliveryDate ? new Date(project.deliveryDate + 'T12:00:00') : null;
+              let offset = 0; let width = 0;
+              if (start && end) {
+                const diffStart = Math.floor((start.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
+                const diffDuration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                offset = diffStart * dayWidth; width = diffDuration * dayWidth;
+              }
+
+              return (
+                <div key={project.id} className="flex group/row hover:bg-slate-800/30 transition-colors">
+                  {/* Sidebar Projeto: FIXO NA ESQUERDA */}
+                  <div className="w-80 px-6 h-20 flex flex-col justify-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm cursor-pointer group hover:bg-slate-800 transition-all border-l-4 border-transparent" onClick={() => openEdit(project)}>
                     <span className="text-[9px] font-mono font-black text-indigo-400/40 uppercase tracking-tighter mb-0.5 block">{project.code}</span>
                     <h4 className="text-xs font-black text-slate-100 truncate group-hover:text-indigo-400 leading-tight whitespace-normal">{project.name}</h4>
                     <p className="text-[9px] text-slate-500 font-bold truncate mt-1 italic">{client?.name || 'Cliente s/ Ref.'}</p>
                   </div>
-                );
-              })}
-            </div>
-          </div>
 
-          {/* Timeline Area com Scroll Horizontal */}
-          <div ref={contentRef} onScroll={handleHorizontalScroll} className="flex-1 overflow-x-auto bg-slate-900/10 relative">
-            <div style={{ width: `${timelineDates.length * dayWidth}px` }} className="min-h-full relative flex flex-col">
-              {/* HOJE Highlight Overlay no Conteúdo */}
-              <div className="absolute inset-0 flex pointer-events-none z-10">
-                {timelineDates.map((date, i) => (
-                  <div
-                    key={i}
-                    style={{ width: `${dayWidth}px` }}
-                    className={`h-full border-r border-slate-700/80 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/10 border-l-2 border-orange-500/40' : ''}`}
-                  ></div>
-                ))}
-              </div>
+                  {/* Timeline Row */}
+                  <div className="flex-1 h-20 relative bg-slate-900/10 overflow-visible">
+                    {/* Linhas de Grade Verticais */}
+                    <div className="absolute inset-0 flex pointer-events-none z-10">
+                      {timelineDates.map((date, i) => (
+                        <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/80 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/05 border-l border-orange-500/20' : ''}`}></div>
+                      ))}
+                    </div>
 
-              {/* Rows */}
-              <div className="flex-1 divide-y divide-slate-700/80 relative z-20">
-                {activeProjects.map((project: Project) => {
-                  const start = project.startDate ? new Date(project.startDate + 'T12:00:00') : null;
-                  const end = project.deliveryDate ? new Date(project.deliveryDate + 'T12:00:00') : null;
-                  let offset = 0; let width = 0;
-                  if (start && end) {
-                    const diffStart = Math.floor((start.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
-                    const diffDuration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                    offset = diffStart * dayWidth; width = diffDuration * dayWidth;
-                  }
-
-                  return (
-                    <div key={project.id} className="h-20 relative flex items-center group/row hover:z-[90]">
-                      {width > 0 && (
-                        <div
-                          style={{ left: `${offset}px`, width: `${width}px` }}
-                          className={`absolute h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-10 cursor-pointer ${getStatusColor(project.status)} border-white/5`}
-                          onClick={() => openEdit(project)}
-                        >
-                          {/* TOOLTIP */}
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-white/10">
-                            <div className="flex items-center justify-between mb-2">
-                              <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code}</p>
-                              <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>{project.status}</span>
+                    {/* Barra de Status */}
+                    {width > 0 && (
+                      <div
+                        style={{ left: `${offset}px`, width: `${width}px` }}
+                        className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(project.status)} border-white/5`}
+                        onClick={() => openEdit(project)}
+                      >
+                        {/* TOOLTIP */}
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-white/10">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code}</p>
+                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>{project.status}</span>
+                          </div>
+                          <p className="text-xs font-bold text-white mb-3 leading-tight whitespace-normal">{project.name}</p>
+                          <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
+                            <div>
+                              <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p>
+                              <p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p>
                             </div>
-                            <p className="text-xs font-bold text-white mb-3 leading-tight whitespace-normal">{project.name}</p>
-                            <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
-                              <div>
-                                <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p>
-                                <p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p>
-                              </div>
-                              <div>
-                                <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p>
-                                <p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p>
-                              </div>
+                            <div>
+                              <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p>
+                              <p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p>
                             </div>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
