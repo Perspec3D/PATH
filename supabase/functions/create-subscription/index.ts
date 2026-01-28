@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     }
 
     try {
-        const { userCount, companyEmail, companyId } = await req.json();
+        const { userCount, companyEmail, companyId, backUrl } = await req.json();
 
         if (!userCount || !companyEmail || !companyId) {
             throw new Error("Missing params");
@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
                     transaction_amount: totalAmount,
                     currency_id: 'BRL'
                 },
-                back_url: 'https://v0-perspec-path.vercel.app',
+                back_url: backUrl || 'https://v0-perspec-path.vercel.app',
                 payer_email: companyEmail,
                 external_reference: JSON.stringify({ companyId, userCount }),
                 status: 'pending'

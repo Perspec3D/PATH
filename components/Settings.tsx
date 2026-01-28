@@ -98,14 +98,15 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
     }
   };
 
-  const handleActivateSubscription = async (userCount: number) => {
+  const handleActivateSubscription = async (count: number) => {
     setIsProcessingSubscription(true);
     try {
       const { data, error } = await supabase.functions.invoke('create-subscription', {
         body: {
+          userCount: count,
+          companyEmail: db.company?.email, // Assuming company email is stored here or user email
           companyId: db.company?.id,
-          companyEmail: db.company?.email,
-          userCount
+          backUrl: window.location.href
         }
       });
       if (error) throw error;
@@ -321,14 +322,16 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
             </span>
             <button
               onClick={() => {
-                if (db.users.length >= (db.company?.userLimit || 1)) {
-                  alert(`Limite de usuários atingido (${db.company?.userLimit}). Aumente seu plano na seção de Faturamento.`);
+                const currentLimit = db.company?.licenseStatus === LicenseStatus.TRIAL ? 5 : (db.company?.userLimit || 1);
+
+                if (db.users.length >= currentLimit) {
+                  alert(`Limite de usuários atingido (${currentLimit}). Aumente seu plano na seção de Faturamento.`);
                   return;
                 }
                 resetUserForm();
                 setShowUserModal(true);
               }}
-              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition ${db.users.length >= (db.company?.userLimit || 1) ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition ${db.users.length >= (db.company?.licenseStatus === LicenseStatus.TRIAL ? 5 : (db.company?.userLimit || 1)) ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
             >
               Novo Usuário
             </button>
