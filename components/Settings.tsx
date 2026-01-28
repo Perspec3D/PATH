@@ -65,8 +65,8 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
             licenseStatus: data.license_status,
             userLimit: data.user_limit,
             subscriptionId: data.subscription_id,
-            subscriptionEnd: data.subscription_end,
-            trialStart: data.trial_start
+            subscriptionEnd: data.subscription_end ? new Date(data.subscription_end).getTime() : undefined,
+            trialStart: data.trial_start ? new Date(data.trial_start).getTime() : Date.now()
           }
         });
       }
@@ -182,7 +182,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       } catch (e) {
         console.error("Erro ao ler resposta de erro", e);
       }
-      alert("Erro ao iniciar checkout: " + errorMessage);
+      alert("Erro ao iniciar checkout: " + errorMessage + (errorMessage.includes("MP_ACCESS_TOKEN not set") ? " (Configuração pendente no Supabase Secrets)" : ""));
     } finally {
       setIsProcessingSubscription(false);
       setShowSeatModal(false);

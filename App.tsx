@@ -282,6 +282,46 @@ const App: React.FC = () => {
   }
 
   if (isExpired) {
+    const handleSyncOnExpired = async () => {
+      if (!db.company?.id) return;
+      setIsLoading(true);
+      try {
+        if (db.company.subscriptionId) {
+          await supabase.functions.invoke('verify-subscription', {
+            body: { companyId: db.company.id, subscriptionId: db.company.subscriptionId }
+          });
+        }
+        const data = await fetchAllData(db.company.id);
+        setDb(prev => ({ ...prev, ...data }));
+        if (data.company) setCompanySession(data.company);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const handleCheckoutOnExpired = async () => {
+      if (!db.company) return;
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('create-subscription', {
+          body: {
+            userCount: db.users.filter(u => u.isActive).length || 1,
+            companyEmail: db.company.email,
+            companyId: db.company.id,
+            backUrl: window.location.href
+          }
+        });
+        if (error) throw error;
+        if (data?.init_point) window.location.href = data.init_point;
+      } catch (err: any) {
+        alert("Erro ao iniciar checkout: " + (err.message || "Erro desconhecido"));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     // Regra: Somente Admin acessa se o limite for 1 (plano individual)
     const currentLimit = companySession?.userLimit || 1;
     if (userSession && currentLimit === 1 && userSession.role !== UserRole.ADMIN) {
@@ -325,41 +365,55 @@ const App: React.FC = () => {
                 ? 'Identificamos uma pendência no seu pagamento. Regularize sua assinatura para retomar o acesso imediato.'
                 : (db.company?.licenseStatus === LicenseStatus.CANCELLED
                   ? 'Sua assinatura foi cancelada e o período de acesso vigente chegou ao fim.'
-                  : 'O seu período de teste de 07 dias do PERSPEC PATH chegou ao fim. Mantenha o controle total dos seus projetos assinando nosso plano.')}
+                  : 'O seu período de teste do PERSPEC PATH chegou ao fim. Mantenha o controle total dos seus projetos e ative sua assinatura mensal agora mesmo.')}
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
               <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 text-left hover:border-indigo-500/50 transition-colors group">
-                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 group-hover:text-indigo-400">Plano Premium</h3>
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 group-hover:text-indigo-400">Plano Profissional</h3>
                 <div className="flex items-baseline space-x-1 mb-4">
-                  <span className="text-2xl font-black text-white">R$ 99</span>
-                  <span className="text-xs text-slate-500 font-bold">/mês</span>
+                  <span className="text-2xl font-black text-white">R$ 29,90</span>
+                  <span className="text-xs text-slate-500 font-bold">/usuário/mês</span>
                 </div>
                 <ul className="text-[10px] text-slate-400 space-y-2 uppercase font-black tracking-wider">
                   <li className="flex items-center space-x-2">
                     <svg className="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                    <span>Projetos Ilimitados</span>
+                    <span>Dashboard Analytics</span>
                   </li>
                   <li className="flex items-center space-x-2">
                     <svg className="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                    <span>Dashboard Avançado</span>
+                    <span>Cronograma Gantt ilimitado</span>
                   </li>
                 </ul>
               </div>
 
-              <div className="bg-emerald-600 rounded-3xl p-1 flex flex-col shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer h-24" onClick={() => alert('Checkout Stripe em desenvolvimento')}>
+              <div
+                className="bg-emerald-600 rounded-3xl p-1 flex flex-col shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer h-full min-h-[120px]"
+                onClick={handleCheckoutOnExpired}
+              >
                 <div className="flex-1 flex flex-col items-center justify-center text-white">
-                  <span className="text-lg font-black uppercase tracking-tight">Assinar Agora</span>
+                  <span className="text-lg font-black uppercase tracking-tight">Ativar Agora</span>
+                  <span className="text-[10px] font-bold opacity-70">Checkout Mercado Pago</span>
                 </div>
               </div>
             </div>
 
-            <button
-              onClick={handleLogout}
-              className="text-xs font-black text-slate-500 uppercase tracking-widest hover:text-white transition"
-            >
-              Sair do Workspace
-            </button>
+            <div className="flex flex-col space-y-6">
+              <button
+                onClick={handleSyncOnExpired}
+                className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition flex items-center justify-center space-x-2"
+              >
+                <svg className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                <span>Já realizei o pagamento? Sincronizar Status</span>
+              </button>
+
+              <button
+                onClick={handleLogout}
+                className="text-xs font-black text-slate-500 uppercase tracking-widest hover:text-white transition"
+              >
+                Sair do Workspace
+              </button>
+            </div>
           </div>
         </div>
       </div>
