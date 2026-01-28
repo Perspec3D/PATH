@@ -1,11 +1,40 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ProjectStatus, Project, InternalUser, Client } from '../types';
 import { AppDB } from '../storage';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+  AreaChart, Area, PieChart, Pie, Cell, Legend
+} from 'recharts';
+import { Info, CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar } from 'lucide-react';
 
 interface DashboardProps {
   db: AppDB;
 }
+
+const InfoTooltip: React.FC<{ title: string; content: string }> = ({ title, content }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative inline-block ml-2 group/info">
+      <button
+        type="button"
+        onMouseEnter={() => setIsOpen(true)}
+        onMouseLeave={() => setIsOpen(false)}
+        className="p-1 rounded-full hover:bg-slate-700/50 transition-colors text-slate-500 hover:text-indigo-400"
+      >
+        <Info size={14} />
+      </button>
+      {isOpen && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] w-64 pointer-events-none animate-in fade-in slide-in-from-bottom-1 duration-200">
+          <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">{title}</p>
+          <p className="text-[11px] text-slate-300 font-medium leading-relaxed">{content}</p>
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
   const projects = db.projects || [];
@@ -40,31 +69,50 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
     return due >= now && due <= next7Days;
   });
 
-  // 3. Performance por Usuário (Concluídos)
-  const userPerformance = useMemo(() => {
+  // 3. Eficiência por Usuário (Concluídos)
+  const userEfficiencyData = useMemo(() => {
     const data: Record<string, number> = {};
-    projects.filter((p: Project) => p.status === ProjectStatus.DONE).forEach((p: Project) => {
+    users.forEach(u => data[u.username] = 0);
+    projects.filter(p => p.status === ProjectStatus.DONE).forEach(p => {
       if (p.assigneeId) {
-        const user = users.find((u: InternalUser) => u.id === p.assigneeId);
-        const name = user ? user.username : 'Indefinido';
-        data[name] = (data[name] || 0) + 1;
+        const user = users.find(u => u.id === p.assigneeId);
+        if (user) data[user.username]++;
       }
     });
-    return Object.entries(data).sort((a, b) => b[1] - a[1]);
+    return Object.entries(data).map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
   }, [projects, users]);
 
-  // 4. Top 10 Clientes por Projetos
-  const topClients = useMemo(() => {
-    const data: Record<string, number> = {};
-    projects.forEach((p: Project) => {
-      const client = clients.find((c: Client) => c.id === p.clientId);
-      const name = client ? client.name : 'Cliente Indefinido';
-      data[name] = (data[name] || 0) + 1;
-    });
-    return Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  }, [projects, clients]);
+  // 4. Tendência Mensal (Criados vs Concluídos)
+  const monthlyTimeline = useMemo(() => {
+    const months: Record<string, { month: string; created: number; done: number }> = {};
+    const last6Months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('pt-BR', { month: 'short' });
+      months[key] = { month: label, created: 0, done: 0 };
+      last6Months.push(key);
+    }
 
-  // 5. Comparativo de Status por Usuário
+    projects.forEach(p => {
+      const date = new Date(p.createdAt || Date.now());
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      if (months[key]) months[key].created++;
+
+      if (p.status === ProjectStatus.DONE) {
+        // Para simplificar, assumimos que projetcs marcados como DONE foram concluidos no mes atual se nao houver data de conclusao real
+        const doneDate = new Date(p.deliveryDate ? (p.deliveryDate + 'T12:00:00') : (p.createdAt || Date.now()));
+        const doneKey = `${doneDate.getFullYear()}-${String(doneDate.getMonth() + 1).padStart(2, '0')}`;
+        if (months[doneKey]) months[doneKey].done++;
+      }
+    });
+
+    return last6Months.map(key => months[key]);
+  }, [projects]);
+
+  // 5. Comparativo de Status por Usuário (Original melhorado)
   const userStatusMatrix = useMemo(() => {
     const matrix: Record<string, Record<string, number>> = {};
     activeProjects.forEach((p: Project) => {
@@ -94,6 +142,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
     return Math.round(totalDays / completed.length);
   }, [projects]);
 
+  // 7. Concentração de Clientes (Pie Data)
+  const clientConcentrationData = useMemo(() => {
+    const data: Record<string, number> = {};
+    projects.forEach(p => {
+      const client = clients.find(c => c.id === p.clientId);
+      const name = client ? client.name : 'Outros';
+      data[name] = (data[name] || 0) + 1;
+    });
+    return Object.entries(data)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5); // Top 5 e Agrupar outros
+  }, [projects, clients]);
+
+  const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f97316', '#10b981'];
+
   const getHealthColor = (h: number) => {
     if (h > 80) return 'text-emerald-500';
     if (h > 50) return 'text-amber-500';
@@ -102,15 +166,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-12">
-      {/* SEÇÃO 1: SAÚDE DO ESCRITÓRIO - REDESENHADA PARA IMPACTO MÁXIMO */}
+      {/* SEÇÃO 1: SAÚDE DO ESCRITÓRIO */}
       <div className="bg-[#1e293b] p-12 rounded-[48px] shadow-2xl border border-slate-800 overflow-hidden relative group">
         <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none transition-opacity group-hover:opacity-10 scale-150">
-          <svg className="w-48 h-48 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z" /></svg>
+          <TrendingUp className="w-48 h-48 text-indigo-500" />
         </div>
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-12 relative z-10">
           <div className="flex flex-col items-start">
-            <h3 className="text-[12px] font-black text-slate-500 uppercase tracking-[0.3em] mb-4 px-2">Saúde Estratégica da Operação</h3>
+            <h3 className="text-[12px] font-black text-slate-500 uppercase tracking-[0.3em] mb-4 px-2 flex items-center">
+              Saúde Estratégica
+              <InfoTooltip title="Saúde da Operação" content="Relação entre projetos ativos e projetos com prazo expirado. Quanto menor o atraso, maior a saúde." />
+            </h3>
             <span className={`text-[10rem] leading-none font-black tracking-tighter transition-all duration-1000 drop-shadow-2xl ${getHealthColor(health)}`}>
               {health}%
             </span>
@@ -124,9 +191,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
             </div>
 
             <div className="h-12 w-full bg-slate-900/90 rounded-3xl overflow-hidden relative border-2 border-slate-700 shadow-[inset_0_4px_12px_rgba(0,0,0,0.6)] p-1.5">
-              {/* Gradiente Real de Fundo */}
               <div className="absolute inset-0 bg-gradient-to-r from-rose-900 via-amber-900 to-emerald-900 opacity-20"></div>
-              {/* Barra de Progresso Encorpada - AUMENTADA */}
               <div
                 className={`h-full rounded-2xl transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)] relative shadow-[0_0_30px_rgba(0,0,0,0.7)] ${health > 80 ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : health > 50 ? 'bg-gradient-to-r from-amber-600 to-amber-400' : 'bg-gradient-to-r from-rose-700 to-rose-500'}`}
                 style={{ width: `${health}%` }}
@@ -140,65 +205,117 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 pt-12 mt-12 border-t border-slate-800/80 relative z-10">
           <div className="text-center group/card">
-            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-400">Tempo Médio</p>
+            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-400">Ciclo Médio</p>
             <p className="text-4xl font-black text-white">{avgExecutionTime} <span className="text-[14px] text-slate-600 font-bold uppercase tracking-tighter">dias</span></p>
           </div>
           <div className="text-center border-l border-slate-800/80 group/card">
-            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-rose-400">Atraso Crítico</p>
+            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-rose-400">Prazos Expirados</p>
             <p className="text-4xl font-black text-rose-500">{overdueProjects.length}</p>
           </div>
           <div className="text-center border-l border-slate-800/80 group/card">
-            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-400">Projetos Ativos</p>
+            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-400">Em Aberto</p>
             <p className="text-4xl font-black text-indigo-400">{activeProjects.length}</p>
           </div>
           <div className="text-center border-l border-slate-800/80 group/card">
-            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-emerald-400">Finalizados</p>
+            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-emerald-400">Concluídos</p>
             <p className="text-4xl font-black text-emerald-500">{projects.filter((p: any) => p.status === ProjectStatus.DONE).length}</p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* RANKING TOP 10 CLIENTES - REFINADO */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden flex flex-col">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* TENDÊNCIA DE PRODUÇÃO - NOVO */}
+        <div className="lg:col-span-2 bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden flex flex-col min-h-[400px]">
           <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
-            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white">Top 10 Clientes em Volume</h3>
-            <svg className="w-6 h-6 text-indigo-500 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
+              Tendência de Fluxo
+              <InfoTooltip title="Entradas vs Saídas" content="Compara o volume de novos projetos (Criados) com projetos finalizados (Concluídos) nos últimos 6 meses." />
+            </h3>
+            <TrendingUp size={20} className="text-indigo-500" />
           </div>
-          <div className="p-10 flex-1">
-            {topClients.length === 0 ? (
-              <div className="h-64 flex flex-col items-center justify-center text-slate-600 font-black uppercase text-[12px] tracking-widest italic opacity-40">Dados insuficientes</div>
-            ) : (
-              <div className="space-y-6">
-                {topClients.map(([name, count], idx) => (
-                  <div key={name} className="group/item">
-                    <div className="flex justify-between items-end mb-2">
-                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[75%] transition-colors group-hover/item:text-indigo-400">
-                        <span className="text-slate-600 mr-2">{String(idx + 1).padStart(2, '0')}.</span>
-                        {name}
-                      </span>
-                      <span className="text-[12px] font-black text-indigo-400 group-hover/item:scale-110 transition-transform">{count} <span className="text-[9px] uppercase tracking-tighter text-slate-500">Projetos</span></span>
-                    </div>
-                    <div className="h-2.5 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800 shadow-inner">
-                      <div
-                        className="h-full bg-gradient-to-r from-indigo-700 via-indigo-500 to-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.3)] transition-all duration-1000 ease-out"
-                        style={{ width: `${(count / topClients[0][1]) * 100}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="p-8 flex-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={monthlyTimeline} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorCreated" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorDone" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a374a" vertical={false} />
+                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10, fontWeight: 900 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} />
+                <RechartsTooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
+                <Area type="monotone" dataKey="created" name="Criados" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorCreated)" />
+                <Area type="monotone" dataKey="done" name="Concluídos" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorDone)" />
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '10px', textTransform: 'uppercase', fontWeight: 900 }} />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        {/* CARGA DE TRABALHO POR STATUS */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden">
+        {/* CONCENTRAÇÃO DE CLIENTES - NOVO */}
+        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden flex flex-col min-h-[400px]">
           <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
-            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white">Carga Ativa por Usuário</h3>
-            <svg className="w-6 h-6 text-indigo-500 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
+              Concentração
+              <InfoTooltip title="Volume por Cliente" content="Distribuição percentual dos projetos entre os principais clientes do escritório." />
+            </h3>
+            <PieChart size={20} className="text-indigo-500" />
           </div>
-          <div className="p-10">
+          <div className="p-4 flex-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={clientConcentrationData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none">
+                  {clientConcentrationData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
+                <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* EFICIÊNCIA DO TIME - NOVO (BarChart Recharts) */}
+        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden min-h-[450px] flex flex-col">
+          <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
+            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
+              Eficiência Operacional
+              <InfoTooltip title="Entregas por Usuário" content="Volume acumulado de projetos concluídos por cada colaborador." />
+            </h3>
+            <CheckCircle2 size={20} className="text-emerald-500" />
+          </div>
+          <div className="p-8 flex-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={userEfficiencyData} layout="vertical" margin={{ left: 20, right: 30 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a374a" horizontal={true} vertical={false} />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 900 }} width={80} />
+                <RechartsTooltip cursor={{ fill: '#334155', opacity: 0.1 }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
+                <Bar dataKey="value" name="Concluídos" fill="#10b981" radius={[0, 10, 10, 0]} barSize={24} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* CARGA ATIVA POR USUÁRIO (Melhorado com Stacked Bar) */}
+        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden flex flex-col">
+          <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
+            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
+              Carga Ativa por Usuário
+              <InfoTooltip title="Distribuição de Status" content="Mostra em qual estágio estão os projetos ativos de cada colaborador (Fila, Andamento ou Pausado)." />
+            </h3>
+            <Users size={20} className="text-indigo-500" />
+          </div>
+          <div className="p-10 flex-1 overflow-y-auto max-h-[400px] custom-scrollbar">
             <div className="space-y-8">
               {userStatusMatrix.map(([name, statusData]) => {
                 const total = statusData[ProjectStatus.QUEUE] + statusData[ProjectStatus.IN_PROGRESS] + statusData[ProjectStatus.PAUSED];
@@ -234,8 +351,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden">
           <div className="px-10 py-8 border-b border-slate-800 flex items-center justify-between bg-rose-500/10">
             <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-rose-500 flex items-center">
-              <div className="w-3 h-3 bg-rose-500 rounded-full mr-4 animate-pulse shadow-[0_0_15px_rgba(244,63,94,0.6)]"></div>
+              <AlertTriangle size={16} className="mr-4 text-rose-500 animate-pulse" />
               Prazos Expirados
+              <InfoTooltip title="Alertas de Atraso" content="Projetos ativos cuja data de entrega é anterior ao dia de hoje." />
             </h3>
             <span className="text-sm font-black text-rose-500 bg-rose-500/10 px-4 py-1.5 rounded-full ring-1 ring-rose-500/30">{overdueProjects.length}</span>
           </div>
@@ -263,8 +381,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden">
           <div className="px-10 py-8 border-b border-slate-800 flex items-center justify-between bg-emerald-500/10">
             <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-emerald-400 flex items-center">
-              <div className="w-3 h-3 bg-emerald-500 rounded-full mr-4 shadow-[0_0_15px_rgba(16,185,129,0.6)]"></div>
+              <Calendar size={16} className="mr-4 text-emerald-500" />
               Próximos 7 Dias
+              <InfoTooltip title="Planejamento Semanal" content="Projetos com entrega agendada dentro da próxima semana." />
             </h3>
             <span className="text-sm font-black text-emerald-400 bg-emerald-500/10 px-4 py-1.5 rounded-full ring-1 ring-emerald-500/30">{upcomingProjects.length}</span>
           </div>
