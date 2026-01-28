@@ -170,9 +170,20 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
     }
   };
 
+  const [showAboutModal, setShowAboutModal] = useState(false);
+
   return (
     <div className="space-y-8 max-w-4xl animate-in fade-in duration-500">
-      <h1 className="text-2xl font-black text-white tracking-tight">Configurações do Sistema</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-black text-white tracking-tight">Configurações do Sistema</h1>
+        <button
+          onClick={() => setShowAboutModal(true)}
+          className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-indigo-400 transition flex items-center space-x-2"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          <span>Sobre</span>
+        </button>
+      </div>
 
       {/* Company Section */}
       <section className="bg-[#1e293b] rounded-3xl shadow-xl border border-slate-800 overflow-hidden">
@@ -410,6 +421,52 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                 <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition">Salvar Usuário</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* About Modal */}
+      {showAboutModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-[#0f172a] rounded-[40px] shadow-2xl w-full max-w-sm overflow-hidden border border-slate-700 relative">
+            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-500/20 to-transparent pointer-events-none"></div>
+
+            <div className="p-8 text-center relative z-10">
+              <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-indigo-500/20 shadow-lg shadow-indigo-500/10">
+                <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+              </div>
+
+              <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-1">PERSPEC PATH</h3>
+              <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-8">Gestão de Projetos & Licenciamento</p>
+
+              <div className="space-y-4 text-left bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50">
+                <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Versão</span>
+                  <span className="text-xs font-bold text-white">v1.2.4 (Beta)</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Desenvolvedor</span>
+                  <span className="text-xs font-bold text-white text-right">Perspec3D<br />Engenharia Ltda.</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Site e Suporte</span>
+                  <a href="https://www.perspec3d.com" target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition">
+                    www.perspec3d.com
+                  </a>
+                </div>
+                <div className="flex justify-between items-center py-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Copyright</span>
+                  <span className="text-xs font-bold text-slate-400">© 2025</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowAboutModal(false)}
+                className="mt-8 px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition w-full"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
