@@ -26,14 +26,22 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
 
+  const [isEmailConfirmed, setIsEmailConfirmed] = useState(true);
+  const [isResending, setIsResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
   // Sync with Supabase on Login
   useEffect(() => {
     if (companySession) {
       const loadData = async () => {
         setIsLoading(true);
         try {
+          const { data: { user } } = await supabase.auth.getUser();
+          setIsEmailConfirmed(!!user?.email_confirmed_at);
+
           const remoteData = await fetchAllData(companySession.id);
           let finalUsers = remoteData.users || [];
+          // ... (rest of the useEffect logic remains same, but I'll apply it in a single contiguous block if possible or multiple chunks)
 
           if (finalUsers.length === 0) {
             const adminUser: InternalUser = {
@@ -79,6 +87,7 @@ const App: React.FC = () => {
     // 1. Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
+        setIsEmailConfirmed(!!session.user.email_confirmed_at);
         const company: Company = {
           id: session.user.id,
           name: session.user.user_metadata.company_name || 'PERSPEC PATH',
@@ -101,6 +110,7 @@ const App: React.FC = () => {
     // 2. Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
+        setIsEmailConfirmed(!!session.user.email_confirmed_at);
         const company: Company = {
           id: session.user.id,
           name: session.user.user_metadata.company_name || 'PERSPEC PATH',
@@ -184,6 +194,25 @@ const App: React.FC = () => {
     localStorage.removeItem('PATH_USER_SESSION');
   };
 
+  const handleResendConfirmation = async () => {
+    if (!companySession?.email) return;
+    setIsResending(true);
+    setResendStatus('idle');
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: companySession.email,
+      });
+      if (error) throw error;
+      setResendStatus('success');
+    } catch (err) {
+      console.error("Erro ao reenviar:", err);
+      setResendStatus('error');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
   const switchUser = () => {
     setUserSession(null);
     localStorage.removeItem('PATH_USER_SESSION');
@@ -193,6 +222,53 @@ const App: React.FC = () => {
 
   if (!companySession) {
     return <CompanyLogin db={db} setDb={setDb} onLogin={handleCompanyLogin} />;
+  }
+
+  // Trava de Confirmação de E-mail
+  if (!isEmailConfirmed) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#0f172a] text-white p-6 text-center">
+        <div className="bg-[#1e293b] p-10 rounded-[40px] border border-slate-700 max-w-md shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500"></div>
+
+          <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-indigo-500/20">
+            <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          </div>
+
+          <h2 className="text-2xl font-black uppercase mb-4 tracking-tighter">Confirme seu E-mail</h2>
+          <p className="text-slate-400 text-sm mb-8 leading-relaxed font-medium">
+            Enviamos um link de confirmação para <span className="text-white font-bold">{companySession.email}</span>.
+            Por favor, verifique sua caixa de entrada (e spam) para liberar o acesso ao seu Workspace.
+          </p>
+
+          <div className="space-y-4">
+            <button
+              onClick={handleResendConfirmation}
+              disabled={isResending || resendStatus === 'success'}
+              className={`w-full py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${resendStatus === 'success'
+                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xl shadow-indigo-500/20'
+                }`}
+            >
+              {isResending ? 'Enviando...' : (resendStatus === 'success' ? 'E-mail Enviado!' : 'Reenviar E-mail de Confirmação')}
+            </button>
+
+            {resendStatus === 'error' && (
+              <p className="text-[10px] text-rose-500 font-bold uppercase tracking-widest">Erro ao reenviar. Tente novamente em instantes.</p>
+            )}
+
+            <button
+              onClick={handleLogout}
+              className="w-full py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition"
+            >
+              Sair e usar outro e-mail
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (isExpired) {
