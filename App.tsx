@@ -52,6 +52,9 @@ const App: React.FC = () => {
           }
 
           const mergedCompany = remoteData.company || companySession;
+          if (mergedCompany && mergedCompany.licenseStatus === LicenseStatus.TRIAL) {
+            mergedCompany.userLimit = 5; // Força 5 usuários no trial
+          }
           setDb({
             ...remoteData,
             users: finalUsers,
@@ -172,8 +175,9 @@ const App: React.FC = () => {
   }
 
   if (isExpired) {
-    // Bloqueio se o limite for 1 e o usuário não for ADMIN
-    if (userSession && companySession?.userLimit === 1 && userSession.role !== UserRole.ADMIN) {
+    // Regra: Somente Admin acessa se o limite for 1 (plano individual)
+    const currentLimit = companySession?.userLimit || 1;
+    if (userSession && currentLimit === 1 && userSession.role !== UserRole.ADMIN) {
       return (
         <div className="h-screen flex items-center justify-center bg-[#0f172a] text-white p-6 text-center">
           <div className="bg-[#1e293b] p-10 rounded-[40px] border border-slate-700 max-w-md shadow-2xl">
