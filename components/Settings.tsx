@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { InternalUser, UserRole, LicenseStatus } from '../types';
-import { syncUser, syncCompany, AppDB } from '../storage';
+import { syncUser, syncCompany, AppDB, supabase } from '../storage';
 
 interface SettingsProps {
   db: AppDB;
@@ -17,8 +17,8 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<UserRole>(UserRole.USER);
   const [isActive, setIsActive] = useState(true);
-
   const [companyName, setCompanyName] = useState(db.company?.name || '');
+  const [isProcessingSubscription, setIsProcessingSubscription] = useState(false);
 
   const resetUserForm = () => {
     setUsername('');
@@ -96,6 +96,29 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
     }
   };
 
+  const handleActivateSubscription = async (userCount: number) => {
+    setIsProcessingSubscription(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-subscription', {
+        body: {
+          companyId: db.company?.id,
+          companyEmail: db.company?.email,
+          userCount
+        }
+      });
+      if (error) throw error;
+      if (data?.init_point) {
+        window.location.href = data.init_point;
+      } else {
+        throw new Error("Link de checkout não gerado");
+      }
+    } catch (err: any) {
+      alert("Erro ao iniciar checkout: " + (err.message || "Erro desconhecido"));
+    } finally {
+      setIsProcessingSubscription(false);
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-4xl animate-in fade-in duration-500">
       <h1 className="text-2xl font-black text-white tracking-tight">Configurações do Sistema</h1>
@@ -151,12 +174,23 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                 Valor atual: <span className="text-white font-bold">R$ 29,90 / usuário</span>.
               </p>
               <div className="flex space-x-4">
-                <button onClick={() => alert('Integração Mercado Pago: Expandir assentos')} className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20">
-                  Adicionar Usuários
+                <button
+                  onClick={() => {
+                    const count = prompt("Para quantos usuários deseja expandir?", db.company?.userLimit.toString());
+                    if (count) handleActivateSubscription(parseInt(count));
+                  }}
+                  disabled={isProcessingSubscription}
+                  className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+                >
+                  {isProcessingSubscription ? 'Processando...' : 'Adicionar Usuários'}
                 </button>
                 {db.company?.licenseStatus === LicenseStatus.TRIAL && (
-                  <button onClick={() => alert('Integração Mercado Pago: Checkout Pro')} className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20">
-                    Ativar Assinatura
+                  <button
+                    onClick={() => handleActivateSubscription(db.users.length > 1 ? db.users.length : 1)}
+                    disabled={isProcessingSubscription}
+                    className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+                  >
+                    {isProcessingSubscription ? 'Processando...' : 'Ativar Assinatura'}
                   </button>
                 )}
               </div>

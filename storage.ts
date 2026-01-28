@@ -8,6 +8,8 @@ export interface AppDB {
   projects: Project[];
 }
 
+export { supabase };
+
 // --- Supabase Sync Functions ---
 
 export const fetchAllData = async (companyId?: string): Promise<Partial<AppDB>> => {
