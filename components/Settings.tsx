@@ -115,7 +115,18 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
         throw new Error("Link de checkout não gerado");
       }
     } catch (err: any) {
-      alert("Erro ao iniciar checkout: " + (err.message || "Erro desconhecido"));
+      let errorMessage = err.message || "Erro desconhecido";
+      try {
+        if (err.context && typeof err.context.json === 'function') {
+          const body = await err.context.json();
+          if (body && body.error) {
+            errorMessage = body.error;
+          }
+        }
+      } catch (e) {
+        console.error("Erro ao ler resposta de erro", e);
+      }
+      alert("Erro ao iniciar checkout: " + errorMessage);
     } finally {
       setIsProcessingSubscription(false);
       setShowSeatModal(false);
