@@ -19,6 +19,8 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
   const [isActive, setIsActive] = useState(true);
   const [companyName, setCompanyName] = useState(db.company?.name || '');
   const [isProcessingSubscription, setIsProcessingSubscription] = useState(false);
+  const [showSeatModal, setShowSeatModal] = useState(false);
+  const [targetSeatCount, setTargetSeatCount] = useState(db.company?.userLimit || 1);
 
   const resetUserForm = () => {
     setUsername('');
@@ -116,6 +118,32 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       alert("Erro ao iniciar checkout: " + (err.message || "Erro desconhecido"));
     } finally {
       setIsProcessingSubscription(false);
+      setShowSeatModal(false);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!confirm("Tem certeza que deseja cancelar a assinatura? O acesso permanecerá ativo até o fim do período já pago.")) return;
+
+    setIsProcessingSubscription(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-subscription', {
+        body: {
+          subscriptionId: db.company?.subscriptionId
+        }
+      });
+      if (error) throw error;
+
+      // Update local state conditionally or wait for webhook
+      alert("Assinatura cancelada com sucesso. O acesso será mantido até o término da vigência.");
+      // Opcional: atualização otimista
+      const updatedCompany = { ...db.company!, licenseStatus: LicenseStatus.CANCELLED };
+      setDb({ ...db, company: updatedCompany });
+
+    } catch (err: any) {
+      alert("Erro ao cancelar: " + (err.message || "Erro desconhecido"));
+    } finally {
+      setIsProcessingSubscription(false);
     }
   };
 
@@ -176,8 +204,8 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
               <div className="flex space-x-4">
                 <button
                   onClick={() => {
-                    const count = prompt("Para quantos usuários deseja expandir?", db.company?.userLimit.toString());
-                    if (count) handleActivateSubscription(parseInt(count));
+                    setTargetSeatCount(db.company?.userLimit || 1);
+                    setShowSeatModal(true);
                   }}
                   disabled={isProcessingSubscription}
                   className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 disabled:opacity-50"
@@ -218,6 +246,20 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                       return `${remaining} ${remaining === 1 ? 'dia' : 'dias'}`;
                     })()}
                   </span>
+                </div>
+              )}
+
+              {db.company?.licenseStatus === LicenseStatus.ACTIVE && (
+                <div className="pt-4 border-t border-slate-800/50 text-center">
+                  <button
+                    onClick={handleCancelSubscription}
+                    className="text-[10px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-400 transition"
+                  >
+                    Cancelar Assinatura
+                  </button>
+                  <p className="text-[9px] text-slate-600 mt-2">
+                    O cancelamento interrompe a renovação automática. Seu acesso continua até o fim do ciclo pago.
+                  </p>
                 </div>
               )}
             </div>
@@ -335,6 +377,73 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                 <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition">Salvar Usuário</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showSeatModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-[#1e293b] rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-700">
+            <div className="p-8 text-center border-b border-slate-800 bg-slate-800/30">
+              <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">Quantos usuários?</h3>
+              <p className="text-slate-400 text-sm">Selecione o número total de licenças que deseja contratar.</p>
+            </div>
+
+            <div className="p-10 space-y-8">
+              <div className="flex items-center justify-center space-x-6">
+                <button
+                  onClick={() => setTargetSeatCount(Math.max(1, targetSeatCount - 1))}
+                  className="w-12 h-12 rounded-2xl bg-slate-800 text-white hover:bg-slate-700 flex items-center justify-center transition"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" /></svg>
+                </button>
+
+                <div className="text-center">
+                  <span className="text-5xl font-black text-white tracking-tighter">{targetSeatCount}</span>
+                  <span className="block text-xs font-black uppercase tracking-widest text-slate-500 mt-1">Usuários</span>
+                </div>
+
+                <button
+                  onClick={() => setTargetSeatCount(targetSeatCount + 1)}
+                  className="w-12 h-12 rounded-2xl bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center transition shadow-lg shadow-indigo-500/20"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                </button>
+              </div>
+
+              <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 text-center">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Resumo do Investimento</p>
+                <div className="flex items-center justify-center space-x-2">
+                  <span className="text-3xl font-black text-emerald-400">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(targetSeatCount * 29.90)}
+                  </span>
+                  <span className="text-xs font-bold text-slate-500">/mês</span>
+                </div>
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowSeatModal(false)}
+                  className="flex-1 py-4 bg-slate-800 text-slate-400 rounded-2xl text-xs font-black uppercase tracking-widest hover:text-white transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => handleActivateSubscription(targetSeatCount)}
+                  disabled={isProcessingSubscription}
+                  className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:bg-emerald-700 transition flex items-center justify-center space-x-2 disabled:opacity-70"
+                >
+                  {isProcessingSubscription ? (
+                    <span>Gerando Checkout...</span>
+                  ) : (
+                    <>
+                      <span>Confirmar e Pagar</span>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

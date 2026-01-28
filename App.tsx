@@ -139,11 +139,25 @@ const App: React.FC = () => {
 
   const isExpired = useMemo(() => {
     if (!db.company) return false;
+
+    // Status EXPIRED: Bloqueio imediato (exceto Admin se limite=1 [mantido abaixo])
     if (db.company.licenseStatus === LicenseStatus.EXPIRED) return true;
+
+    // Status SUSPENDED: Bloqueio por falta de pagamento
+    if (db.company.licenseStatus === LicenseStatus.SUSPENDED) return true;
+
+    // Status CANCELLED: Bloqueio se passar da data fim (Grace Period)
+    if (db.company.licenseStatus === LicenseStatus.CANCELLED) {
+      const endDate = db.company.subscriptionEnd || Date.now();
+      return Date.now() > endDate;
+    }
+
+    // Status TRIAL: Bloqueio após 7 dias
     if (db.company.licenseStatus === LicenseStatus.TRIAL) {
       const daysPassed = (Date.now() - db.company.trialStart) / (1000 * 60 * 60 * 24);
-      return daysPassed > 7; // Reduzido para 7 dias
+      return daysPassed > 7;
     }
+
     return false;
   }, [db.company]);
 
@@ -209,10 +223,16 @@ const App: React.FC = () => {
               </svg>
             </div>
 
-            <h1 className="text-3xl font-black mb-4 tracking-tight uppercase">Licença Expirada</h1>
+            <h1 className="text-3xl font-black mb-4 tracking-tight uppercase">
+              {db.company?.licenseStatus === LicenseStatus.SUSPENDED ? 'Acesso Suspenso' :
+                (db.company?.licenseStatus === LicenseStatus.CANCELLED ? 'Assinatura Encerrada' : 'Licença Expirada')}
+            </h1>
             <p className="text-slate-400 mb-10 max-w-md mx-auto text-sm leading-relaxed font-medium">
-              O seu período de teste de 07 dias do <span className="text-white font-bold">PERSPEC PATH</span> chegou ao fim.
-              Mantenha o controle total dos seus projetos assinando nosso plano Premium.
+              {db.company?.licenseStatus === LicenseStatus.SUSPENDED
+                ? 'Identificamos uma pendência no seu pagamento. Regularize sua assinatura para retomar o acesso imediato.'
+                : (db.company?.licenseStatus === LicenseStatus.CANCELLED
+                  ? 'Sua assinatura foi cancelada e o período de acesso vigente chegou ao fim.'
+                  : 'O seu período de teste de 07 dias do PERSPEC PATH chegou ao fim. Mantenha o controle total dos seus projetos assinando nosso plano.')}
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">

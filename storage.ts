@@ -75,7 +75,9 @@ export const fetchAllData = async (companyId?: string): Promise<Partial<AppDB>> 
       passwordHash: '',
       licenseStatus: profile.license_status,
       trialStart: new Date(profile.trial_start).getTime(),
-      userLimit: profile.user_limit || 1
+      userLimit: profile.user_limit || 1,
+      subscriptionId: profile.subscription_id,
+      subscriptionEnd: profile.subscription_end ? new Date(profile.subscription_end).getTime() : undefined
     } : null
   };
 };

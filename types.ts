@@ -15,7 +15,9 @@ export enum ProjectStatus {
 export enum LicenseStatus {
   TRIAL = 'TRIAL',
   ACTIVE = 'ACTIVE',
-  EXPIRED = 'EXPIRED'
+  EXPIRED = 'EXPIRED',
+  SUSPENDED = 'SUSPENDED',
+  CANCELLED = 'CANCELLED'
 }
 
 export interface Company {
@@ -26,6 +28,8 @@ export interface Company {
   licenseStatus: LicenseStatus;
   trialStart: number;
   userLimit: number;
+  subscriptionId?: string;
+  subscriptionEnd?: number;
 }
 
 export interface InternalUser {
