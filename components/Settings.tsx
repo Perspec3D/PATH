@@ -264,7 +264,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
             <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50 space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Usuários Contratados</span>
-                <span className="text-sm font-black text-white">{db.company?.userLimit || 0}</span>
+                <span className="text-sm font-black text-white">{db.company?.licenseStatus === LicenseStatus.TRIAL ? 5 : (db.company?.userLimit || 0)}</span>
               </div>
 
               <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
