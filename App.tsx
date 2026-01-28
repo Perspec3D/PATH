@@ -137,6 +137,13 @@ const App: React.FC = () => {
     };
   }, []);
 
+  const isOverLimit = useMemo(() => {
+    if (!db.company) return false;
+    const activeUserCount = db.users.filter(u => u.isActive).length;
+    const limit = db.company.userLimit || 1;
+    return activeUserCount > limit;
+  }, [db.company, db.users]);
+
   const isExpired = useMemo(() => {
     if (!db.company) return false;
 
@@ -268,6 +275,26 @@ const App: React.FC = () => {
               Sair do Workspace
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Check Over Limit Logic (Regardless of License Status)
+  if (userSession && isOverLimit && userSession.role !== UserRole.ADMIN) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#0f172a] text-white p-6 text-center">
+        <div className="bg-[#1e293b] p-10 rounded-[40px] border border-slate-700 max-w-md shadow-2xl">
+          <div className="w-16 h-16 bg-rose-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-rose-500/20">
+            <svg className="w-8 h-8 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+          </div>
+          <h2 className="text-xl font-black uppercase mb-4 tracking-tight text-rose-500">Limite Excedido</h2>
+          <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+            O número de usuários ativos excede o limite do plano contratado ({db.company?.userLimit}).
+            <br /><br />
+            O acesso está temporariamente restrito ao Administrador para regularização.
+          </p>
+          <button onClick={handleLogout} className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition">Sair</button>
         </div>
       </div>
     );

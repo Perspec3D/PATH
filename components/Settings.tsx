@@ -274,9 +274,15 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       <section className="bg-[#1e293b] rounded-3xl shadow-xl border border-slate-800 overflow-hidden">
         <div className="px-8 py-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/30">
           <h2 className="font-black text-xs text-slate-400 uppercase tracking-widest">Usuários Internos</h2>
+
           <div className="flex items-center space-x-4">
-            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
-              Uso: {db.users.length} / {db.company?.userLimit || 1}
+            {db.users.filter(u => u.isActive).length > (db.company?.userLimit || 1) && (
+              <span className="text-[10px] font-black text-rose-500 bg-rose-500/10 px-3 py-1 rounded-full uppercase tracking-widest animate-pulse">
+                Limite Excedido! Desative usuários.
+              </span>
+            )}
+            <span className={`text-[9px] font-black uppercase tracking-widest ${db.users.filter(u => u.isActive).length > (db.company?.userLimit || 1) ? 'text-rose-500' : 'text-slate-500'}`}>
+              Uso: {db.users.filter(u => u.isActive).length} / {db.company?.userLimit || 1}
             </span>
             <button
               onClick={() => {
@@ -395,7 +401,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
             <div className="p-10 space-y-8">
               <div className="flex items-center justify-center space-x-6">
                 <button
-                  onClick={() => setTargetSeatCount(Math.max(db.users.length, 1, targetSeatCount - 1))}
+                  onClick={() => setTargetSeatCount(Math.max(1, targetSeatCount - 1))}
                   className="w-12 h-12 rounded-2xl bg-slate-800 text-white hover:bg-slate-700 flex items-center justify-center transition"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" /></svg>

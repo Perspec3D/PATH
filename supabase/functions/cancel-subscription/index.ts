@@ -3,15 +3,15 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const MP_ACCESS_TOKEN = Deno.env.get('MP_ACCESS_TOKEN') || 'APP_USR-6265238305428901-012722-15149a2c3d23eaa16f972ef607f58d7a-1693333949';
 
+const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+}
+
 serve(async (req) => {
     if (req.method === 'OPTIONS') {
-        return new Response('ok', {
-            headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-                'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
-            }
-        });
+        return new Response('ok', { headers: corsHeaders })
     }
 
     try {
@@ -40,13 +40,13 @@ serve(async (req) => {
         }
 
         return new Response(JSON.stringify(data), {
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
 
     } catch (error) {
         return new Response(JSON.stringify({ error: error.message }), {
             status: 400,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
     }
 });
