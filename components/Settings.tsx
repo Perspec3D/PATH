@@ -144,35 +144,40 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
             <div>
               <p className="text-sm text-slate-300 font-medium mb-2">
-                Você está utilizando o plano <span className="text-indigo-400 font-black uppercase">{db.company?.licenseStatus === LicenseStatus.ACTIVE ? 'Premium Mensal' : 'Gratuito (Trial)'}</span>.
+                Modelo de Assinatura: <span className="text-indigo-400 font-black uppercase">Per Seat (Por Usuário)</span>
               </p>
               <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                Tenha acesso ilimitado a projetos, clientes e suporte prioritário. A cobrança é feita mensalmente via Stripe ou Cartão de Crédito.
+                Sua assinatura é calculada com base no número de usuários ativos.
+                Valor atual: <span className="text-white font-bold">R$ 29,90 / usuário</span>.
               </p>
               <div className="flex space-x-4">
-                {db.company?.licenseStatus === LicenseStatus.ACTIVE ? (
-                  <button className="px-6 py-3 bg-slate-800 text-slate-400 rounded-xl text-xs font-black uppercase tracking-widest hover:text-white transition">
-                    Gerenciar Assinatura
-                  </button>
-                ) : (
-                  <button onClick={() => alert('Integração com Stripe Checkout em desenvolvimento.')} className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20">
-                    Assinar Agora - R$ 99/mês
+                <button onClick={() => alert('Integração Mercado Pago: Expandir assentos')} className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20">
+                  Adicionar Usuários
+                </button>
+                {db.company?.licenseStatus === LicenseStatus.TRIAL && (
+                  <button onClick={() => alert('Integração Mercado Pago: Checkout Pro')} className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20">
+                    Ativar Assinatura
                   </button>
                 )}
               </div>
             </div>
             <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50 space-y-4">
               <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Status da Conta</span>
-                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded ${db.company?.licenseStatus === LicenseStatus.ACTIVE ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
-                  {db.company?.licenseStatus}
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Usuários Contratados</span>
+                <span className="text-sm font-black text-white">{db.company?.userLimit || 0}</span>
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Investimento Mensal</span>
+                <span className="text-sm font-black text-emerald-500">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((db.company?.userLimit || 0) * 29.9)}
                 </span>
               </div>
 
               {db.company?.licenseStatus === LicenseStatus.TRIAL && (
                 <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
-                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tempo Restante</span>
-                  <span className="text-sm font-black text-white">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Trial Restante</span>
+                  <span className="text-sm font-black text-amber-500">
                     {(() => {
                       const daysPassed = (Date.now() - (db.company?.trialStart || Date.now())) / (1000 * 60 * 60 * 24);
                       const remaining = Math.max(0, Math.ceil(7 - daysPassed));
@@ -181,11 +186,6 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                   </span>
                 </div>
               )}
-
-              <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Método de Pagamento</span>
-                <span className="text-xs text-slate-400 italic">Não vinculado</span>
-              </div>
             </div>
           </div>
         </div>
@@ -195,12 +195,24 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       <section className="bg-[#1e293b] rounded-3xl shadow-xl border border-slate-800 overflow-hidden">
         <div className="px-8 py-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/30">
           <h2 className="font-black text-xs text-slate-400 uppercase tracking-widest">Usuários Internos</h2>
-          <button
-            onClick={() => { resetUserForm(); setShowUserModal(true); }}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition"
-          >
-            Novo Usuário
-          </button>
+          <div className="flex items-center space-x-4">
+            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+              Uso: {db.users.length} / {db.company?.userLimit || 1}
+            </span>
+            <button
+              onClick={() => {
+                if (db.users.length >= (db.company?.userLimit || 1)) {
+                  alert(`Limite de usuários atingido (${db.company?.userLimit}). Aumente seu plano na seção de Faturamento.`);
+                  return;
+                }
+                resetUserForm();
+                setShowUserModal(true);
+              }}
+              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition ${db.users.length >= (db.company?.userLimit || 1) ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+            >
+              Novo Usuário
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">

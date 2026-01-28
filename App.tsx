@@ -83,6 +83,7 @@ const App: React.FC = () => {
           passwordHash: '',
           licenseStatus: LicenseStatus.TRIAL, // Placeholder inicial
           trialStart: Date.now(),             // Placeholder inicial
+          userLimit: 5,                       // Limite padrão do Trial
         };
         setCompanySession(company);
 
@@ -104,6 +105,7 @@ const App: React.FC = () => {
           passwordHash: '',
           licenseStatus: LicenseStatus.TRIAL, // Placeholder inicial
           trialStart: Date.now(),             // Placeholder inicial
+          userLimit: 5,                       // Limite padrão do Trial
         };
         setCompanySession(company);
         setDb(prev => ({ ...prev, company }));
@@ -170,6 +172,25 @@ const App: React.FC = () => {
   }
 
   if (isExpired) {
+    // Bloqueio se o limite for 1 e o usuário não for ADMIN
+    if (userSession && companySession?.userLimit === 1 && userSession.role !== UserRole.ADMIN) {
+      return (
+        <div className="h-screen flex items-center justify-center bg-[#0f172a] text-white p-6 text-center">
+          <div className="bg-[#1e293b] p-10 rounded-[40px] border border-slate-700 max-w-md shadow-2xl">
+            <div className="w-16 h-16 bg-amber-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-amber-500/20">
+              <svg className="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            </div>
+            <h2 className="text-xl font-black uppercase mb-4 tracking-tight">Acesso Restrito</h2>
+            <p className="text-slate-400 text-sm mb-8 leading-relaxed">
+              Sua assinatura atual permite apenas o acesso do <span className="text-white font-bold">Administrador</span>.
+              Entre em contato com o gestor do seu workspace para expandir o plano.
+            </p>
+            <button onClick={handleLogout} className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition">Sair</button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="h-screen flex items-center justify-center bg-[#0f172a] text-white p-6 overflow-hidden">
         <div className="relative w-full max-w-2xl">

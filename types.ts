@@ -25,6 +25,7 @@ export interface Company {
   passwordHash: string;
   licenseStatus: LicenseStatus;
   trialStart: number;
+  userLimit: number;
 }
 
 export interface InternalUser {
