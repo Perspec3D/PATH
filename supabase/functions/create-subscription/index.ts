@@ -1,17 +1,20 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 
 const MP_ACCESS_TOKEN = Deno.env.get('MP_ACCESS_TOKEN') || 'APP_USR-6265238305428901-012722-15149a2c3d23eaa16f972ef607f58d7a-1693333949';
 
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+const getCorsHeaders = (origin: string | null) => ({
+    'Access-Control-Allow-Origin': origin || '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
-}
+});
 
 serve(async (req) => {
+    const origin = req.headers.get('Origin');
+    const corsHeaders = getCorsHeaders(origin);
+
     if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders })
+        return new Response('ok', { headers: corsHeaders });
     }
 
     try {
@@ -38,7 +41,7 @@ serve(async (req) => {
                     transaction_amount: totalAmount,
                     currency_id: 'BRL'
                 },
-                back_url: 'https://v0-perspec-path.vercel.app', // Update with actual URL
+                back_url: 'https://v0-perspec-path.vercel.app',
                 payer_email: companyEmail,
                 external_reference: JSON.stringify({ companyId, userCount }),
                 status: 'pending'
