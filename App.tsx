@@ -51,13 +51,15 @@ const App: React.FC = () => {
             finalUsers = [adminUser];
           }
 
+          const mergedCompany = remoteData.company || companySession;
           setDb({
             ...remoteData,
             users: finalUsers,
-            company: companySession,
+            company: mergedCompany,
             clients: remoteData.clients || [],
             projects: remoteData.projects || [],
           });
+          setCompanySession(mergedCompany);
         } catch (err) {
           console.error("Erro ao carregar dados do Supabase:", err);
         } finally {
@@ -77,8 +79,8 @@ const App: React.FC = () => {
           name: session.user.user_metadata.company_name || 'PERSPEC PATH',
           email: session.user.email || '',
           passwordHash: '',
-          licenseStatus: LicenseStatus.TRIAL,
-          trialStart: Date.now(),
+          licenseStatus: LicenseStatus.TRIAL, // Placeholder inicial
+          trialStart: Date.now(),             // Placeholder inicial
         };
         setCompanySession(company);
 
@@ -98,8 +100,8 @@ const App: React.FC = () => {
           name: session.user.user_metadata.company_name || 'PERSPEC PATH',
           email: session.user.email || '',
           passwordHash: '',
-          licenseStatus: LicenseStatus.TRIAL,
-          trialStart: Date.now(),
+          licenseStatus: LicenseStatus.TRIAL, // Placeholder inicial
+          trialStart: Date.now(),             // Placeholder inicial
         };
         setCompanySession(company);
         setDb(prev => ({ ...prev, company }));

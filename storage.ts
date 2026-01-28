@@ -14,6 +14,7 @@ export const fetchAllData = async (): Promise<Partial<AppDB>> => {
   const { data: clients } = await supabase.from('clients').select('*');
   const { data: projects } = await supabase.from('projects').select('*');
   const { data: users } = await supabase.from('internal_users').select('*');
+  const { data: profile } = await supabase.from('profiles').select('*').single();
 
   // Map snake_case from DB to camelCase in types
   return {
@@ -59,7 +60,15 @@ export const fetchAllData = async (): Promise<Partial<AppDB>> => {
       role: u.role,
       isActive: u.is_active,
       mustChangePassword: u.must_change_password
-    }))
+    })),
+    company: profile ? {
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      passwordHash: '',
+      licenseStatus: profile.license_status,
+      trialStart: new Date(profile.trial_start).getTime()
+    } : null
   };
 };
 
