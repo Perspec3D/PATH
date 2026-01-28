@@ -166,7 +166,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
               }
 
               return (
-                <div key={project.id} className="flex group/row hover:bg-slate-800/30 transition-colors">
+                <div key={project.id} className="flex group/row hover:bg-slate-800/30 transition-colors relative hover:z-[60]">
                   {/* Sidebar Projeto: FIXO NA ESQUERDA */}
                   <div className="w-80 px-6 h-20 flex flex-col justify-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm cursor-pointer group hover:bg-slate-800 transition-all border-l-4 border-transparent" onClick={() => openEdit(project)}>
                     <span className="text-[9px] font-mono font-black text-indigo-400/40 uppercase tracking-tighter mb-0.5 block">{project.code}</span>
@@ -179,7 +179,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                     {/* Linhas de Grade Verticais */}
                     <div className="absolute inset-0 flex pointer-events-none z-10">
                       {timelineDates.map((date, i) => (
-                        <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/80 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/05 border-l border-orange-500/20' : ''}`}></div>
+                        <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/80 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/10 border-x border-orange-500/30' : ''}`}></div>
                       ))}
                     </div>
 
