@@ -227,6 +227,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
   };
 
   const [showAboutModal, setShowAboutModal] = useState(false);
+  const [legalView, setLegalView] = useState<'about' | 'terms' | 'privacy'>('about');
 
   return (
     <div className="space-y-8 max-w-4xl animate-in fade-in duration-500">
@@ -520,44 +521,79 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       {/* About Modal */}
       {showAboutModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-[#0f172a] rounded-[40px] shadow-2xl w-full max-w-sm overflow-hidden border border-slate-700 relative">
-            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-500/20 to-transparent pointer-events-none"></div>
+          <div className="bg-[#0f172a] rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-700 relative max-h-[90vh] flex flex-col">
+            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none"></div>
 
-            <div className="p-8 text-center relative z-10">
-              <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-indigo-500/20 shadow-lg shadow-indigo-500/10">
-                <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+            <div className="p-8 text-center relative z-10 flex-shrink-0">
+              <div className="flex justify-between items-center mb-6">
+                {legalView !== 'about' && (
+                  <button onClick={() => setLegalView('about')} className="text-slate-500 hover:text-white transition flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                    <span>Voltar</span>
+                  </button>
+                )}
+                <div className="flex-1"></div>
+                <button onClick={() => { setShowAboutModal(false); setLegalView('about'); }} className="text-slate-500 hover:text-white transition">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
               </div>
 
-              <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-1">PERSPEC PATH</h3>
-              <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-8">Gestão de Projetos & Licenciamento</p>
+              {legalView === 'about' && (
+                <>
+                  <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-indigo-500/20 shadow-lg shadow-indigo-500/10">
+                    <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                  </div>
 
-              <div className="space-y-4 text-left bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50">
-                <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Versão</span>
-                  <span className="text-xs font-bold text-white">v1.2.4 (Beta)</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Desenvolvedor</span>
-                  <span className="text-xs font-bold text-white text-right">Perspec3D<br />Engenharia Ltda.</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Site e Suporte</span>
-                  <a href="https://www.perspec3d.com" target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition">
-                    www.perspec3d.com
-                  </a>
-                </div>
-                <div className="flex justify-between items-center py-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Copyright</span>
-                  <span className="text-xs font-bold text-slate-400">© 2025</span>
-                </div>
-              </div>
+                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-1">PERSPEC PATH</h3>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-8">Gestão de Projetos & Licenciamento</p>
 
-              <button
-                onClick={() => setShowAboutModal(false)}
-                className="mt-8 px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition w-full"
-              >
-                Fechar
-              </button>
+                  <div className="space-y-4 text-left bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50 mb-6">
+                    <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Versão</span>
+                      <span className="text-xs font-bold text-white">v1.2.5 (Beta)</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Desenvolvedor</span>
+                      <span className="text-xs font-bold text-white text-right">Perspec3D<br />Engenharia Ltda.</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Copyright</span>
+                      <span className="text-xs font-bold text-slate-400">© 2025</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={() => setLegalView('terms')} className="py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[9px] font-black uppercase tracking-widest transition">Termos de Uso</button>
+                    <button onClick={() => setLegalView('privacy')} className="py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[9px] font-black uppercase tracking-widest transition">Privacidade</button>
+                  </div>
+                </>
+              )}
+
+              {legalView === 'terms' && (
+                <div className="text-left overflow-y-auto pr-2 custom-scrollbar max-h-[50vh]">
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight mb-4">Termos de Uso</h3>
+                  <div className="text-xs text-slate-400 space-y-4 leading-relaxed font-medium">
+                    <p>Ao utilizar o <span className="text-indigo-400 font-bold">PERSPEC PATH</span>, você concorda com:</p>
+                    <p><span className="text-white font-bold">1. Licenciamento:</span> O software é fornecido como serviço (SaaS). A licença é pessoal, intransferível e revogável em caso de violação técnica.</p>
+                    <p><span className="text-white font-bold">2. Responsabilidade:</span> O Usuário Administrador é o único responsável pela precisão e legalidade dos dados inseridos. O sistema é uma ferramenta de apoio à gestão.</p>
+                    <p><span className="text-white font-bold">3. Uso de Dados:</span> O PERSPEC PATH processa informações operacionais para gerar dashboards e cronogramas. Não garantimos resultados jurídicos baseados nessas automações.</p>
+                    <p><span className="text-white font-bold">4. Propriedade:</span> Todos os direitos de design, algoritmos e interface pertencem à Perspec3D Engenharia Ltda.</p>
+                  </div>
+                </div>
+              )}
+
+              {legalView === 'privacy' && (
+                <div className="text-left overflow-y-auto pr-2 custom-scrollbar max-h-[50vh]">
+                  <h3 className="text-lg font-black text-white uppercase tracking-tight mb-4">Política de Privacidade</h3>
+                  <div className="text-xs text-slate-400 space-y-4 leading-relaxed font-medium">
+                    <p>Em conformidade com a <span className="text-emerald-400 font-bold">LGPD (Lei 13.709/18)</span>:</p>
+                    <p><span className="text-white font-bold">1. Coleta:</span> Coletamos apenas dados essenciais para o funcionamento do workspace (E-mail, Nome da Empresa e Dados de Projetos).</p>
+                    <p><span className="text-white font-bold">2. Segurança:</span> Utilizamos infraestrutura de nuvem certificada com criptografia de ponta e isolamento de banco de dados (RLS).</p>
+                    <p><span className="text-white font-bold">3. Compartilhamento:</span> Seus dados <span className="text-white font-bold underline">nunca</span> são vendidos. O compartilhamento ocorre apenas com processadores de pagamento (Mercado Pago) para fins de faturamento.</p>
+                    <p><span className="text-white font-bold">4. Direitos:</span> Você pode exportar ou solicitar a exclusão de todos os seus dados a qualquer momento através do suporte oficial.</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
