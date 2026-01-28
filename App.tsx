@@ -142,6 +142,16 @@ const App: React.FC = () => {
       }
     }
 
+    // 3. Handle external auth errors (like expired links)
+    const hash = window.location.hash;
+    if (hash.includes('error=')) {
+      const params = new URLSearchParams(hash.replace('#', ''));
+      const errorMsg = params.get('error_description') || params.get('error') || 'Erro na autenticação';
+      alert(`Erro: ${errorMsg.replace(/\+/g, ' ')}`);
+      // Clear the hash to avoid repeat alerts
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
     return () => {
       subscription.unsubscribe();
     };

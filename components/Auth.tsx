@@ -33,7 +33,8 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
         options: {
           data: {
             company_name: companyName,
-          }
+          },
+          emailRedirectTo: window.location.origin,
         }
       });
 
@@ -50,6 +51,7 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
           passwordHash: '', // Not used anymore
           licenseStatus: LicenseStatus.TRIAL,
           trialStart: Date.now(),
+          userLimit: 5,
         };
 
         const adminUser = {
@@ -89,6 +91,7 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
           passwordHash: '',
           licenseStatus: LicenseStatus.TRIAL,
           trialStart: Date.now(),
+          userLimit: 5,
         };
         onLogin(company);
       }
