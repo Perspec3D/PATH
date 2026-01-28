@@ -6,13 +6,13 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Info, CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar } from 'lucide-react';
+import { Info, CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar, Trophy, Medal } from 'lucide-react';
 
 interface DashboardProps {
   db: AppDB;
 }
 
-const InfoTooltip: React.FC<{ title: string; content: string }> = ({ title, content }) => {
+const InfoTooltip: React.FC<{ title: string; content: string; calculation?: string }> = ({ title, content, calculation }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -26,10 +26,16 @@ const InfoTooltip: React.FC<{ title: string; content: string }> = ({ title, cont
         <Info size={14} />
       </button>
       {isOpen && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] w-64 pointer-events-none animate-in fade-in slide-in-from-bottom-1 duration-200">
-          <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">{title}</p>
-          <p className="text-[11px] text-slate-300 font-medium leading-relaxed">{content}</p>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900"></div>
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-4 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] z-[100] w-72 pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200 ring-1 ring-white/10">
+          <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 border-b border-slate-800 pb-2">{title}</p>
+          <p className="text-[11px] text-slate-300 font-medium leading-relaxed mb-3">{content}</p>
+          {calculation && (
+            <div className="bg-slate-900/50 p-2 rounded-lg border border-slate-800">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-tighter mb-1">Base de Cálculo:</p>
+              <p className="text-[10px] text-indigo-300/80 font-mono italic">{calculation}</p>
+            </div>
+          )}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-[#0f172a]"></div>
         </div>
       )}
     </div>
@@ -142,7 +148,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
     return Math.round(totalDays / completed.length);
   }, [projects]);
 
-  // 7. Concentração de Clientes (Pie Data)
+  // 7. Ranking Top 10 Clientes (Completo para Tabela)
+  const rankingTopClients = useMemo(() => {
+    const data: Record<string, { count: number; code: string }> = {};
+    projects.forEach(p => {
+      const client = clients.find(c => c.id === p.clientId);
+      if (client) {
+        if (!data[client.name]) data[client.name] = { count: 0, code: client.code || 'CLI' };
+        data[client.name].count++;
+      }
+    });
+    return Object.entries(data)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 10);
+  }, [projects, clients]);
+
+  // 8. Concentração de Clientes (Pie Data)
   const clientConcentrationData = useMemo(() => {
     const data: Record<string, number> = {};
     projects.forEach(p => {
@@ -167,7 +188,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-12">
       {/* SEÇÃO 1: SAÚDE DO ESCRITÓRIO */}
-      <div className="bg-[#1e293b] p-12 rounded-[48px] shadow-2xl border border-slate-800 overflow-hidden relative group">
+      <div className="bg-[#1e293b] p-12 rounded-[48px] shadow-2xl border border-slate-800 relative group">
         <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none transition-opacity group-hover:opacity-10 scale-150">
           <TrendingUp className="w-48 h-48 text-indigo-500" />
         </div>
@@ -176,7 +197,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           <div className="flex flex-col items-start">
             <h3 className="text-[12px] font-black text-slate-500 uppercase tracking-[0.3em] mb-4 px-2 flex items-center">
               Saúde Estratégica
-              <InfoTooltip title="Saúde da Operação" content="Relação entre projetos ativos e projetos com prazo expirado. Quanto menor o atraso, maior a saúde." />
+              <InfoTooltip
+                title="Saúde da Operação"
+                content="Métrica de integridade que reflete a pontualidade das entregas ativas. Quanto maior a porcentagem, menos atrasos críticos existem no sistema."
+                calculation="(Total_Ativos - Total_Atrasados) / Total_Ativos * 100"
+              />
             </h3>
             <span className={`text-[10rem] leading-none font-black tracking-tighter transition-all duration-1000 drop-shadow-2xl ${getHealthColor(health)}`}>
               {health}%
@@ -225,11 +250,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* TENDÊNCIA DE PRODUÇÃO - NOVO */}
-        <div className="lg:col-span-2 bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden flex flex-col min-h-[400px]">
+        <div className="lg:col-span-2 bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 flex flex-col min-h-[400px]">
           <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Tendência de Fluxo
-              <InfoTooltip title="Entradas vs Saídas" content="Compara o volume de novos projetos (Criados) com projetos finalizados (Concluídos) nos últimos 6 meses." />
+              <InfoTooltip
+                title="Entradas vs Saídas"
+                content="Analisa o fluxo de trabalho comparando novos registros com projetos finalizados ao longo do semestre."
+                calculation="Projetos_Criados_Mes vs Projetos_Done_Mes"
+              />
             </h3>
             <TrendingUp size={20} className="text-indigo-500" />
           </div>
@@ -259,11 +288,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* CONCENTRAÇÃO DE CLIENTES - NOVO */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden flex flex-col min-h-[400px]">
+        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 flex flex-col min-h-[400px]">
           <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Concentração
-              <InfoTooltip title="Volume por Cliente" content="Distribuição percentual dos projetos entre os principais clientes do escritório." />
+              <InfoTooltip
+                title="Volume por Cliente"
+                content="Identifica a pulverização ou dependência de clientes específicos dentro do portfólio."
+                calculation="Projetos_por_Cliente / Projetos_Totais * 100"
+              />
             </h3>
             <PieChart size={20} className="text-indigo-500" />
           </div>
@@ -285,11 +318,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* EFICIÊNCIA DO TIME - NOVO (BarChart Recharts) */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden min-h-[450px] flex flex-col">
+        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 min-h-[450px] flex flex-col">
           <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Eficiência Operacional
-              <InfoTooltip title="Entregas por Usuário" content="Volume acumulado de projetos concluídos por cada colaborador." />
+              <InfoTooltip
+                title="Entregas por Usuário"
+                content="Mede a capacidade de finalização de cada colaborador, focado exclusivamente em projetos com status CONCLUÍDO."
+                calculation="Soma(Projetos_Concluidos_por_Usuario)"
+              />
             </h3>
             <CheckCircle2 size={20} className="text-emerald-500" />
           </div>
@@ -307,11 +344,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* CARGA ATIVA POR USUÁRIO (Melhorado com Stacked Bar) */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden flex flex-col">
+        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 flex flex-col">
           <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Carga Ativa por Usuário
-              <InfoTooltip title="Distribuição de Status" content="Mostra em qual estágio estão os projetos ativos de cada colaborador (Fila, Andamento ou Pausado)." />
+              <InfoTooltip
+                title="Distribuição de Status"
+                content="Visão em tempo real da alocação do time, separando o que está parado, o que está em produção e o que aguarda início."
+                calculation="Agrupamento(Status) por Usuário"
+              />
             </h3>
             <Users size={20} className="text-indigo-500" />
           </div>
@@ -348,12 +389,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* RADAR DE ATRASOS */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden">
+        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800">
           <div className="px-10 py-8 border-b border-slate-800 flex items-center justify-between bg-rose-500/10">
             <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-rose-500 flex items-center">
               <AlertTriangle size={16} className="mr-4 text-rose-500 animate-pulse" />
               Prazos Expirados
-              <InfoTooltip title="Alertas de Atraso" content="Projetos ativos cuja data de entrega é anterior ao dia de hoje." />
+              <InfoTooltip
+                title="Alertas de Atraso"
+                content="Identifica projetos ativos que já ultrapassaram a data de entrega pactuada, exigindo atenção imediata."
+                calculation="Filtro(Active_Projects onde Delivery_Date < Hoje)"
+              />
             </h3>
             <span className="text-sm font-black text-rose-500 bg-rose-500/10 px-4 py-1.5 rounded-full ring-1 ring-rose-500/30">{overdueProjects.length}</span>
           </div>
@@ -378,12 +423,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* PRÓXIMAS ENTREGAS */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 overflow-hidden">
+        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800">
           <div className="px-10 py-8 border-b border-slate-800 flex items-center justify-between bg-emerald-500/10">
             <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-emerald-400 flex items-center">
               <Calendar size={16} className="mr-4 text-emerald-500" />
               Próximos 7 Dias
-              <InfoTooltip title="Planejamento Semanal" content="Projetos com entrega agendada dentro da próxima semana." />
+              <InfoTooltip
+                title="Planejamento Semanal"
+                content="Calendário de entregas previstas para a semana atual, para organização da carga de faturamento e revisão."
+                calculation="Filtro(Projetos onde Delivery_Date está entre Hoje e +7 dias)"
+              />
             </h3>
             <span className="text-sm font-black text-emerald-400 bg-emerald-500/10 px-4 py-1.5 rounded-full ring-1 ring-emerald-500/30">{upcomingProjects.length}</span>
           </div>
@@ -404,6 +453,62 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* NOVO: RANKING TOP 10 CLIENTES (TABELA) */}
+      <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 flex flex-col">
+        <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
+          <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
+            Ranking Estratégico de Clientes
+            <InfoTooltip
+              title="Top Clientes"
+              content="Classificação dos 10 clientes com maior histórico de volume de projetos registrados no ecossistema."
+              calculation="Contagem total de registros agrupados por Cliente_ID"
+            />
+          </h3>
+          <Trophy size={20} className="text-amber-500" />
+        </div>
+        <div className="p-10">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-800">
+                  <th className="pb-6 text-[10px] font-black text-slate-500 uppercase tracking-widest px-4">Posição</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Cliente</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right px-4">Total Projetos</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/50">
+                {rankingTopClients.map(([name, data], idx) => (
+                  <tr key={name} className="group hover:bg-slate-800/20 transition-colors">
+                    <td className="py-6 px-4">
+                      <div className="flex items-center space-x-3">
+                        <span className="text-xs font-black text-slate-500">#{String(idx + 1).padStart(2, '0')}</span>
+                        {idx === 0 && <Trophy size={16} className="text-amber-400" />}
+                        {idx === 1 && <Medal size={16} className="text-slate-300" />}
+                        {idx === 2 && <Medal size={16} className="text-amber-700/80" />}
+                      </div>
+                    </td>
+                    <td className="py-6">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-slate-100 group-hover:text-indigo-400 transition-colors">{name}</span>
+                        <span className="text-[10px] font-mono font-black text-slate-600 uppercase tracking-tighter">{data.code}</span>
+                      </div>
+                    </td>
+                    <td className="py-6 px-4 text-right">
+                      <span className="text-lg font-black text-indigo-400">{data.count}</span>
+                    </td>
+                  </tr>
+                ))}
+                {rankingTopClients.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="py-20 text-center text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">Sem dados de clientes registrados</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
