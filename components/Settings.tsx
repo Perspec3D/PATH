@@ -540,25 +540,37 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
 
               {legalView === 'about' && (
                 <>
-                  <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-indigo-500/20 shadow-lg shadow-indigo-500/10">
-                    <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                  </div>
+                  <img
+                    src="/PATH_logo.png"
+                    className="w-20 h-20 object-contain mx-auto mb-6 drop-shadow-[0_0_15px_rgba(204,255,0,0.1)]"
+                    alt="Logo PERSPEC PATH"
+                  />
 
-                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-1">PERSPEC PATH</h3>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-8">Gestão de Projetos & Licenciamento</p>
+                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-1">
+                    PERSPEC <span className="text-[#ccff00]">PATH</span>
+                  </h3>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-8">Soluções em Engenharia & Gestão</p>
 
                   <div className="space-y-4 text-left bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50 mb-6">
                     <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Versão</span>
-                      <span className="text-xs font-bold text-white">v1.2.5 (Beta)</span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Suporte WhatsApp</span>
+                      <a href="https://wa.me/5514998892017" target="_blank" rel="noreferrer" className="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition">(14) 9 9889-2017</a>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Desenvolvedor</span>
-                      <span className="text-xs font-bold text-white text-right">Perspec3D<br />Engenharia Ltda.</span>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">E-mail</span>
+                      <a href="mailto:perspec03d@gmail.com" className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition">perspec03d@gmail.com</a>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Website</span>
+                      <a href="https://www.perspec3d.com" target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition">www.perspec3d.com</a>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Versão</span>
+                      <span className="text-xs font-bold text-white">v1.2.6 (Beta)</span>
                     </div>
                     <div className="flex justify-between items-center py-2">
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Copyright</span>
-                      <span className="text-xs font-bold text-slate-400">© 2025</span>
+                      <span className="text-xs font-bold text-slate-400">© 2025 Perspec3D</span>
                     </div>
                   </div>
 
