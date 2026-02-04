@@ -50,16 +50,17 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
             </div>
           )}
 
-          {/* Dica de Primeiro Acesso */}
-          {activeUsers.some(u => u.username === 'admin') && (
-            <div className="mb-8 p-5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[10px] font-black uppercase tracking-widest rounded-[24px] flex items-start animate-in fade-in slide-in-from-top-4 duration-700">
+          {/* Dica de Primeiro Acesso - Aparece apenas se o admin ainda tiver que mudar a senha */}
+          {activeUsers.some(u => u.username === 'admin' && u.mustChangePassword) && (
+            <div className="mb-8 p-5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[10px] font-bold rounded-[24px] flex items-start animate-in fade-in slide-in-from-top-4 duration-700">
               <div className="mt-0.5 mr-4 bg-indigo-500/20 p-1.5 rounded-lg border border-indigo-500/30">
                 <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <span className="leading-relaxed">
-                <span className="text-white">Primeiro Acesso:</span> Use o perfil <span className="text-white">admin</span> com a senha padrão <span className="text-white underline">admin</span> para configurar seu workspace.
+              <span className="leading-relaxed tracking-wider">
+                <span className="text-white uppercase font-black mr-1">Primeiro Acesso:</span>
+                Use o perfil <span className="text-white font-black lowercase select-all bg-white/10 px-1 rounded">admin</span> com a senha padrão <span className="text-white font-black lowercase underline select-all bg-white/10 px-1 rounded">admin</span> para configurar seu workspace.
               </span>
             </div>
           )}
@@ -72,8 +73,8 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
                 type="button"
                 onClick={() => handleSelectUser(u.username)}
                 className={`flex flex-col items-center p-3 rounded-2xl transition-all border-2 ${username.toLowerCase() === u.username.toLowerCase()
-                    ? 'border-indigo-500 bg-indigo-500/10 shadow-lg scale-105'
-                    : 'border-transparent hover:bg-slate-800'
+                  ? 'border-indigo-500 bg-indigo-500/10 shadow-lg scale-105'
+                  : 'border-transparent hover:bg-slate-800'
                   }`}
               >
                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl mb-2 transition-all ${username.toLowerCase() === u.username.toLowerCase() ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/40' : 'bg-slate-700 text-slate-400'
