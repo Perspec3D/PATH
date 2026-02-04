@@ -50,21 +50,6 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
             </div>
           )}
 
-          {/* Dica de Primeiro Acesso - Aparece apenas se o admin ainda tiver que mudar a senha */}
-          {activeUsers.some(u => u.username === 'admin' && u.mustChangePassword) && (
-            <div className="mb-8 p-5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[10px] font-bold rounded-[24px] flex items-start animate-in fade-in slide-in-from-top-4 duration-700">
-              <div className="mt-0.5 mr-4 bg-indigo-500/20 p-1.5 rounded-lg border border-indigo-500/30">
-                <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <span className="leading-relaxed tracking-wider">
-                <span className="text-white uppercase font-black mr-1">Primeiro Acesso:</span>
-                Use o perfil <span className="text-white font-black lowercase select-all bg-white/10 px-1 rounded">admin</span> com a senha padrão <span className="text-white font-black lowercase underline select-all bg-white/10 px-1 rounded">admin</span> para configurar seu workspace.
-              </span>
-            </div>
-          )}
-
           {/* Atalhos Rápidos de Usuários */}
           <div className="grid grid-cols-3 gap-3 mb-8">
             {activeUsers.slice(0, 6).map(u => (
@@ -120,6 +105,15 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
               Confirmar Identidade
             </button>
           </form>
+
+          {/* Dica de Primeiro Acesso - Mais Sutil */}
+          {activeUsers.some(u => u.username === 'admin' && u.mustChangePassword) && (
+            <p className="mt-6 text-[10px] text-slate-500 font-medium leading-relaxed text-center px-4">
+              Primeiro acesso como administrador? Utilize as credenciais padrão <span className="text-indigo-400 font-bold lowercase">admin</span> / <span className="text-indigo-400 font-bold lowercase">admin</span>.
+              <br />
+              <span className="opacity-70 italic">Altere sua senha em Configurações &gt; Usuários para sua segurança.</span>
+            </p>
+          )}
 
           <button
             type="button"
