@@ -118,7 +118,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
       </div>
 
       <div className="bg-[#1e293b] rounded-[32px] shadow-2xl border border-slate-700 overflow-auto max-h-[calc(100vh-220px)] relative scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-        <div style={{ minWidth: `${320 + timelineDates.length * dayWidth}px` }} className="flex flex-col">
+        <div style={{ minWidth: `${320 + timelineDates.length * dayWidth}px` }} className="flex flex-col pb-64">
           {/* HEADER FIXO (TOP E LEFT) */}
           <div className="flex sticky top-0 z-50 bg-[#1e293b]">
             {/* Canto superior esquerdo fixo */}
@@ -191,7 +191,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                         onClick={() => openEdit(project)}
                       >
                         {/* TOOLTIP */}
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform -translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-white/10">
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-white/10">
                           <div className="flex items-center justify-between mb-2">
                             <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code}</p>
                             <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>{project.status}</span>
