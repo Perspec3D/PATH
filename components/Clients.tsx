@@ -31,6 +31,8 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
   const [neighborhood, setNeighborhood] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
+  const [complement, setComplement] = useState('');
+  const [contacts, setContacts] = useState<import('../types').ClientContact[]>([]);
 
   const resetForm = () => {
     setName('');
@@ -47,6 +49,8 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
     setNeighborhood('');
     setCity('');
     setState('');
+    setComplement('');
+    setContacts([]);
     setEditingClient(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -91,6 +95,8 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
     setNeighborhood(client.neighborhood || '');
     setCity(client.city || '');
     setState(client.state || '');
+    setComplement(client.complement || '');
+    setContacts(client.contacts || []);
     setShowModal(true);
   };
 
@@ -119,7 +125,9 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
       number,
       neighborhood,
       city,
-      state
+      state,
+      complement,
+      contacts
     };
 
     try {
@@ -138,6 +146,18 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
     } catch (err: any) {
       alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
     }
+  };
+
+  const handleAddContact = () => {
+    setContacts([...contacts, { id: crypto.randomUUID(), name: '', position: '', department: '', email: '', phone: '' }]);
+  };
+
+  const handleUpdateContact = (id: string, field: string, value: string) => {
+    setContacts(contacts.map(c => c.id === id ? { ...c, [field]: value } : c));
+  };
+
+  const handleRemoveContact = (id: string) => {
+    setContacts(contacts.filter(c => c.id !== id));
   };
 
   const clientProjectCounts = useMemo(() => {
@@ -388,7 +408,121 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
                     <input type="text" value={number} onChange={(e) => setNumber(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500" />
                   </div>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Bairro</label>
+                    <input type="text" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Cidade</label>
+                    <input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Estado</label>
+                    <input type="text" value={state} onChange={(e) => setState(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ex: SP" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Complemento</label>
+                  <input type="text" value={complement} onChange={(e) => setComplement(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Apto, Sala, Bloco..." />
+                </div>
               </div>
+
+              {/* Seção de Contatos - Somente se for PJ */}
+              {type === 'PJ' && (
+                <div className="space-y-6 pt-6 border-t border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-[10px] font-black text-white uppercase tracking-widest">Contatos da Empresa</h4>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-1">Gerencie múltiplos contatos por departamento</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddContact}
+                      className="px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-500 hover:text-white transition-all flex items-center"
+                    >
+                      <svg className="w-3 h-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
+                      Adicionar Contato
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {contacts.map((contact, index) => (
+                      <div key={contact.id} className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 relative group animate-in fade-in slide-in-from-top-2 duration-300">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveContact(contact.id)}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          <div className="lg:col-span-1">
+                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome do Contato</label>
+                            <input
+                              type="text"
+                              value={contact.name}
+                              onChange={(e) => handleUpdateContact(contact.id, 'name', e.target.value)}
+                              className="w-full px-4 py-2 bg-slate-900 border border-slate-700/50 rounded-lg text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                              placeholder="Nome Completo"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Cargo</label>
+                            <input
+                              type="text"
+                              value={contact.position}
+                              onChange={(e) => handleUpdateContact(contact.id, 'position', e.target.value)}
+                              className="w-full px-4 py-2 bg-slate-900 border border-slate-700/50 rounded-lg text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                              placeholder="Ex: Gerente de Projetos"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Setor / Departamento</label>
+                            <input
+                              type="text"
+                              value={contact.department}
+                              onChange={(e) => handleUpdateContact(contact.id, 'department', e.target.value)}
+                              className="w-full px-4 py-2 bg-slate-900 border border-slate-700/50 rounded-lg text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                              placeholder="Ex: Engenharia"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">E-mail</label>
+                            <input
+                              type="email"
+                              value={contact.email}
+                              onChange={(e) => handleUpdateContact(contact.id, 'email', e.target.value)}
+                              className="w-full px-4 py-2 bg-slate-900 border border-slate-700/50 rounded-lg text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                              placeholder="contato@empresa.com"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Telefone</label>
+                            <input
+                              type="text"
+                              value={contact.phone}
+                              onChange={(e) => handleUpdateContact(contact.id, 'phone', e.target.value)}
+                              className="w-full px-4 py-2 bg-slate-900 border border-slate-700/50 rounded-lg text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none"
+                              placeholder="(00) 00000-0000"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {contacts.length === 0 && (
+                      <div className="py-10 border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center text-slate-600">
+                        <svg className="w-8 h-8 mb-2 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Nenhum contato corporativo adicionado</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="pt-6 flex space-x-3">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 bg-slate-800 text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:text-white transition-colors">Cancelar</button>

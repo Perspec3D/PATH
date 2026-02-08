@@ -41,7 +41,9 @@ export const fetchAllData = async (companyId?: string): Promise<Partial<AppDB>> 
       number: c.number,
       neighborhood: c.neighborhood,
       city: c.city,
-      state: c.state
+      state: c.state,
+      complement: c.complement,
+      contacts: c.contacts || []
     })),
     projects: (projects || []).map((p: any) => ({
       id: p.id,
@@ -99,7 +101,9 @@ export const syncClient = async (client: Client) => {
     number: client.number,
     neighborhood: client.neighborhood,
     city: client.city,
-    state: client.state
+    state: client.state,
+    complement: client.complement,
+    contacts: client.contacts
   });
   if (error) throw error;
 };
