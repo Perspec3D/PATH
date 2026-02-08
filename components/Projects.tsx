@@ -200,9 +200,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
   const getPreviewCode = () => {
     const client = db.clients.find((c: Client) => c.id === clientId);
     if (!client) return "---";
-    const seq = getNextGlobalProjectSeq(db.projects);
+    const baseSeq = customCode || getNextGlobalProjectSeq(db.projects);
+    const seq = baseSeq.toString().padStart(6, '0');
     const yearYY = new Date().getFullYear().toString().slice(-2);
-    return `${client.code.padStart(3, '0')}-${seq.toString().padStart(6, '0')}-${yearYY}`;
+    return `${client.code.padStart(3, '0')}-${seq}-${yearYY}`;
   };
 
   return (
@@ -374,8 +375,8 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                     <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
                   </div>
                   <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Sugerido (Auto)</p>
-                    <p className="text-sm font-mono text-indigo-400 font-bold">{editingProject ? editingProject.code : getPreviewCode()}</p>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Código do Projeto</p>
+                    <p className="text-sm font-mono text-indigo-400 font-bold">{getPreviewCode()}</p>
                   </div>
                 </div>
 
