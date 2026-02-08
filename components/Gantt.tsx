@@ -121,6 +121,19 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
     }
   };
 
+  const getProjectMarkerColor = (projectId: string) => {
+    const colors = [
+      'bg-pink-400', 'bg-cyan-400', 'bg-yellow-400', 'bg-rose-400',
+      'bg-violet-400', 'bg-orange-400', 'bg-emerald-400', 'bg-teal-400',
+      'bg-indigo-400', 'bg-fuchsia-400', 'bg-lime-400'
+    ];
+    let hash = 0;
+    for (let i = 0; i < projectId.length; i++) {
+      hash = projectId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
   const dayWidth = 64;
   const todayStr = new Date().toDateString();
 
@@ -291,9 +304,13 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                           {width > 0 && (
                             <div
                               style={{ left: `${offset}px`, width: `${width}px` }}
-                              className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(project.status)} border-white/5`}
+                              className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(project.status)} border-white/5 flex items-center px-3`}
                               onClick={() => openEdit(project)}
                             >
+                              <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(project.id)}`} />
+                              <span className="text-[9px] font-black text-white/90 truncate uppercase tracking-tighter">
+                                {project.name}
+                              </span>
                               <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-white/10">
                                 <div className="flex items-center justify-between mb-2">
                                   <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code}</p>
@@ -342,8 +359,12 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                               {stWidth > 0 && (
                                 <div
                                   style={{ left: `${stOffset}px`, width: `${stWidth}px` }}
-                                  className={`absolute top-1/2 -translate-y-1/2 h-2.5 rounded-full shadow-sm transition-all duration-300 hover:brightness-125 z-20 ${getStatusColor(st.status)} opacity-60 hover:opacity-100 animate-in fade-in duration-500`}
+                                  className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm transition-all duration-300 hover:brightness-125 z-20 ${getStatusColor(st.status)} opacity-80 hover:opacity-100 flex items-center px-2`}
                                 >
+                                  <div className={`w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 ${getProjectMarkerColor(project.id)}`} />
+                                  <span className="text-[7px] font-black text-white/90 truncate uppercase tracking-tighter">
+                                    {st.name}
+                                  </span>
                                   <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl opacity-0 group-hover/sub:opacity-100 transition-all transform translate-y-1 group-hover/sub:translate-y-0 z-[100] pointer-events-none shadow-2xl min-w-[180px] ring-1 ring-white/5">
                                     <div className="flex items-center justify-between mb-1.5">
                                       <div className="flex flex-col">
@@ -457,7 +478,6 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                             const isToday = date.toDateString() === todayStr;
                             return (
                               <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/80 shrink-0 transition-colors duration-500 ${isConflict ? 'bg-red-500/10' : ''} ${isToday ? 'bg-orange-500/10 shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}`}>
-                                {isConflict && <div className="w-full h-1 bg-red-500/40 absolute top-0" />}
                               </div>
                             );
                           })}
@@ -484,6 +504,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                                 else openEdit(task.parentProject);
                               }}
                             >
+                              <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.parentProject.id)}`} />
                               <span className="text-[8px] font-black text-white/90 truncate uppercase tracking-tighter">
                                 {task.type === 'subtask' ? `[ST] ${task.name}` : task.name}
                               </span>
