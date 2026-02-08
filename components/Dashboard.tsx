@@ -178,6 +178,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       .slice(0, 5); // Top 5 e Agrupar outros
   }, [projects, clients]);
 
+  // 9. Dashboard 2.0: NOVAS MÉTRICAS ESTRATÉGICAS
+  const dashboard2Logics = useMemo(() => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(now.getDate() - 7);
+
+    // Vazão (Throughput)
+    const createdLast7 = projects.filter(p => new Date(p.createdAt || Date.now()) >= sevenDaysAgo).length;
+    const doneLast7 = projects.filter(p => p.status === ProjectStatus.DONE && new Date(p.deliveryDate || Date.now()) >= sevenDaysAgo).length;
+    const throughputFactor = createdLast7 > 0 ? (doneLast7 / createdLast7) : 1;
+
+    // Risco de Inércia (Entrega em < 48h e ainda na Fila)
+    const fortyEightHours = new Date();
+    fortyEightHours.setHours(now.getHours() + 48);
+    const inertiaRiskCount = activeProjects.filter(p => {
+      if (p.status !== ProjectStatus.QUEUE || !p.deliveryDate) return false;
+      return new Date(p.deliveryDate) <= fortyEightHours;
+    }).length;
+
+    // Índice de Fragmentação (Mais de 3 projetos ativos por usuário)
+    const fragmentedUsers = Object.entries(userStatusMatrix)
+      .filter(([_, statusData]: any) => {
+        const total = (statusData[ProjectStatus.QUEUE] || 0) + (statusData[ProjectStatus.IN_PROGRESS] || 0) + (statusData[ProjectStatus.PAUSED] || 0);
+        return total > 3;
+      }).length;
+
+    return {
+      throughput: { created: createdLast7, done: doneLast7, factor: throughputFactor },
+      inertia: inertiaRiskCount,
+      fragmentation: fragmentedUsers
+    };
+  }, [projects, activeProjects, userStatusMatrix]);
+
   const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f97316', '#10b981'];
 
   const getHealthColor = (h: number) => {
@@ -187,9 +219,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700 pb-12">
+    <div className="space-y-8 animate-in fade-in duration-700 pb-12 relative">
+      {/* BACKGROUND DE ALTA TECNOLOGIA */}
+      <div className="fixed inset-0 pointer-events-none opacity-20 overflow-hidden z-[-1]">
+        <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px]"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0f172a] via-transparent to-[#0f172a]"></div>
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 3px, transparent 3px)' }}></div>
+      </div>
+
       {/* SEÇÃO 1: SAÚDE DO ESCRITÓRIO */}
-      <div className="bg-[#1e293b] p-12 rounded-[48px] shadow-2xl border border-slate-800 relative group">
+      <div className="bg-[#1e293b]/40 backdrop-blur-3xl p-12 rounded-[56px] shadow-[0_0_80px_rgba(0,0,0,0.4)] border border-white/5 relative group overflow-hidden">
+        {/* AURA DE SAÚDE DINÂMICA */}
+        <div className={`absolute -top-24 -right-24 w-96 h-96 blur-[120px] opacity-20 transition-all duration-1000 ${health > 80 ? 'bg-emerald-500' : health > 50 ? 'bg-amber-500' : 'bg-rose-500'}`}></div>
+
         <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none transition-opacity group-hover:opacity-10 scale-150">
           <TrendingUp className="w-48 h-48 text-indigo-500" />
         </div>
@@ -250,10 +292,92 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
       </div>
 
+      {/* SEÇÃO 2: INTELIGÊNCIA DE GESTÃO (DASHBOARD 2.0) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* VAZÃO OPERACIONAL */}
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group overflow-hidden">
+          <div className="relative z-10">
+            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
+              Vazão Operacional
+              <InfoTooltip title="Efficiency Throughput" content="Saldo de projetos concluídos vs criados nos últimos 7 dias. Um saldo negativo indica que a carga de trabalho está crescendo mais rápido que as entregas." />
+            </h4>
+            <div className="flex items-end space-x-4">
+              <span className={`text-5xl font-black ${dashboard2Logics.throughput.factor >= 1 ? 'text-emerald-400' : 'text-amber-500'}`}>
+                {Math.round(dashboard2Logics.throughput.factor * 100)}%
+              </span>
+              <div className="flex flex-col pb-1">
+                <span className="text-[10px] font-black text-slate-500 uppercase">{dashboard2Logics.throughput.done} entregas</span>
+                <span className="text-[10px] font-black text-slate-400 uppercase">vs {dashboard2Logics.throughput.created} novos</span>
+              </div>
+            </div>
+            {dashboard2Logics.throughput.factor < 0.8 && (
+              <div className="mt-4 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full inline-block">
+                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest animate-pulse">Gargalo Detectado</p>
+              </div>
+            )}
+          </div>
+          <div className="absolute -bottom-4 -right-4 opacity-5 group-hover:opacity-10 transition-opacity">
+            <TrendingUp size={100} />
+          </div>
+        </div>
+
+        {/* RISCO DE INÉRCIA */}
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group overflow-hidden">
+          <div className="relative z-10">
+            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
+              Risco de Inércia
+              <InfoTooltip title="Inertia Alert" content="Projetos que têm entrega em menos de 48 horas e ainda permanecem no status 'Fila'. Exige mobilização imediata do time." />
+            </h4>
+            <div className="flex items-center space-x-6">
+              <span className={`text-5xl font-black ${dashboard2Logics.inertia > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-700'}`}>
+                {dashboard2Logics.inertia}
+              </span>
+              <p className="text-[11px] font-bold text-slate-400 uppercase leading-tight pr-8">
+                {dashboard2Logics.inertia === 1 ? 'Projeto pendente' : 'Projetos pendentes'} <br />em fila crítica
+              </p>
+            </div>
+            {dashboard2Logics.inertia > 0 && (
+              <div className="mt-4 px-3 py-1 bg-rose-500/20 border border-rose-500/30 rounded-full inline-block shadow-[0_0_15px_rgba(244,63,94,0.2)]">
+                <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest">Mobilização Necessária</p>
+              </div>
+            )}
+          </div>
+          <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
+            <Clock size={80} />
+          </div>
+        </div>
+
+        {/* ÍNDICE DE FRAGMENTAÇÃO */}
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group overflow-hidden">
+          <div className="relative z-10">
+            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
+              Índice de Fragmentação
+              <InfoTooltip title="Context Switching" content="Número de usuários que estão gerenciando mais de 3 projetos ativos simultaneamente. Alta fragmentação costuma reduzir a qualidade da entrega." />
+            </h4>
+            <div className="flex items-center space-x-6">
+              <span className={`text-5xl font-black ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-700'}`}>
+                {dashboard2Logics.fragmentation}
+              </span>
+              <p className="text-[11px] font-bold text-slate-400 uppercase leading-tight pr-8">
+                Usuários com <br />multitarefa excessiva
+              </p>
+            </div>
+            {dashboard2Logics.fragmentation > 0 && (
+              <div className="mt-4 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full inline-block">
+                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest">Risco de Produtividade</p>
+              </div>
+            )}
+          </div>
+          <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
+            <Users size={80} />
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* TENDÊNCIA DE PRODUÇÃO - NOVO */}
-        <div className="lg:col-span-2 bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 flex flex-col min-h-[400px]">
-          <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
+        <div className="lg:col-span-2 bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col min-h-[400px] overflow-hidden">
+          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Tendência de Fluxo
               <InfoTooltip
@@ -290,8 +414,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* CONCENTRAÇÃO DE CLIENTES - NOVO */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 flex flex-col min-h-[400px]">
-          <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col min-h-[400px] overflow-hidden">
+          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Concentração
               <InfoTooltip
@@ -340,8 +464,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* EFICIÊNCIA DO TIME - NOVO (BarChart Recharts) */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 min-h-[450px] flex flex-col">
-          <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 min-h-[450px] flex flex-col overflow-hidden">
+          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Eficiência Operacional
               <InfoTooltip
@@ -366,8 +490,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* CARGA ATIVA POR USUÁRIO (Melhorado com Stacked Bar) */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 flex flex-col">
-          <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col overflow-hidden">
+          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Carga Ativa por Usuário
               <InfoTooltip
@@ -411,8 +535,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* RADAR DE ATRASOS */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800">
-          <div className="px-10 py-8 border-b border-slate-800 flex items-center justify-between bg-rose-500/10">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 overflow-hidden">
+          <div className="px-10 py-8 border-b border-white/5 flex items-center justify-between bg-rose-500/10">
             <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-rose-500 flex items-center">
               <AlertTriangle size={16} className="mr-4 text-rose-500 animate-pulse" />
               Prazos Expirados
@@ -447,8 +571,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* PRÓXIMAS ENTREGAS */}
-        <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800">
-          <div className="px-10 py-8 border-b border-slate-800 flex items-center justify-between bg-emerald-500/10">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 overflow-hidden">
+          <div className="px-10 py-8 border-b border-white/5 flex items-center justify-between bg-emerald-500/10">
             <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-emerald-400 flex items-center">
               <Calendar size={16} className="mr-4 text-emerald-500" />
               Próximos 7 Dias
@@ -484,8 +608,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       </div>
 
       {/* NOVO: RANKING TOP 10 CLIENTES (TABELA) */}
-      <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-800 flex flex-col">
-        <div className="px-10 py-8 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
+      <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col overflow-hidden">
+        <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
           <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
             Ranking Estratégico de Clientes
             <InfoTooltip
