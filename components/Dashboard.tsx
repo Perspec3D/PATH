@@ -196,19 +196,53 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       return new Date(p.deliveryDate) <= fortyEightHours;
     }).length;
 
-    // Índice de Fragmentação (Mais de 3 projetos ativos por usuário)
-    const fragmentedUsers = Object.entries(userStatusMatrix)
+    // Índice de Fragmentação (Mais de 3 projetos ativos por usuário - Dispersão de atenção)
+    const fragmentedUsersCount = Object.entries(userStatusMatrix)
       .filter(([_, statusData]: any) => {
         const total = (statusData[ProjectStatus.QUEUE] || 0) + (statusData[ProjectStatus.IN_PROGRESS] || 0) + (statusData[ProjectStatus.PAUSED] || 0);
         return total > 3;
       }).length;
 
+    // Conflitos de Escala (Sobreposição temporal de projetos diferentes para o mesmo usuário)
+    let scaleConflictsCount = 0;
+    users.forEach(u => {
+      const uAssignments: any[] = [];
+      projects.forEach(p => {
+        if (p.assigneeId === u.id && p.startDate && p.deliveryDate && p.status !== ProjectStatus.DONE) {
+          uAssignments.push({ id: p.id, start: new Date(p.startDate + 'T12:00:00'), end: new Date(p.deliveryDate + 'T12:00:00'), rootId: p.id });
+        }
+        p.subtasks?.forEach(st => {
+          if (st.assigneeId === u.id && st.startDate && st.deliveryDate && st.status !== ProjectStatus.DONE) {
+            uAssignments.push({ id: st.id, start: new Date(st.startDate + 'T12:00:00'), end: new Date(st.deliveryDate + 'T12:00:00'), rootId: p.id });
+          }
+        });
+      });
+
+      // Checar sobreposições entre PROJETOS DIFERENTES
+      let hasConflict = false;
+      for (let i = 0; i < uAssignments.length; i++) {
+        for (let j = i + 1; j < uAssignments.length; j++) {
+          const a = uAssignments[i];
+          const b = uAssignments[j];
+          if (a.rootId !== b.rootId) { // Só conflita se forem de projetos pais diferentes
+            if (a.start <= b.end && b.start <= a.end) {
+              hasConflict = true;
+              break;
+            }
+          }
+        }
+        if (hasConflict) break;
+      }
+      if (hasConflict) scaleConflictsCount++;
+    });
+
     return {
       throughput: { created: createdLast7, done: doneLast7, factor: throughputFactor },
       inertia: inertiaRiskCount,
-      fragmentation: fragmentedUsers
+      fragmentation: fragmentedUsersCount,
+      conflicts: scaleConflictsCount
     };
-  }, [projects, activeProjects, userStatusMatrix]);
+  }, [projects, activeProjects, userStatusMatrix, users]);
 
   const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f97316', '#10b981'];
 
@@ -353,7 +387,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           </div>
         </div>
 
-        {/* ÍNDICE DE FRAGMENTAÇÃO */}
+        {/* ÍNDICE DE FRAGMENTAÇÃO E CONFLITO */}
         <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
           {/* DECORATOR CLIPPING LAYER */}
           <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
@@ -363,22 +397,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           </div>
           <div className="relative z-10">
             <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
-              Índice de Fragmentação
-              <InfoTooltip title="Context Switching" content="Número de usuários que estão gerenciando mais de 3 projetos ativos simultaneamente. Alta fragmentação costuma reduzir a qualidade da entrega." />
+              Riscos de Escala
+              <InfoTooltip title="Fragmentação vs Conflito" content="Fragmentação: Profissionais com >3 projetos (troca de contexto excessiva). Conflito: Profissionais com projetos diferentes ocorrendo no mesmo período." />
             </h4>
-            <div className="flex items-center space-x-6">
-              <span className={`text-5xl font-black ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-700'}`}>
-                {dashboard2Logics.fragmentation}
-              </span>
-              <p className="text-[11px] font-bold text-slate-400 uppercase leading-tight pr-8">
-                Usuários com <br />multitarefa excessiva
+            <div className="space-y-6">
+              <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                <div className="flex items-center space-x-4">
+                  <span className={`text-4xl font-black ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-700'}`}>
+                    {dashboard2Logics.fragmentation}
+                  </span>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase leading-tight">
+                    Alta <br />Fragmentação
+                  </p>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <span className={`text-4xl font-black ${dashboard2Logics.conflicts > 0 ? 'text-rose-500' : 'text-slate-700'}`}>
+                    {dashboard2Logics.conflicts}
+                  </span>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase leading-tight">
+                    Conflitos <br />de Data
+                  </p>
+                </div>
+              </div>
+              <p className="text-[9px] text-slate-500 font-medium leading-relaxed italic">
+                {dashboard2Logics.conflicts > 0
+                  ? "⚠️ Reorganize prazos no Cronograma de Atribuições para resolver sobreposições."
+                  : "Escala temporal saudável, sem sobreposições críticas entre projetos."}
               </p>
             </div>
-            {dashboard2Logics.fragmentation > 0 && (
-              <div className="mt-4 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full inline-block">
-                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest">Risco de Produtividade</p>
-              </div>
-            )}
           </div>
         </div>
       </div>
