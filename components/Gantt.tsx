@@ -563,32 +563,53 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                             <span className="text-[10px] font-bold text-white uppercase truncate flex-1 mr-4">{st.name}</span>
                             <span className={`px-2 py-0.5 rounded-[4px] text-[8px] font-black uppercase text-white ${getStatusColor(st.status)}`}>{st.status}</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
                               <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Início ST</label>
                               <input
                                 type="date"
+                                min={startDate}
+                                max={deliveryDate}
                                 value={st.startDate || ''}
                                 onChange={e => {
                                   const newSts = [...subtasks];
                                   newSts[idx] = { ...st, startDate: e.target.value };
                                   setSubtasks(newSts);
                                 }}
-                                className="w-full bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-white outline-none"
+                                className="w-full bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-white outline-none focus:border-indigo-500 transition-colors"
                               />
                             </div>
                             <div>
                               <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Entrega ST</label>
                               <input
                                 type="date"
+                                min={st.startDate || startDate}
+                                max={deliveryDate}
                                 value={st.deliveryDate || ''}
                                 onChange={e => {
                                   const newSts = [...subtasks];
                                   newSts[idx] = { ...st, deliveryDate: e.target.value };
                                   setSubtasks(newSts);
                                 }}
-                                className="w-full bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-white outline-none"
+                                className="w-full bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-white outline-none focus:border-indigo-500 transition-colors"
                               />
+                            </div>
+                            <div>
+                              <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Responsável ST</label>
+                              <select
+                                value={st.assigneeId || ''}
+                                onChange={e => {
+                                  const newSts = [...subtasks];
+                                  newSts[idx] = { ...st, assigneeId: e.target.value };
+                                  setSubtasks(newSts);
+                                }}
+                                className="w-full bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-white outline-none focus:border-indigo-500 transition-colors"
+                              >
+                                <option value="">Sem responsável</option>
+                                {allUsers.map(u => (
+                                  <option key={u.id} value={u.id}>{u.username}</option>
+                                ))}
+                              </select>
                             </div>
                           </div>
                         </div>
