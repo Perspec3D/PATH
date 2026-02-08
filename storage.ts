@@ -176,3 +176,24 @@ export const getNextGlobalProjectSeq = (projects: Project[]): number => {
 export const getNextProjectSeq = (projects: Project[], clientId: string, year: number): number => {
   return getNextGlobalProjectSeq(projects);
 };
+
+export const getNextProjectCode = (projects: Project[]): string => {
+  if (projects.length === 0) return '000001';
+
+  const codes = projects.map(p => {
+    // Tenta extrair o maior número de qualquer formato
+    const numericMatch = p.code.match(/\d+/g);
+    if (numericMatch) {
+      // Se houver múltiplos números (ex: 001-002-24), pegamos o que parece ser a sequência (o segundo ou o maior)
+      // Para o novo formato (000001), ele pegará o próprio número.
+      return Math.max(...numericMatch.map(n => parseInt(n)));
+    }
+    return 0;
+  }).filter(n => !isNaN(n)).sort((a, b) => a - b);
+
+  let next = 1;
+  const maxCode = codes.length > 0 ? codes[codes.length - 1] : 0;
+  next = maxCode + 1;
+
+  return next.toString().padStart(6, '0');
+};

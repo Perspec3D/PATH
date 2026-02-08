@@ -169,7 +169,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                 <div key={project.id} className="flex group/row hover:bg-slate-800/30 transition-colors relative hover:z-[60]">
                   {/* Sidebar Projeto: FIXO NA ESQUERDA */}
                   <div className="w-80 px-6 h-20 flex flex-col justify-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm cursor-pointer group hover:bg-slate-800 transition-all border-l-4 border-transparent" onClick={() => openEdit(project)}>
-                    <span className="text-[9px] font-mono font-black text-indigo-400/40 uppercase tracking-tighter mb-0.5 block">{project.code}</span>
+                    <span className="text-[9px] font-mono font-black text-indigo-400/40 uppercase tracking-tighter mb-0.5 block">{project.code.padStart(6, '0')}</span>
                     <h4 className="text-xs font-black text-slate-100 truncate group-hover:text-indigo-400 leading-tight whitespace-normal">{project.name}</h4>
                     <p className="text-[9px] text-slate-500 font-bold truncate mt-1 italic">{client?.name || 'Cliente s/ Ref.'}</p>
                   </div>
@@ -193,7 +193,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                         {/* TOOLTIP */}
                         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-white/10">
                           <div className="flex items-center justify-between mb-2">
-                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code}</p>
+                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code.padStart(6, '0')}</p>
                             <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>{project.status}</span>
                           </div>
                           <p className="text-xs font-bold text-white mb-3 leading-tight whitespace-normal">{project.name}</p>

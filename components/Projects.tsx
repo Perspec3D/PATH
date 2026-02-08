@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { Project, ProjectStatus, Client, InternalUser } from '../types';
-import { getNextGlobalProjectSeq, syncProject, AppDB } from '../storage';
+import { getNextGlobalProjectSeq, getNextProjectCode, syncProject, AppDB } from '../storage';
 
 interface ProjectsProps {
   db: AppDB;
@@ -29,6 +29,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
   const [deliveryDate, setDeliveryDate] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
   const [notes, setNotes] = useState('');
+  const [customCode, setCustomCode] = useState('');
 
   const resetForm = () => {
     setName('');
@@ -40,6 +41,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     setDeliveryDate('');
     setPhotoUrl('');
     setNotes('');
+    setCustomCode('');
     setEditingProject(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -104,6 +106,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     setDeliveryDate(project.deliveryDate || '');
     setPhotoUrl(project.photoUrl || '');
     setNotes(project.notes || '');
+    setCustomCode(project.code);
     setShowModal(true);
   };
 
@@ -116,11 +119,12 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     const client = db.clients.find((c: Client) => c.id === clientId);
     if (!client) return;
 
-    let finalCode = editingProject?.code || "";
-    if (!editingProject) {
-      const seq = getNextGlobalProjectSeq(db.projects);
-      const yearYY = new Date().getFullYear().toString().slice(-2);
-      finalCode = `${client.code}-${seq.toString().padStart(3, '0')}-${yearYY}`;
+    const nextCode = customCode || (editingProject ? editingProject.code : getNextProjectCode(db.projects));
+    const finalCode = nextCode.padStart(6, '0');
+
+    if (db.projects.some((p: Project) => p.code === finalCode && p.id !== editingProject?.id)) {
+      alert("Este código de projeto já está em uso.");
+      return;
     }
 
     const projectData: Project = {
@@ -197,9 +201,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
   const getPreviewCode = () => {
     const client = db.clients.find((c: Client) => c.id === clientId);
     if (!client) return "---";
-    const seq = getNextGlobalProjectSeq(db.projects);
-    const yearYY = new Date().getFullYear().toString().slice(-2);
-    return `${client.code}-${seq.toString().padStart(3, '0')}-${yearYY}`;
+    return getNextProjectCode(db.projects);
   };
 
   return (
@@ -295,7 +297,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                     </td>
                     <td className="px-2.5 py-4 text-center">
                       <div className="flex flex-col whitespace-nowrap">
-                        <span className="font-mono text-[10px] text-indigo-400 tracking-tighter uppercase font-black">{project.code}</span>
+                        <span className="font-mono text-[10px] text-indigo-400 tracking-tighter uppercase font-black">
+                          {project.code.padStart(6, '0')}
+                        </span>
                         <span className="text-[8px] text-slate-600 font-black uppercase tracking-widest">{project.revision}</span>
                       </div>
                     </td>
@@ -363,15 +367,26 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
             </div>
             <form onSubmit={handleSave} className="p-8 space-y-6">
               {/* Conteúdo do Formulário */}
-              <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50 flex items-center justify-between mb-2">
-                <div className="flex items-center space-x-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-2">
+                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50 flex items-center space-x-3">
                   <div className="w-10 h-10 rounded-xl bg-indigo-600/20 flex items-center justify-center">
                     <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
                   </div>
                   <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Código Informativo (Auto)</p>
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Sugerido (Auto)</p>
                     <p className="text-sm font-mono text-indigo-400 font-bold">{editingProject ? editingProject.code : getPreviewCode()}</p>
                   </div>
+                </div>
+
+                <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50">
+                  <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Identificador de Projeto</label>
+                  <input
+                    type="text"
+                    value={customCode}
+                    onChange={(e) => setCustomCode(e.target.value)}
+                    className="w-full px-4 py-2 bg-slate-900 border border-slate-700/50 rounded-lg text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none font-mono"
+                    placeholder="Ex: 000042"
+                  />
                 </div>
               </div>
 
@@ -381,7 +396,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Cliente *</label>
                     <select required value={clientId} disabled={!!editingProject} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium" onChange={(e) => setClientId(e.target.value)}>
                       <option value="">Selecione o Cliente...</option>
-                      {db.clients.filter((c: any) => c.status === 'ACTIVE').map((c: Client) => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                      {db.clients.filter((c: any) => c.status === 'ACTIVE').map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
                     </select>
                   </div>
                   <div>
@@ -503,7 +518,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                     </div>
                     <div>
                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Código do Cliente</p>
-                      <p className="text-white font-bold font-mono text-sm tracking-widest">{viewingClient.code}</p>
+                      <p className="text-white font-bold font-mono text-sm tracking-widest">{viewingClient.code.padStart(3, '0')}</p>
                     </div>
                   </div>
 

@@ -412,7 +412,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 <div className="flex justify-between items-center">
                   <div className="min-w-0">
                     <h4 className="font-bold text-slate-100 truncate group-hover:text-rose-400 transition-colors mb-1">{p.name}</h4>
-                    <p className="text-[10px] text-slate-500 font-mono font-black uppercase tracking-tighter">{p.code}</p>
+                    <p className="text-[10px] text-slate-500 font-mono font-black uppercase tracking-tighter">{p.code.padStart(6, '0')}</p>
                   </div>
                   <div className="text-right shrink-0 ml-6">
                     <span className="text-sm font-black text-rose-500">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
@@ -446,7 +446,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 <div className="flex justify-between items-center">
                   <div className="min-w-0">
                     <h4 className="font-bold text-slate-100 truncate group-hover:text-emerald-400 transition-colors mb-1">{p.name}</h4>
-                    <p className="text-[10px] text-slate-500 font-mono font-black uppercase tracking-tighter">{p.code}</p>
+                    <p className="text-[10px] text-slate-500 font-mono font-black uppercase tracking-tighter">{p.code.padStart(6, '0')}</p>
                   </div>
                   <div className="text-right shrink-0 ml-6">
                     <span className="text-sm font-black text-emerald-400">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
@@ -496,7 +496,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                     <td className="py-6">
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-slate-100 group-hover:text-indigo-400 transition-colors">{name}</span>
-                        <span className="text-[10px] font-mono font-black text-slate-600 uppercase tracking-tighter">{data.code}</span>
+                        <span className="text-[10px] font-mono font-black text-slate-600 uppercase tracking-tighter">{data.code.padStart(3, '0')}</span>
                       </div>
                     </td>
                     <td className="py-6 px-4 text-right">
