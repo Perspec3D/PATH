@@ -392,7 +392,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                         assignedLanes[laneIndex] = [{ end }];
                         break;
                       }
-                      const hasOverlap = assignedLanes[laneIndex].some(occ => start < occ.end);
+                      const hasOverlap = assignedLanes[laneIndex].some(occ => start <= occ.end);
                       if (!hasOverlap) {
                         assignedLanes[laneIndex].push({ end });
                         break;
@@ -423,7 +423,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                   });
 
                   const totalLanes = assignedLanes.length || 1;
-                  const rowHeight = Math.max(112, totalLanes * 36 + 40); // Base height + 36px per lane + 40px padding
+                  const rowHeight = Math.max(112, totalLanes * 42 + 40); // Increased lane height to 42px for better spacing
 
                   return (
                     <div className="flex group/user relative hover:bg-slate-800/20 transition-colors" key={user.id}>
@@ -435,7 +435,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                         <div className="flex-1 min-w-0">
                           <h4 className="text-xs font-black text-slate-100 truncate group-hover:text-emerald-400 transition-colors uppercase tracking-tight">{user.username}</h4>
                           <p className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-widest">{allAssignments.length} Tarefa(s) ativa(s)</p>
-                          {totalLanes > 1 && (
+                          {conflictMap.size > 0 && (
                             <span className="inline-block mt-2 px-2 py-0.5 bg-red-500/10 border border-red-500/20 text-red-500 text-[8px] font-black rounded-full uppercase tracking-tighter animate-pulse">
                               Conflito de Prazos
                             </span>
@@ -466,13 +466,15 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                           const diffDuration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
                           const offset = diffStart * dayWidth;
                           const width = diffDuration * dayWidth;
-                          const topPos = 24 + (task.laneIndex * 36);
+                          const isSubtask = task.type === 'subtask';
+                          const barHeight = isSubtask ? 'h-5' : 'h-8';
+                          const topPos = 16 + (task.laneIndex * 42) + (isSubtask ? 6 : 0);
 
                           return (
                             <div
                               key={task.id}
                               style={{ left: `${offset}px`, width: `${width}px`, top: `${topPos}px` }}
-                              className={`absolute h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
+                              className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
                               onClick={() => {
                                 if (task.type === 'project') openEdit(task);
                                 else openEdit(task.parentProject);
