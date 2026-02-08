@@ -139,29 +139,55 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
 
   if (viewMode === 'selector') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-12 animate-in zoom-in duration-500">
-        <div className="text-center">
-          <h1 className="text-4xl font-black text-white tracking-widest uppercase mb-3">Central de Cronogramas</h1>
-          <p className="text-slate-500 font-bold uppercase text-xs tracking-[0.3em]">Escolha a perspectiva ideal para sua gestão</p>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] relative overflow-hidden px-4">
+        {/* BACKGROUND GLOWING ORBS */}
+        <div className="absolute top-1/4 -left-20 w-80 h-80 bg-indigo-600/10 rounded-full blur-[100px] animate-pulse pointer-events-none" />
+        <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-emerald-600/10 rounded-full blur-[100px] animate-pulse pointer-events-none delay-1000" />
+
+        <div className="text-center relative z-10 mb-16 animate-in fade-in slide-in-from-top-10 duration-1000">
+          <h1 className="text-5xl font-black text-white tracking-[0.2em] uppercase mb-4 drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+            Central de <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-emerald-400">Cronogramas</span>
+          </h1>
+          <div className="flex items-center justify-center space-x-4">
+            <div className="h-px w-12 bg-gradient-to-r from-transparent to-slate-700" />
+            <p className="text-slate-500 font-black uppercase text-[10px] tracking-[0.4em]">Personalize sua Perspectiva de Gestão</p>
+            <div className="h-px w-12 bg-gradient-to-l from-transparent to-slate-700" />
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-5xl px-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 w-full max-w-6xl relative z-10">
           {/* CARD: FLUXO */}
           <div
             onClick={() => setViewMode('flow')}
-            className="group cursor-pointer bg-slate-800/40 border border-slate-700/50 rounded-[40px] p-8 hover:bg-slate-800/60 hover:border-indigo-500/50 transition-all duration-500 hover:shadow-[0_20px_50px_rgba(79,70,229,0.1)] relative overflow-hidden"
+            className="group cursor-pointer relative animate-in fade-in slide-in-from-left-12 duration-1000"
           >
-            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
-              <svg className="w-24 h-24 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-            </div>
-            <div className="relative z-10">
-              <div className="w-16 h-16 bg-indigo-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-indigo-500/20 transition-colors">
-                <svg className="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 rounded-[48px] blur-2xl" />
+            <div className="relative bg-slate-900/40 backdrop-blur-2xl border border-white/5 rounded-[48px] p-10 hover:border-indigo-500/50 transition-all duration-500 hover:translate-y-[-8px] shadow-2xl">
+              <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-20 group-hover:scale-110 transition-all duration-700">
+                <svg className="w-32 h-32 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="0.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
               </div>
-              <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tight">Cronograma de Fluxo</h3>
-              <p className="text-slate-400 text-sm font-medium leading-relaxed">Visão clássica focada em Projetos e Sub-tarefas. Ideal para acompanhar prazos de entrega e progresso operacional.</p>
-              <div className="mt-8 flex items-center text-indigo-400 font-black text-[10px] uppercase tracking-widest opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all">
-                Acessar Visão <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+
+              <div className="flex items-center space-x-6 mb-8">
+                <div className="w-20 h-20 bg-indigo-500/10 rounded-[24px] flex items-center justify-center border border-indigo-500/20 group-hover:bg-indigo-500/20 group-hover:scale-110 transition-all duration-500 shadow-inner">
+                  <svg className="w-10 h-10 text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
+                </div>
+                <div>
+                  <h3 className="text-3xl font-black text-white uppercase tracking-tighter mb-1">Fluxo <span className="text-indigo-400">Geral</span></h3>
+                  <div className="h-1 w-12 bg-indigo-500/40 rounded-full" />
+                </div>
+              </div>
+
+              <p className="text-slate-400 text-lg font-medium leading-relaxed mb-10 pr-10">
+                Acompanhe o pulso operacional através da visão clássica de projetos e suas etapas críticas de entrega.
+              </p>
+
+              <div className="flex items-center justify-between">
+                <span className="px-5 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[10px] font-black text-indigo-400 uppercase tracking-widest group-hover:bg-indigo-500/30 transition-colors">
+                  Alta Performance
+                </span>
+                <div className="flex items-center text-white font-black text-xs uppercase tracking-[0.2em] group-hover:text-indigo-400 transition-colors">
+                  Explorar Visão <svg className="w-5 h-5 ml-3 animate-bounce-x" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                </div>
               </div>
             </div>
           </div>
@@ -169,19 +195,35 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
           {/* CARD: ATRIBUIÇÕES */}
           <div
             onClick={() => setViewMode('assignments')}
-            className="group cursor-pointer bg-slate-800/40 border border-slate-700/50 rounded-[40px] p-8 hover:bg-emerald-800/40 hover:border-emerald-500/50 transition-all duration-500 hover:shadow-[0_20px_50px_rgba(16,185,129,0.1)] relative overflow-hidden"
+            className="group cursor-pointer relative animate-in fade-in slide-in-from-right-12 duration-1000"
           >
-            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
-              <svg className="w-24 h-24 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-            </div>
-            <div className="relative z-10">
-              <div className="w-16 h-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-emerald-500/20 transition-colors">
-                <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 rounded-[48px] blur-2xl" />
+            <div className="relative bg-slate-900/40 backdrop-blur-2xl border border-white/5 rounded-[48px] p-10 hover:border-emerald-500/50 transition-all duration-500 hover:translate-y-[-8px] shadow-2xl">
+              <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-20 group-hover:scale-110 transition-all duration-700">
+                <svg className="w-32 h-32 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="0.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
               </div>
-              <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tight">Cronograma de Atribuições</h3>
-              <p className="text-slate-400 text-sm font-medium leading-relaxed">Visão de carga de equipe. Veja o que cada profissional está executando e identifique gargalos ou disponibilidade.</p>
-              <div className="mt-8 flex items-center text-emerald-400 font-black text-[10px] uppercase tracking-widest opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all">
-                Acessar Visão <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+
+              <div className="flex items-center space-x-6 mb-8">
+                <div className="w-20 h-20 bg-emerald-500/10 rounded-[24px] flex items-center justify-center border border-emerald-500/20 group-hover:bg-emerald-500/20 group-hover:scale-110 transition-all duration-500 shadow-inner">
+                  <svg className="w-10 h-10 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                </div>
+                <div>
+                  <h3 className="text-3xl font-black text-white uppercase tracking-tighter mb-1">Time <span className="text-emerald-400">& Carga</span></h3>
+                  <div className="h-1 w-12 bg-emerald-500/40 rounded-full" />
+                </div>
+              </div>
+
+              <p className="text-slate-400 text-lg font-medium leading-relaxed mb-10 pr-10">
+                Visualize a distribuição de tarefas por profissional e identifique gargalos de produtividade em tempo real.
+              </p>
+
+              <div className="flex items-center justify-between">
+                <span className="px-5 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] font-black text-emerald-400 uppercase tracking-widest group-hover:bg-emerald-500/30 transition-colors">
+                  Visão Analítica
+                </span>
+                <div className="flex items-center text-white font-black text-xs uppercase tracking-[0.2em] group-hover:text-emerald-400 transition-colors">
+                  Explorar Visão <svg className="w-5 h-5 ml-3 animate-bounce-x" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                </div>
               </div>
             </div>
           </div>
