@@ -42,6 +42,15 @@ export interface InternalUser {
   mustChangePassword?: boolean;
 }
 
+export interface ClientContact {
+  id: string;
+  name: string;
+  position: string; // Cargo
+  department: string; // Setor
+  email: string;
+  phone: string;
+}
+
 export interface Client {
   id: string;
   workspaceId: string;
@@ -59,6 +68,8 @@ export interface Client {
   city?: string;
   state?: string;
   zipCode?: string;
+  complement?: string;
+  contacts?: ClientContact[];
 }
 
 export interface Project {
