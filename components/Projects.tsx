@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { Project, ProjectStatus, Client, InternalUser } from '../types';
+import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask } from '../types';
 import { getNextGlobalProjectSeq, syncProject, AppDB } from '../storage';
 
 interface ProjectsProps {
@@ -30,6 +30,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
   const [photoUrl, setPhotoUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [customCode, setCustomCode] = useState('');
+  const [subtasks, setSubtasks] = useState<ProjectSubTask[]>([]);
 
   const resetForm = () => {
     setName('');
@@ -42,6 +43,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     setPhotoUrl('');
     setNotes('');
     setCustomCode('');
+    setSubtasks([]);
     setEditingProject(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -106,6 +108,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     setDeliveryDate(project.deliveryDate || '');
     setPhotoUrl(project.photoUrl || '');
     setNotes(project.notes || '');
+    setSubtasks(project.subtasks || []);
     // Extrai a sequência central se seguir o padrão [CLI]-[SEQ]-[YY]
     const currentSeq = project.code.includes('-') ? project.code.split('-')[1] : project.code;
     setCustomCode(currentSeq);
@@ -140,6 +143,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
       deliveryDate,
       photoUrl,
       notes,
+      subtasks,
       createdAt: editingProject?.createdAt || Date.now(),
     };
 
@@ -177,6 +181,34 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     return 'text-slate-500 font-black';
   };
 
+  const handleAddSubTask = () => {
+    setSubtasks([...subtasks, {
+      id: crypto.randomUUID(),
+      name: '',
+      status: ProjectStatus.QUEUE,
+      startDate: startDate || '',
+      deliveryDate: deliveryDate || ''
+    }]);
+  };
+
+  const handleUpdateSubTask = (id: string, field: keyof ProjectSubTask, value: any) => {
+    setSubtasks(current => current.map(st => {
+      if (st.id !== id) return st;
+      const updated = { ...st, [field]: value };
+
+      // Validação de Datas
+      if (field === 'startDate' && startDate && value < startDate) updated.startDate = startDate;
+      if (field === 'deliveryDate' && deliveryDate && value > deliveryDate) updated.deliveryDate = deliveryDate;
+      if (field === 'startDate' && updated.deliveryDate && value > updated.deliveryDate) updated.startDate = updated.deliveryDate;
+
+      return updated;
+    }));
+  };
+
+  const handleRemoveSubTask = (id: string) => {
+    setSubtasks(subtasks.filter(st => st.id !== id));
+  };
+
   const filteredProjects = useMemo(() => {
     return db.projects.filter((p: Project) => {
       const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.code.includes(search);
@@ -186,7 +218,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     }).sort((a: Project, b: Project) => b.createdAt - a.createdAt);
   }, [db.projects, search, statusFilter, clientFilter]);
 
-  const getStatusStyle = (s: ProjectStatus) => {
+  const getStatusColor = (s: ProjectStatus) => {
     switch (s) {
       case ProjectStatus.DONE: return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
       case ProjectStatus.IN_PROGRESS: return 'bg-blue-600/10 text-blue-400 border border-blue-500/20';
@@ -314,7 +346,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                       </button>
                     </td>
                     <td className="px-2.5 py-4 text-center">
-                      <span className={`inline-block px-2 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest min-w-[110px] text-center shadow-sm ${getStatusStyle(project.status)}`}>
+                      <span className={`inline-block px-2 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest min-w-[110px] text-center shadow-sm ${getStatusColor(project.status)}`}>
                         {project.status}
                       </span>
                     </td>
@@ -459,6 +491,114 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                       Formatos: JPG, PNG | Máximo 2MB
                     </p>
                   </div>
+                </div>
+              </div>
+
+              {/* SUB-TAREFAS */}
+              <div className="space-y-4 pt-4 border-t border-slate-800/50">
+                <div className="flex items-center justify-between px-1">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center">
+                    <svg className="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                    Sub-tarefas do Projeto
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={handleAddSubTask}
+                    className="px-3 py-1.5 bg-indigo-600/10 text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-lg border border-indigo-500/20 hover:bg-indigo-600 hover:text-white transition-all flex items-center"
+                  >
+                    <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4" /></svg>
+                    Nova Tarefa
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                  {subtasks.length === 0 ? (
+                    <div className="py-8 text-center bg-slate-900/30 rounded-2xl border-2 border-dashed border-slate-800/50">
+                      <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest leading-loose">Nenhuma sub-tarefa<br />cadastrada</p>
+                    </div>
+                  ) : (
+                    subtasks.map((st) => (
+                      <div key={st.id} className="bg-slate-900/80 p-5 rounded-2xl border border-slate-800 hover:border-slate-700 transition-all group/task">
+                        <div className="flex flex-col space-y-4">
+                          <div className="flex items-center space-x-3">
+                            <input
+                              type="text"
+                              value={st.name}
+                              onChange={(e) => handleUpdateSubTask(st.id, 'name', e.target.value)}
+                              placeholder="Nome da sub-tarefa..."
+                              className="flex-1 bg-transparent border-none text-sm font-bold text-slate-100 placeholder:text-slate-700 focus:ring-0 p-0"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSubTask(st.id)}
+                              className="opacity-0 group-hover/task:opacity-100 p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
+                            <div className="col-span-1 md:col-span-1">
+                              <label className="block text-[8px] font-black text-slate-600 uppercase mb-1.5 ml-0.5">Responsável</label>
+                              <select
+                                value={st.assigneeId || ''}
+                                onChange={(e) => handleUpdateSubTask(st.id, 'assigneeId', e.target.value)}
+                                className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg py-1.5 px-2 text-[10px] text-slate-300 font-bold outline-none focus:ring-1 focus:ring-indigo-500/50"
+                              >
+                                <option value="">Sem Resp.</option>
+                                {db.users.filter(u => u.isActive).map(u => (
+                                  <option key={u.id} value={u.id}>{u.username.split(' ')[0]}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="col-span-1 md:col-span-1">
+                              <label className="block text-[8px] font-black text-slate-600 uppercase mb-1.5 ml-0.5">Status</label>
+                              <select
+                                value={st.status}
+                                onChange={(e: any) => handleUpdateSubTask(st.id, 'status', e.target.value)}
+                                className={`w-full bg-slate-800/50 border border-slate-700/50 rounded-lg py-1.5 px-2 text-[10px] font-black uppercase tracking-tighter outline-none focus:ring-1 focus:ring-indigo-500/50 ${getStatusColor(st.status).split(' ')[1]}`}
+                              >
+                                {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </div>
+
+                            <div className="col-span-1 md:col-span-1">
+                              <label className="block text-[8px] font-black text-slate-600 uppercase mb-1.5 ml-0.5">Início</label>
+                              <input
+                                type="date"
+                                value={st.startDate}
+                                min={startDate}
+                                max={st.deliveryDate || deliveryDate}
+                                onChange={(e) => handleUpdateSubTask(st.id, 'startDate', e.target.value)}
+                                className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg py-1.5 px-2 text-[10px] text-slate-300 font-medium outline-none"
+                              />
+                            </div>
+
+                            <div className="col-span-1 md:col-span-1">
+                              <label className="block text-[8px] font-black text-slate-600 uppercase mb-1.5 ml-0.5">Entrega</label>
+                              <input
+                                type="date"
+                                value={st.deliveryDate}
+                                min={st.startDate || startDate}
+                                max={deliveryDate}
+                                onChange={(e) => handleUpdateSubTask(st.id, 'deliveryDate', e.target.value)}
+                                className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg py-1.5 px-2 text-[10px] text-slate-300 font-medium outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <input
+                            type="text"
+                            value={st.notes || ''}
+                            onChange={(e) => handleUpdateSubTask(st.id, 'notes', e.target.value)}
+                            placeholder="Notas da tarefa (opcional)..."
+                            className="w-full bg-transparent border-none text-[10px] text-slate-500 placeholder:text-slate-800 focus:ring-0 p-0 italic"
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 

@@ -59,6 +59,7 @@ export const fetchAllData = async (companyId?: string): Promise<Partial<AppDB>> 
       deliveryDate: p.delivery_date,
       dueDate: p.due_date,
       notes: p.notes,
+      subtasks: p.subtasks || [],
       createdAt: new Date(p.created_at).getTime()
     })),
     users: (users || []).map((u: any) => ({
@@ -123,6 +124,7 @@ export const syncProject = async (project: Project) => {
     delivery_date: project.deliveryDate || null,
     due_date: project.dueDate || null,
     notes: project.notes,
+    subtasks: project.subtasks || [],
     created_at: new Date(project.createdAt).toISOString()
   });
   if (error) throw error;

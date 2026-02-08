@@ -72,6 +72,16 @@ export interface Client {
   contacts?: ClientContact[];
 }
 
+export interface ProjectSubTask {
+  id: string;
+  name: string;
+  assigneeId?: string;
+  status: ProjectStatus;
+  startDate?: string;
+  deliveryDate?: string;
+  notes?: string;
+}
+
 export interface Project {
   id: string;
   workspaceId: string;
@@ -86,5 +96,6 @@ export interface Project {
   deliveryDate?: string;
   dueDate?: string;
   notes?: string;
+  subtasks?: ProjectSubTask[];
   createdAt: number;
 }
