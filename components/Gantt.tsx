@@ -346,7 +346,10 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                                 >
                                   <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl opacity-0 group-hover/sub:opacity-100 transition-all transform translate-y-1 group-hover/sub:translate-y-0 z-[100] pointer-events-none shadow-2xl min-w-[180px] ring-1 ring-white/5">
                                     <div className="flex items-center justify-between mb-1.5">
-                                      <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">SUB-TAREFA</p>
+                                      <div className="flex flex-col">
+                                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">SUB-TAREFA</p>
+                                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">{project.code}</p>
+                                      </div>
                                       <span className={`px-1.5 py-0.5 rounded-[4px] text-[7px] font-black uppercase tracking-widest ${getStatusColor(st.status)} text-white`}>{st.status}</span>
                                     </div>
                                     <p className="text-[10px] font-bold text-white mb-2 leading-tight">{st.name}</p>
@@ -488,7 +491,12 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                               {/* TOOLTIP ATRIBUIÇÃO */}
                               <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/task:opacity-100 transition-all transform translate-y-2 group-hover/task:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[220px] ring-1 ring-white/10">
                                 <div className="flex items-center justify-between mb-2">
-                                  <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">{task.type === 'project' ? 'PROJETO PAI' : 'SUB-TAREFA'}</p>
+                                  <div className="flex flex-col">
+                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">{task.type === 'project' ? 'PROJETO PAI' : 'SUB-TAREFA'}</p>
+                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">
+                                      {task.type === 'project' ? (task as any).code : (task as any).parentProject?.code}
+                                    </p>
+                                  </div>
                                   <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(task.status)} text-white`}>{task.status}</span>
                                 </div>
                                 <p className="text-xs font-bold text-white mb-1 leading-tight whitespace-normal">{task.name}</p>
