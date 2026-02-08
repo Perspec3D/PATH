@@ -115,6 +115,8 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
       case ProjectStatus.IN_PROGRESS: return 'bg-indigo-600';
       case ProjectStatus.PAUSED: return 'bg-purple-500';
       case ProjectStatus.QUEUE: return 'bg-slate-500';
+      case ProjectStatus.DONE: return 'bg-emerald-500';
+      case ProjectStatus.CANCELED: return 'bg-orange-500';
       default: return 'bg-slate-700';
     }
   };
