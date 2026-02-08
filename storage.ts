@@ -163,17 +163,19 @@ export const getNextClientCode = (clients: Client[]): string => {
 };
 
 export const getNextGlobalProjectSeq = (projects: Project[]): number => {
-  if (projects.length === 0) return 1;
-
   const seqs = projects.map(p => {
     const parts = p.code.split('-');
     if (parts.length >= 2) return parseInt(parts[1]);
     const matches = p.code.match(/\d+/);
     return matches ? parseInt(matches[0]) : 0;
-  }).filter(n => !isNaN(n));
+  }).filter(n => !isNaN(n) && n > 0).sort((a, b) => a - b);
 
-  if (seqs.length === 0) return 1;
-  return Math.max(...seqs) + 1;
+  let next = 1;
+  for (const seq of seqs) {
+    if (seq === next) next++;
+    else if (seq > next) break;
+  }
+  return next;
 };
 
 export const getNextProjectSeq = (projects: Project[], clientId: string, year: number): number => {
