@@ -393,8 +393,8 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
 
       {/* MODAL: Cadastro/Edição de Projeto */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200 border border-slate-700 my-8">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex justify-center p-4 overflow-y-auto items-start md:py-12">
+          <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in duration-200 border border-slate-700 my-4 md:my-0">
             <div className="px-8 py-6 border-b border-slate-800 flex items-center justify-between bg-slate-800/30">
               <h3 className="font-black text-white uppercase tracking-widest text-sm">{editingProject ? 'Editar Detalhes' : 'Novo Projeto'}</h3>
               <button onClick={() => setShowModal(false)} className="text-slate-500 hover:text-white"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
