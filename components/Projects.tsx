@@ -276,7 +276,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
           onChange={(e) => setClientFilter(e.target.value)}
         >
           <option value="ALL">Cliente: Todos</option>
-          {db.clients.map((c: Client) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {[...db.clients]
+            .sort((a, b) => parseInt(a.code) - parseInt(b.code))
+            .map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
         </select>
       </div>
 
@@ -430,7 +432,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Cliente *</label>
                     <select required value={clientId} disabled={!!editingProject} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium" onChange={(e) => setClientId(e.target.value)}>
                       <option value="">Selecione o Cliente...</option>
-                      {db.clients.filter((c: any) => c.status === 'ACTIVE').map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
+                      {[...db.clients]
+                        .filter((c: any) => c.status === 'ACTIVE')
+                        .sort((a, b) => parseInt(a.code) - parseInt(b.code))
+                        .map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
                     </select>
                   </div>
                   <div>
