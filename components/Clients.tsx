@@ -13,6 +13,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState('');
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [viewingClient, setViewingClient] = useState<Client | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
@@ -224,14 +225,19 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
                   </td>
                   <td className="px-8 py-5">
                     <div className="flex items-center space-x-3">
-                      {client.photoUrl ? (
-                        <img src={client.photoUrl} className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                          {client.name.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <span className="font-bold text-slate-100">{client.name}</span>
+                      <div
+                        className="flex items-center space-x-3 cursor-pointer group/name"
+                        onClick={() => setViewingClient(client)}
+                      >
+                        {client.photoUrl ? (
+                          <img src={client.photoUrl} className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700 transition-transform group-hover/name:scale-110" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400 group-hover/name:bg-indigo-600 group-hover/name:text-white transition-colors">
+                            {client.name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="font-bold text-slate-100 group-hover/name:text-indigo-400 transition-colors">{client.name}</span>
+                      </div>
                     </div>
                   </td>
                   <td className="px-8 py-5">
@@ -530,6 +536,192 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
                 <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition active:scale-95">Confirmar Alterações</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE VISUALIZAÇÃO DETALHADA (READ-ONLY) */}
+      {viewingClient && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[60] flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-[#0f172a] rounded-[2.5rem] shadow-2xl w-full max-w-5xl overflow-hidden border border-white/5 relative">
+            {/* DECORATIVE BACKGROUND */}
+            <div className="absolute inset-0 pointer-events-none opacity-20">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/20 blur-[100px] rounded-full"></div>
+              <div className="absolute bottom-0 left-0 w-96 h-96 bg-emerald-600/10 blur-[100px] rounded-full"></div>
+            </div>
+
+            {/* HEADER */}
+            <div className="px-10 py-8 border-b border-white/5 flex items-center justify-between relative z-10 bg-white/[0.02]">
+              <div className="flex items-center space-x-5">
+                <div className="p-3 bg-indigo-500/10 rounded-2xl border border-indigo-500/20">
+                  <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-white tracking-tight uppercase">{viewingClient.name}</h3>
+                  <div className="flex items-center space-x-3 mt-1">
+                    <span className="font-mono text-[10px] bg-slate-800 text-indigo-400 px-2 py-0.5 rounded border border-slate-700 font-bold uppercase">#{viewingClient.code}</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${viewingClient.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                      {viewingClient.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => {
+                    const clientToEdit = viewingClient;
+                    setViewingClient(null);
+                    openEdit(clientToEdit);
+                  }}
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20"
+                >
+                  Editar Dados
+                </button>
+                <button onClick={() => setViewingClient(null)} className="p-2 text-slate-500 hover:text-white transition-colors bg-white/5 rounded-xl">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* CONTENT */}
+            <div className="p-10 grid grid-cols-1 lg:grid-cols-12 gap-10 max-h-[75vh] overflow-y-auto relative z-10 custom-scrollbar">
+              {/* LEFT COLUMN: IDENTIFICATION & PHOTO */}
+              <div className="lg:col-span-4 space-y-8">
+                <div className="relative group p-2 bg-gradient-to-br from-white/10 to-transparent rounded-[3rem] border border-white/10">
+                  {viewingClient.photoUrl ? (
+                    <img src={viewingClient.photoUrl} className="w-full aspect-square rounded-[2.5rem] object-cover shadow-2xl" />
+                  ) : (
+                    <div className="w-full aspect-square rounded-[2.5rem] bg-slate-900 flex flex-col items-center justify-center border-2 border-dashed border-slate-800">
+                      <span className="text-6xl font-black text-slate-800">{viewingClient.name.charAt(0).toUpperCase()}</span>
+                      <p className="text-[10px] font-bold text-slate-600 uppercase mt-4 tracking-tighter">Sem Foto de Perfil</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6 space-y-6">
+                  <div>
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Documento Identificador</p>
+                    <p className="text-sm font-bold text-white font-mono">{viewingClient.cpfCnpj || 'Não Informado'}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Tipo</p>
+                      <p className="text-sm font-bold text-white">{viewingClient.type === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Projetos</p>
+                      <p className="text-sm font-bold text-white">{clientProjectCounts[viewingClient.id] || 0} Vinculados</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: CONTACT & LOCATION & TEAM */}
+              <div className="lg:col-span-8 space-y-10">
+                {/* BLOC: CONTACT & LOCATION */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                  <div className="space-y-6">
+                    <h4 className="text-[10px] font-black text-white uppercase tracking-[0.2em] flex items-center italic">
+                      <span className="w-8 h-[1px] bg-indigo-500/50 mr-3"></span>
+                      Dados de Comunicação
+                    </h4>
+                    <div className="bg-white/[0.02] rounded-3xl p-6 space-y-6 border border-white/5">
+                      <div className="flex items-start space-x-4">
+                        <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-400 mt-1">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">E-mail Principal</p>
+                          <p className="text-sm font-bold text-white truncate max-w-[200px]">{viewingClient.email || 'N/A'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-4">
+                        <div className="p-2 bg-emerald-500/10 rounded-lg text-emerald-400 mt-1">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Telefone / WhatsApp</p>
+                          <p className="text-sm font-bold text-white">{viewingClient.phone || 'N/A'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <h4 className="text-[10px] font-black text-white uppercase tracking-[0.2em] flex items-center italic">
+                      <span className="w-8 h-[1px] bg-indigo-500/50 mr-3"></span>
+                      Localização
+                    </h4>
+                    <div className="bg-white/[0.02] rounded-3xl p-6 space-y-5 border border-white/5">
+                      <div>
+                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Endereço Completo</p>
+                        <p className="text-sm font-bold text-white leading-snug">
+                          {viewingClient.address ? `${viewingClient.address}${viewingClient.number ? `, ${viewingClient.number}` : ''}` : 'Endereço não informado'}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          {viewingClient.neighborhood && `${viewingClient.neighborhood} — `}
+                          {viewingClient.city} / {viewingClient.state}
+                        </p>
+                        {viewingClient.complement && (
+                          <p className="text-[10px] text-indigo-400 font-bold mt-2 bg-indigo-500/5 px-2 py-1 rounded-md inline-block uppercase tracking-widest">{viewingClient.complement}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2 pt-2 border-t border-white/5">
+                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-tighter">CEP:</p>
+                        <p className="text-[11px] font-bold text-slate-300 font-mono tracking-wider">{viewingClient.zipCode || '00000-000'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* TEAM SECTION (ONLY FOR PJ) */}
+                {viewingClient.type === 'PJ' && (
+                  <div className="space-y-6">
+                    <h4 className="text-[10px] font-black text-white uppercase tracking-[0.2em] flex items-center italic">
+                      <span className="w-8 h-[1px] bg-indigo-500/50 mr-3"></span>
+                      Corpo Técnico / Contatos Corporativos
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {viewingClient.contacts && viewingClient.contacts.length > 0 ? (
+                        viewingClient.contacts.map((contact) => (
+                          <div key={contact.id} className="bg-slate-900/40 border border-white/5 rounded-2xl p-5 hover:bg-slate-900/60 transition-colors">
+                            <div className="flex items-center justify-between mb-3 pb-3 border-b border-white/5">
+                              <p className="text-sm font-black text-white tracking-tight truncate pr-4">{contact.name}</p>
+                              <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[8px] font-black uppercase rounded-md tracking-widest leading-none">
+                                {contact.department || 'Geral'}
+                              </span>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="flex items-center text-slate-400 text-[10px] font-medium italic underline decoration-indigo-500/30">
+                                {contact.position || 'Colaborador'}
+                              </div>
+                              <div className="flex flex-col space-y-1 pt-2">
+                                <span className="text-[10px] text-slate-300 font-bold flex items-center truncate">
+                                  <svg className="w-3 h-3 mr-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                  {contact.email || '—'}
+                                </span>
+                                <span className="text-[10px] text-emerald-400 font-bold flex items-center">
+                                  <svg className="w-3 h-3 mr-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                                  {contact.phone || '—'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="col-span-full py-8 border border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center opacity-40">
+                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Nenhum contato secundário cadastrado</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
