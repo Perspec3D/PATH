@@ -469,12 +469,11 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                           const isSubtask = task.type === 'subtask';
                           const barHeight = isSubtask ? 'h-5' : 'h-8';
                           const topPos = 16 + (task.laneIndex * 42) + (isSubtask ? 6 : 0);
-
                           return (
                             <div
                               key={task.id}
                               style={{ left: `${offset}px`, width: `${width}px`, top: `${topPos}px` }}
-                              className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
+                              className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 hover:z-50 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
                               onClick={() => {
                                 if (task.type === 'project') openEdit(task);
                                 else openEdit(task.parentProject);
