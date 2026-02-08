@@ -25,6 +25,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
   const [revision, setRevision] = useState('');
   const [startDate, setStartDate] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
+  const [subtasks, setSubtasks] = useState<any[]>([]); // Para edição no modal
 
   const [expandedProjects, setExpandedProjects] = useState<string[]>([]);
 
@@ -45,6 +46,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
     setRevision(project.revision);
     setStartDate(project.startDate || '');
     setDeliveryDate(project.deliveryDate || '');
+    setSubtasks(project.subtasks || []);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -56,11 +58,12 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
       name,
       clientId,
       assigneeId,
-      status,
+      status, // Ensure status is included
       revision,
       startDate,
       deliveryDate,
-      dueDate: deliveryDate
+      dueDate: deliveryDate,
+      subtasks // Persistir as sub-tarefas editadas
     };
 
     try {
@@ -399,17 +402,28 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                     tasksWithLanes.push({ ...task, laneIndex });
                   });
 
-                  const totalLanes = assignedLanes.length || 1;
-                  const rowHeight = Math.max(112, totalLanes * 36 + 40);
+                  // Detectar conflitos por dia (Apenas entre PROJETOS DISTINTOS)
                   const conflictMap = new Map();
                   timelineDates.forEach(date => {
-                    const count = allAssignments.filter((t: any) => {
+                    const distinctRootProjectIds = new Set();
+
+                    allAssignments.forEach((t: any) => {
                       const s = new Date(t.startDate + 'T12:00:00');
                       const e = new Date(t.deliveryDate + 'T12:00:00');
-                      return date >= s && date <= e;
-                    }).length;
-                    if (count > 1) conflictMap.set(date.toDateString(), true);
+                      if (date >= s && date <= e) {
+                        // Se for subtask, o root é o parent. Se for projeto, é o próprio ID.
+                        const rootId = t.type === 'subtask' ? t.parentProject.id : t.id;
+                        distinctRootProjectIds.add(rootId);
+                      }
+                    });
+
+                    if (distinctRootProjectIds.size > 1) {
+                      conflictMap.set(date.toDateString(), true);
+                    }
                   });
+
+                  const totalLanes = assignedLanes.length || 1;
+                  const rowHeight = Math.max(112, totalLanes * 36 + 40); // Base height + 36px per lane + 40px padding
 
                   return (
                     <div className="flex group/user relative hover:bg-slate-800/20 transition-colors" key={user.id}>
@@ -498,7 +512,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
       {
         editingProject && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-            <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl border border-slate-700 p-8 animate-in zoom-in duration-200">
+            <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl border border-slate-700 p-8 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
               <h3 className="text-white font-black uppercase mb-6 text-sm tracking-widest">Consultar / Alterar Cadastro</h3>
               <form onSubmit={handleSave} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -535,6 +549,51 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                     <input type="text" value={revision} onChange={e => setRevision(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" />
                   </div>
                 </div>
+
+                {/* EDIÇÃO DE SUB-TAREFAS */}
+                {subtasks.length > 0 && (
+                  <div className="pt-6 border-t border-slate-800">
+                    <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Cronograma de Sub-tarefas</h4>
+                    <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                      {subtasks.map((st, idx) => (
+                        <div key={st.id} className="bg-slate-900/50 border border-slate-700/50 p-4 rounded-2xl">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-[10px] font-bold text-white uppercase truncate flex-1 mr-4">{st.name}</span>
+                            <span className={`px-2 py-0.5 rounded-[4px] text-[8px] font-black uppercase text-white ${getStatusColor(st.status)}`}>{st.status}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Início ST</label>
+                              <input
+                                type="date"
+                                value={st.startDate || ''}
+                                onChange={e => {
+                                  const newSts = [...subtasks];
+                                  newSts[idx] = { ...st, startDate: e.target.value };
+                                  setSubtasks(newSts);
+                                }}
+                                className="w-full bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-white outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Entrega ST</label>
+                              <input
+                                type="date"
+                                value={st.deliveryDate || ''}
+                                onChange={e => {
+                                  const newSts = [...subtasks];
+                                  newSts[idx] = { ...st, deliveryDate: e.target.value };
+                                  setSubtasks(newSts);
+                                }}
+                                className="w-full bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-white outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="flex space-x-3 pt-6 border-t border-slate-800">
                   <button type="button" onClick={() => setEditingProject(null)} className="flex-1 bg-slate-800 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-500 hover:text-white transition">Cancelar</button>
                   <button type="submit" className="flex-1 bg-indigo-600 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all">Salvar Projeto</button>
