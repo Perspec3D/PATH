@@ -426,7 +426,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                   const rowHeight = Math.max(112, totalLanes * 42 + 40); // Increased lane height to 42px for better spacing
 
                   return (
-                    <div className="flex group/user relative hover:bg-slate-800/20 transition-colors" key={user.id}>
+                    <div className="flex group/user relative hover:bg-slate-800/20 transition-all duration-300 hover:z-[60]" key={user.id}>
                       {/* Sidebar Usuário */}
                       <div style={{ height: `${rowHeight}px` }} className="w-80 px-6 flex items-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm transition-all border-l-4 border-emerald-500/20">
                         <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-slate-400 font-black text-sm uppercase overflow-hidden mr-4">
@@ -559,9 +559,22 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                     <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                       {subtasks.map((st, idx) => (
                         <div key={st.id} className="bg-slate-900/50 border border-slate-700/50 p-4 rounded-2xl">
-                          <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center justify-between mb-4">
                             <span className="text-[10px] font-bold text-white uppercase truncate flex-1 mr-4">{st.name}</span>
-                            <span className={`px-2 py-0.5 rounded-[4px] text-[8px] font-black uppercase text-white ${getStatusColor(st.status)}`}>{st.status}</span>
+                            <div className="flex items-center space-x-3">
+                              <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest hidden md:block">Status Etapa</label>
+                              <select
+                                value={st.status}
+                                onChange={e => {
+                                  const newSts = [...subtasks];
+                                  newSts[idx] = { ...st, status: e.target.value as ProjectStatus };
+                                  setSubtasks(newSts);
+                                }}
+                                className={`px-2 py-1 rounded-[6px] text-[8px] font-black uppercase text-white outline-none cursor-pointer transition-all hover:brightness-110 shadow-sm ${getStatusColor(st.status)} border border-white/10`}
+                              >
+                                {Object.values(ProjectStatus).map(s => <option key={s} value={s} className="bg-slate-900 border-none">{s}</option>)}
+                              </select>
+                            </div>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
