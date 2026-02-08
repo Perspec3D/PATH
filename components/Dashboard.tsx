@@ -196,12 +196,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       return new Date(p.deliveryDate) <= fortyEightHours;
     }).length;
 
-    // Índice de Fragmentação (Mais de 3 projetos ativos por usuário - Dispersão de atenção)
-    const fragmentedUsersCount = Object.entries(userStatusMatrix)
-      .filter(([_, statusData]: any) => {
-        const total = (statusData[ProjectStatus.QUEUE] || 0) + (statusData[ProjectStatus.IN_PROGRESS] || 0) + (statusData[ProjectStatus.PAUSED] || 0);
-        return total > 3;
-      }).length;
+    // 4. Métrica de Carga Unificada (Projetos + Sub-tarefas)
+    const userWorkloadSummary = users.map(u => {
+      const projectsOnRadar = new Set<string>();
+      let activeTasksCount = 0;
+
+      activeProjects.forEach(p => {
+        let isUserInvolved = false;
+        if (p.assigneeId === u.id) {
+          isUserInvolved = true;
+          activeTasksCount++;
+        }
+
+        p.subtasks?.forEach(st => {
+          if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
+            isUserInvolved = true;
+            activeTasksCount++;
+          }
+        });
+
+        if (isUserInvolved) {
+          projectsOnRadar.add(p.id);
+        }
+      });
+
+      return {
+        userId: u.id,
+        projectsCount: projectsOnRadar.size,
+        tasksCount: activeTasksCount
+      };
+    });
+
+    // Filtros de Risco Reais
+    const fragmentedUsersCount = userWorkloadSummary.filter(w => w.projectsCount >= 4).length; // Muita troca de projeto
+    const overloadedUsersCount = userWorkloadSummary.filter(w => w.tasksCount >= 6).length; // Muita tarefa total (Projetos + ST)
 
     // Conflitos de Escala (Sobreposição temporal de projetos diferentes para o mesmo usuário)
     let scaleConflictsCount = 0;
@@ -240,9 +268,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       throughput: { created: createdLast7, done: doneLast7, factor: throughputFactor },
       inertia: inertiaRiskCount,
       fragmentation: fragmentedUsersCount,
+      overloaded: overloadedUsersCount,
       conflicts: scaleConflictsCount
     };
-  }, [projects, activeProjects, userStatusMatrix, users]);
+  }, [projects, activeProjects, users]);
 
   const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f97316', '#10b981'];
 
@@ -330,7 +359,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* VAZÃO OPERACIONAL */}
         <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
-          {/* DECORATOR CLIPPING LAYER */}
           <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
             <div className="absolute -bottom-4 -right-4 opacity-5 group-hover:opacity-10 transition-opacity">
               <TrendingUp size={100} />
@@ -360,7 +388,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
         {/* RISCO DE INÉRCIA */}
         <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
-          {/* DECORATOR CLIPPING LAYER */}
           <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
             <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
               <Clock size={80} />
@@ -387,9 +414,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           </div>
         </div>
 
-        {/* ÍNDICE DE FRAGMENTAÇÃO E CONFLITO */}
+        {/* ÍNDICE DE RISCOS DE ESCALA */}
         <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
-          {/* DECORATOR CLIPPING LAYER */}
           <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
             <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
               <Users size={80} />
@@ -398,31 +424,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           <div className="relative z-10">
             <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
               Riscos de Escala
-              <InfoTooltip title="Fragmentação vs Conflito" content="Fragmentação: Profissionais com >3 projetos (troca de contexto excessiva). Conflito: Profissionais com projetos diferentes ocorrendo no mesmo período." />
+              <InfoTooltip title="Análise de Carga" content="Fragmentação: Profissionais com >3 projetos (dispersão). Sobrecarga: Profissionais com >5 tarefas ativas (excesso de volume). Conflito: Sobreposição temporal real entre projetos." />
             </h4>
             <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                <div className="flex items-center space-x-4">
-                  <span className={`text-4xl font-black ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-700'}`}>
+              <div className="flex items-center justify-between border-b border-white/5 pb-4 px-2">
+                <div className="flex flex-col items-center">
+                  <span className={`text-3xl font-black ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-800'}`}>
                     {dashboard2Logics.fragmentation}
                   </span>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase leading-tight">
-                    Alta <br />Fragmentação
-                  </p>
+                  <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Fragmentados</p>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <span className={`text-4xl font-black ${dashboard2Logics.conflicts > 0 ? 'text-rose-500' : 'text-slate-700'}`}>
+                <div className="flex flex-col items-center">
+                  <span className={`text-3xl font-black ${dashboard2Logics.overloaded > 0 ? 'text-orange-500' : 'text-slate-800'}`}>
+                    {dashboard2Logics.overloaded}
+                  </span>
+                  <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Sobrecarga</p>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className={`text-3xl font-black ${dashboard2Logics.conflicts > 0 ? 'text-rose-500' : 'text-slate-800'}`}>
                     {dashboard2Logics.conflicts}
                   </span>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase leading-tight">
-                    Conflitos <br />de Data
-                  </p>
+                  <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Conflitos</p>
                 </div>
               </div>
               <p className="text-[9px] text-slate-500 font-medium leading-relaxed italic">
-                {dashboard2Logics.conflicts > 0
-                  ? "⚠️ Reorganize prazos no Cronograma de Atribuições para resolver sobreposições."
-                  : "Escala temporal saudável, sem sobreposições críticas entre projetos."}
+                {dashboard2Logics.conflicts > 0 || dashboard2Logics.overloaded > 0 || dashboard2Logics.fragmentation > 0
+                  ? "⚠️ Risco elevado Detectado. redistribua tarefas via Cronograma."
+                  : "Escala e carga operacional saudável."}
               </p>
             </div>
           </div>
