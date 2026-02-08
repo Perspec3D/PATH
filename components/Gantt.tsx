@@ -304,9 +304,17 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
             <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl border border-slate-700 p-8 animate-in zoom-in duration-200">
               <h3 className="text-white font-black uppercase mb-6 text-sm tracking-widest">Consultar / Alterar Cadastro</h3>
               <form onSubmit={handleSave} className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Nome do Projeto</label>
-                  <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Código</label>
+                    <div className="w-full bg-slate-900/50 border border-slate-700/50 p-3 rounded-xl text-indigo-400 font-mono font-bold text-xs">
+                      {editingProject.code}
+                    </div>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Nome do Projeto</label>
+                    <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
