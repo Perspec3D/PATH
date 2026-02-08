@@ -373,46 +373,92 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
 
                   if (allAssignments.length === 0) return null;
 
+                  // --- CÁLCULO DE RAIAS E CONFLITOS (INNER LOGIC) ---
+                  const tasksWithLanes: any[] = [];
+                  const assignedLanes: { end: Date }[][] = [];
+                  const sortedAssignments = [...allAssignments].sort((a: any, b: any) =>
+                    new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+                  );
+
+                  sortedAssignments.forEach((task: any) => {
+                    const start = new Date(task.startDate + 'T12:00:00');
+                    const end = new Date(task.deliveryDate + 'T12:00:00');
+                    let laneIndex = 0;
+                    while (true) {
+                      if (!assignedLanes[laneIndex]) {
+                        assignedLanes[laneIndex] = [{ end }];
+                        break;
+                      }
+                      const hasOverlap = assignedLanes[laneIndex].some(occ => start < occ.end);
+                      if (!hasOverlap) {
+                        assignedLanes[laneIndex].push({ end });
+                        break;
+                      }
+                      laneIndex++;
+                    }
+                    tasksWithLanes.push({ ...task, laneIndex });
+                  });
+
+                  const totalLanes = assignedLanes.length || 1;
+                  const rowHeight = Math.max(112, totalLanes * 36 + 40);
+                  const conflictMap = new Map();
+                  timelineDates.forEach(date => {
+                    const count = allAssignments.filter((t: any) => {
+                      const s = new Date(t.startDate + 'T12:00:00');
+                      const e = new Date(t.deliveryDate + 'T12:00:00');
+                      return date >= s && date <= e;
+                    }).length;
+                    if (count > 1) conflictMap.set(date.toDateString(), true);
+                  });
+
                   return (
-                    <div key={user.id} className="flex group/user relative hover:bg-slate-800/20 transition-colors">
+                    <div className="flex group/user relative hover:bg-slate-800/20 transition-colors" key={user.id}>
                       {/* Sidebar Usuário */}
-                      <div className="w-80 px-6 h-28 flex items-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm transition-all border-l-4 border-emerald-500/20">
+                      <div style={{ height: `${rowHeight}px` }} className="w-80 px-6 flex items-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm transition-all border-l-4 border-emerald-500/20">
                         <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-slate-400 font-black text-sm uppercase overflow-hidden mr-4">
                           {user.username.charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <h4 className="text-xs font-black text-slate-100 truncate group-hover:text-emerald-400 transition-colors uppercase tracking-tight">{user.username}</h4>
                           <p className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-widest">{allAssignments.length} Tarefa(s) ativa(s)</p>
+                          {totalLanes > 1 && (
+                            <span className="inline-block mt-2 px-2 py-0.5 bg-red-500/10 border border-red-500/20 text-red-500 text-[8px] font-black rounded-full uppercase tracking-tighter animate-pulse">
+                              Conflito de Prazos
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       {/* Timeline Usuário */}
-                      <div className="flex-1 h-28 relative bg-slate-900/10 overflow-visible">
+                      <div style={{ height: `${rowHeight}px` }} className="flex-1 relative bg-slate-900/10 overflow-visible">
+                        {/* Background Grid & Conflict Highlight */}
                         <div className="absolute inset-0 flex pointer-events-none z-10">
-                          {timelineDates.map((date, i) => (
-                            <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/80 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/10' : ''}`}></div>
-                          ))}
+                          {timelineDates.map((date, i) => {
+                            const isConflict = conflictMap.has(date.toDateString());
+                            const isToday = date.toDateString() === todayStr;
+                            return (
+                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/80 shrink-0 transition-colors duration-500 ${isConflict ? 'bg-red-500/10' : ''} ${isToday ? 'bg-orange-500/10 shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}`}>
+                                {isConflict && <div className="w-full h-1 bg-red-500/40 absolute top-0" />}
+                              </div>
+                            );
+                          })}
                         </div>
 
-                        {allAssignments.map((task: any, idx) => {
+                        {tasksWithLanes.map((task: any) => {
                           const start = task.startDate ? new Date(task.startDate + 'T12:00:00') : null;
                           const end = task.deliveryDate ? new Date(task.deliveryDate + 'T12:00:00') : null;
                           if (!start || !end) return null;
-
                           const diffStart = Math.floor((start.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
                           const diffDuration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
                           const offset = diffStart * dayWidth;
                           const width = diffDuration * dayWidth;
-
-                          // Empilhamento vertical simples para não sobrepor barras na mesma linha de usuário
-                          const topPos = task.type === 'project' ? 'top-4' : 'bottom-4';
-                          const barHeight = task.type === 'project' ? 'h-6' : 'h-4';
+                          const topPos = 24 + (task.laneIndex * 36);
 
                           return (
                             <div
                               key={task.id}
-                              style={{ left: `${offset}px`, width: `${width}px` }}
-                              className={`absolute ${topPos} ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task`}
+                              style={{ left: `${offset}px`, width: `${width}px`, top: `${topPos}px` }}
+                              className={`absolute h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
                               onClick={() => {
                                 if (task.type === 'project') openEdit(task);
                                 else openEdit(task.parentProject);
@@ -428,10 +474,8 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                                   <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">{task.type === 'project' ? 'PROJETO PAI' : 'SUB-TAREFA'}</p>
                                   <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(task.status)} text-white`}>{task.status}</span>
                                 </div>
-                                <p className="text-xs font-bold text-white mb-1 leading-tight">{task.name}</p>
-                                {task.type === 'subtask' && (
-                                  <p className="text-[9px] text-slate-500 font-black uppercase mb-3 truncate">Ref: {task.parentProject?.name}</p>
-                                )}
+                                <p className="text-xs font-bold text-white mb-1 leading-tight whitespace-normal">{task.name}</p>
+                                {task.type === 'subtask' && <p className="text-[9px] text-slate-500 font-black uppercase mb-3 truncate">Ref: {task.parentProject?.name}</p>}
                                 <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
                                   <div><p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p><p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p></div>
                                   <div><p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p><p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p></div>
