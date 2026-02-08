@@ -103,8 +103,9 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     const nextCode = customCode || (editingClient ? editingClient.code : getNextClientCode(db.clients));
+    const finalCode = nextCode.padStart(3, '0');
 
-    if (db.clients.some((c: Client) => c.code === nextCode && c.id !== editingClient?.id)) {
+    if (db.clients.some((c: Client) => c.code === finalCode && c.id !== editingClient?.id)) {
       alert('Código já existe!');
       return;
     }
@@ -112,7 +113,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
     const clientData: Client = {
       id: editingClient?.id || crypto.randomUUID(),
       workspaceId: currentUser.workspaceId,
-      code: nextCode,
+      code: finalCode,
       name,
       type,
       status,
@@ -218,7 +219,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser }) => {
                 <tr key={client.id} className="hover:bg-slate-800/20 transition-colors group">
                   <td className="px-8 py-5">
                     <span className="font-mono text-[10px] bg-slate-800 text-indigo-400 px-2 py-1 rounded border border-slate-700 font-bold">
-                      #{client.code}
+                      #{client.code.padStart(3, '0')}
                     </span>
                   </td>
                   <td className="px-8 py-5">
