@@ -27,7 +27,7 @@ const InfoTooltip: React.FC<{ title: string; content: string; calculation?: stri
         <Info size={14} />
       </button>
       {isOpen && (
-        <div className={`absolute ${position === 'top' ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'} left-1/2 -translate-x-1/2 p-4 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] z-[100] w-72 pointer-events-none animate-in fade-in duration-200 ring-1 ring-white/10`}>
+        <div className={`absolute ${position === 'top' ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'} left-1/2 -translate-x-1/2 p-4 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] z-[200] w-72 pointer-events-none animate-in fade-in duration-200 ring-1 ring-white/10`}>
           <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 border-b border-slate-800 pb-2">{title}</p>
           <p className="text-[11px] text-slate-300 font-medium leading-relaxed mb-3">{content}</p>
           {calculation && (
@@ -295,7 +295,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       {/* SEÇÃO 2: INTELIGÊNCIA DE GESTÃO (DASHBOARD 2.0) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* VAZÃO OPERACIONAL */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group overflow-hidden">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
+          {/* DECORATOR CLIPPING LAYER */}
+          <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
+            <div className="absolute -bottom-4 -right-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <TrendingUp size={100} />
+            </div>
+          </div>
           <div className="relative z-10">
             <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
               Vazão Operacional
@@ -316,13 +322,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
               </div>
             )}
           </div>
-          <div className="absolute -bottom-4 -right-4 opacity-5 group-hover:opacity-10 transition-opacity">
-            <TrendingUp size={100} />
-          </div>
         </div>
 
         {/* RISCO DE INÉRCIA */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group overflow-hidden">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
+          {/* DECORATOR CLIPPING LAYER */}
+          <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
+            <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
+              <Clock size={80} />
+            </div>
+          </div>
           <div className="relative z-10">
             <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
               Risco de Inércia
@@ -342,13 +351,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
               </div>
             )}
           </div>
-          <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
-            <Clock size={80} />
-          </div>
         </div>
 
         {/* ÍNDICE DE FRAGMENTAÇÃO */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group overflow-hidden">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
+          {/* DECORATOR CLIPPING LAYER */}
+          <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
+            <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
+              <Users size={80} />
+            </div>
+          </div>
           <div className="relative z-10">
             <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
               Índice de Fragmentação
@@ -368,16 +380,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
               </div>
             )}
           </div>
-          <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
-            <Users size={80} />
-          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* TENDÊNCIA DE PRODUÇÃO - NOVO */}
-        <div className="lg:col-span-2 bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col min-h-[400px] overflow-hidden">
-          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+        <div className="lg:col-span-2 bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col min-h-[400px]">
+          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Tendência de Fluxo
               <InfoTooltip
@@ -414,8 +423,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* CONCENTRAÇÃO DE CLIENTES - NOVO */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col min-h-[400px] overflow-hidden">
-          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col min-h-[400px]">
+          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Concentração
               <InfoTooltip
@@ -464,8 +473,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* EFICIÊNCIA DO TIME - NOVO (BarChart Recharts) */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 min-h-[450px] flex flex-col overflow-hidden">
-          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 min-h-[450px] flex flex-col">
+          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Eficiência Operacional
               <InfoTooltip
@@ -490,8 +499,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* CARGA ATIVA POR USUÁRIO (Melhorado com Stacked Bar) */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col overflow-hidden">
-          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col">
+          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
               Carga Ativa por Usuário
               <InfoTooltip
@@ -535,8 +544,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* RADAR DE ATRASOS */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 overflow-hidden">
-          <div className="px-10 py-8 border-b border-white/5 flex items-center justify-between bg-rose-500/10">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5">
+          <div className="px-10 py-8 border-b border-white/5 flex items-center justify-between bg-rose-500/10 rounded-t-[40px]">
             <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-rose-500 flex items-center">
               <AlertTriangle size={16} className="mr-4 text-rose-500 animate-pulse" />
               Prazos Expirados
@@ -571,8 +580,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* PRÓXIMAS ENTREGAS */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 overflow-hidden">
-          <div className="px-10 py-8 border-b border-white/5 flex items-center justify-between bg-emerald-500/10">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5">
+          <div className="px-10 py-8 border-b border-white/5 flex items-center justify-between bg-emerald-500/10 rounded-t-[40px]">
             <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-emerald-400 flex items-center">
               <Calendar size={16} className="mr-4 text-emerald-500" />
               Próximos 7 Dias
@@ -608,8 +617,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       </div>
 
       {/* NOVO: RANKING TOP 10 CLIENTES (TABELA) */}
-      <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col overflow-hidden">
-        <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+      <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col">
+        <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
           <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
             Ranking Estratégico de Clientes
             <InfoTooltip
