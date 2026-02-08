@@ -410,10 +410,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
             ) : overdueProjects.map((p: Project) => (
               <div key={p.id} className="p-8 hover:bg-rose-500/[0.05] transition-colors group">
                 <div className="flex justify-between items-center">
-                  <div className="min-w-0">
-                    <h4 className="font-bold text-slate-100 truncate group-hover:text-rose-400 transition-colors mb-1">{p.name}</h4>
-                    <p className="text-[10px] text-slate-500 font-mono font-black uppercase tracking-tighter">{p.code.padStart(6, '0')}</p>
-                  </div>
+                  <p className="text-[10px] text-slate-500 font-mono font-black uppercase tracking-tighter">{p.code}</p>
                   <div className="text-right shrink-0 ml-6">
                     <span className="text-sm font-black text-rose-500">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
                     <p className="text-[9px] text-rose-600 uppercase font-black tracking-tighter mt-1.5 bg-rose-500/10 px-3 py-1 rounded-full ring-1 ring-rose-500/20">ATRASO</p>
@@ -444,10 +441,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
             ) : upcomingProjects.map((p: Project) => (
               <div key={p.id} className="p-8 hover:bg-emerald-500/[0.05] transition-colors group">
                 <div className="flex justify-between items-center">
-                  <div className="min-w-0">
-                    <h4 className="font-bold text-slate-100 truncate group-hover:text-emerald-400 transition-colors mb-1">{p.name}</h4>
-                    <p className="text-[10px] text-slate-500 font-mono font-black uppercase tracking-tighter">{p.code.padStart(6, '0')}</p>
-                  </div>
+                  <p className="text-[10px] text-slate-500 font-mono font-black uppercase tracking-tighter">{p.code}</p>
                   <div className="text-right shrink-0 ml-6">
                     <span className="text-sm font-black text-emerald-400">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
                     <p className="text-[9px] text-emerald-500/70 uppercase font-black tracking-tighter mt-1.5 bg-emerald-500/10 px-3 py-1 rounded-full">CHECK-OUT</p>

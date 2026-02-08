@@ -169,7 +169,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                 <div key={project.id} className="flex group/row hover:bg-slate-800/30 transition-colors relative hover:z-[60]">
                   {/* Sidebar Projeto: FIXO NA ESQUERDA */}
                   <div className="w-80 px-6 h-20 flex flex-col justify-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm cursor-pointer group hover:bg-slate-800 transition-all border-l-4 border-transparent" onClick={() => openEdit(project)}>
-                    <span className="text-[9px] font-mono font-black text-indigo-400/40 uppercase tracking-tighter mb-0.5 block">{project.code.padStart(6, '0')}</span>
+                    <span className="text-[9px] font-mono font-black text-indigo-400/40 uppercase tracking-tighter mb-0.5 block">{project.code}</span>
                     <h4 className="text-xs font-black text-slate-100 truncate group-hover:text-indigo-400 leading-tight whitespace-normal">{project.name}</h4>
                     <p className="text-[9px] text-slate-500 font-bold truncate mt-1 italic">{client?.name || 'Cliente s/ Ref.'}</p>
                   </div>
@@ -193,7 +193,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                         {/* TOOLTIP */}
                         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-white/10">
                           <div className="flex items-center justify-between mb-2">
-                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code.padStart(6, '0')}</p>
+                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code}</p>
                             <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>{project.status}</span>
                           </div>
                           <p className="text-xs font-bold text-white mb-3 leading-tight whitespace-normal">{project.name}</p>
@@ -219,45 +219,47 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
       </div>
 
       {/* Edit Modal (Portal para cadastro via cronograma) */}
-      {editingProject && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-          <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl border border-slate-700 p-8 animate-in zoom-in duration-200">
-            <h3 className="text-white font-black uppercase mb-6 text-sm tracking-widest">Consultar / Alterar Cadastro</h3>
-            <form onSubmit={handleSave} className="space-y-4">
-              <div>
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Nome do Projeto</label>
-                <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+      {
+        editingProject && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+            <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl border border-slate-700 p-8 animate-in zoom-in duration-200">
+              <h3 className="text-white font-black uppercase mb-6 text-sm tracking-widest">Consultar / Alterar Cadastro</h3>
+              <form onSubmit={handleSave} className="space-y-4">
                 <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Início</label>
-                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" />
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Nome do Projeto</label>
+                  <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none focus:ring-2 focus:ring-indigo-500" />
                 </div>
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Entrega</label>
-                  <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Início</label>
+                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Entrega</label>
+                    <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" />
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Status</label>
-                  <select value={status} onChange={(e: any) => setStatus(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none">
-                    {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Status</label>
+                    <select value={status} onChange={(e: any) => setStatus(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none">
+                      {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Revisão</label>
+                    <input type="text" value={revision} onChange={e => setRevision(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Revisão</label>
-                  <input type="text" value={revision} onChange={e => setRevision(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" />
+                <div className="flex space-x-3 pt-6 border-t border-slate-800">
+                  <button type="button" onClick={() => setEditingProject(null)} className="flex-1 bg-slate-800 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-500 hover:text-white transition">Cancelar</button>
+                  <button type="submit" className="flex-1 bg-indigo-600 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all">Salvar Projeto</button>
                 </div>
-              </div>
-              <div className="flex space-x-3 pt-6 border-t border-slate-800">
-                <button type="button" onClick={() => setEditingProject(null)} className="flex-1 bg-slate-800 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-500 hover:text-white transition">Cancelar</button>
-                <button type="submit" className="flex-1 bg-indigo-600 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all">Salvar Projeto</button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 };

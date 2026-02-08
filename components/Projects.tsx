@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { Project, ProjectStatus, Client, InternalUser } from '../types';
-import { getNextGlobalProjectSeq, getNextProjectCode, syncProject, AppDB } from '../storage';
+import { getNextGlobalProjectSeq, syncProject, AppDB } from '../storage';
 
 interface ProjectsProps {
   db: AppDB;
@@ -106,21 +106,20 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
     setDeliveryDate(project.deliveryDate || '');
     setPhotoUrl(project.photoUrl || '');
     setNotes(project.notes || '');
-    setCustomCode(project.code);
+    // Extrai a sequência central se seguir o padrão [CLI]-[SEQ]-[YY]
+    const currentSeq = project.code.includes('-') ? project.code.split('-')[1] : project.code;
+    setCustomCode(currentSeq);
     setShowModal(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientId) {
-      alert("Selecione um cliente");
-      return;
-    }
     const client = db.clients.find((c: Client) => c.id === clientId);
     if (!client) return;
 
-    const nextCode = customCode || (editingProject ? editingProject.code : getNextProjectCode(db.projects));
-    const finalCode = nextCode.padStart(6, '0');
+    const yearYY = new Date().getFullYear().toString().slice(-2);
+    const seq = (customCode || getNextGlobalProjectSeq(db.projects)).toString().padStart(6, '0');
+    const finalCode = `${client.code.padStart(3, '0')}-${seq}-${yearYY}`;
 
     if (db.projects.some((p: Project) => p.code === finalCode && p.id !== editingProject?.id)) {
       alert("Este código de projeto já está em uso.");
@@ -201,7 +200,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
   const getPreviewCode = () => {
     const client = db.clients.find((c: Client) => c.id === clientId);
     if (!client) return "---";
-    return getNextProjectCode(db.projects);
+    const seq = getNextGlobalProjectSeq(db.projects);
+    const yearYY = new Date().getFullYear().toString().slice(-2);
+    return `${client.code.padStart(3, '0')}-${seq.toString().padStart(6, '0')}-${yearYY}`;
   };
 
   return (
@@ -298,7 +299,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser }) =>
                     <td className="px-2.5 py-4 text-center">
                       <div className="flex flex-col whitespace-nowrap">
                         <span className="font-mono text-[10px] text-indigo-400 tracking-tighter uppercase font-black">
-                          {project.code.padStart(6, '0')}
+                          {project.code}
                         </span>
                         <span className="text-[8px] text-slate-600 font-black uppercase tracking-widest">{project.revision}</span>
                       </div>
