@@ -428,12 +428,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
             {overdueProjects.length === 0 ? (
               <div className="p-20 text-center text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">Operação em Dia</div>
             ) : overdueProjects.map((p: Project) => (
-              <div key={p.id} className="p-8 hover:bg-rose-500/[0.05] transition-colors group">
+              <div key={p.id} className="p-10 hover:bg-rose-500/[0.05] transition-colors group">
                 <div className="flex justify-between items-center">
-                  <p className="text-[10px] text-slate-500 font-mono font-black uppercase tracking-tighter">{p.code}</p>
-                  <div className="text-right shrink-0 ml-6">
-                    <span className="text-sm font-black text-rose-500">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
-                    <p className="text-[9px] text-rose-600 uppercase font-black tracking-tighter mt-1.5 bg-rose-500/10 px-3 py-1 rounded-full ring-1 ring-rose-500/20">ATRASO</p>
+                  <div className="flex flex-col min-w-0 pr-4">
+                    <h4 className="text-base font-black text-white truncate uppercase tracking-tighter group-hover:text-rose-400 transition-colors">{p.name}</h4>
+                    <p className="text-[12px] text-slate-500 font-mono font-black uppercase tracking-[0.1em] mt-2">{p.code}</p>
+                  </div>
+                  <div className="text-right shrink-0 pl-6">
+                    <span className="text-xl font-black text-rose-500 drop-shadow-[0_0_10px_rgba(244,63,94,0.3)]">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
+                    <div className="mt-2">
+                      <span className="text-[9px] text-rose-600 uppercase font-black tracking-widest bg-rose-500/10 px-4 py-1.5 rounded-full ring-1 ring-rose-500/20">ATRASO</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -459,12 +464,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
             {upcomingProjects.length === 0 ? (
               <div className="p-20 text-center text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">Sem Entregas Agendadas</div>
             ) : upcomingProjects.map((p: Project) => (
-              <div key={p.id} className="p-8 hover:bg-emerald-500/[0.05] transition-colors group">
+              <div key={p.id} className="p-10 hover:bg-emerald-500/[0.05] transition-colors group">
                 <div className="flex justify-between items-center">
-                  <p className="text-[10px] text-slate-500 font-mono font-black uppercase tracking-tighter">{p.code}</p>
-                  <div className="text-right shrink-0 ml-6">
-                    <span className="text-sm font-black text-emerald-400">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
-                    <p className="text-[9px] text-emerald-500/70 uppercase font-black tracking-tighter mt-1.5 bg-emerald-500/10 px-3 py-1 rounded-full">CHECK-OUT</p>
+                  <div className="flex flex-col min-w-0 pr-4">
+                    <h4 className="text-base font-black text-white truncate uppercase tracking-tighter group-hover:text-emerald-400 transition-colors">{p.name}</h4>
+                    <p className="text-[12px] text-slate-500 font-mono font-black uppercase tracking-[0.1em] mt-2">{p.code}</p>
+                  </div>
+                  <div className="text-right shrink-0 pl-6">
+                    <span className="text-xl font-black text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
+                    <div className="mt-2">
+                      <span className="text-[9px] text-emerald-500/70 uppercase font-black tracking-widest bg-emerald-500/10 px-4 py-1.5 rounded-full">CHECK-OUT</span>
+                    </div>
                   </div>
                 </div>
               </div>
