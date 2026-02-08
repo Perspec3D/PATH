@@ -25,6 +25,16 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
   const [startDate, setStartDate] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
 
+  const [expandedProjects, setExpandedProjects] = useState<string[]>([]);
+
+  const toggleExpand = (projectId: string) => {
+    setExpandedProjects(current =>
+      current.includes(projectId)
+        ? current.filter(id => id !== projectId)
+        : [...current, projectId]
+    );
+  };
+
   const openEdit = (project: Project) => {
     setEditingProject(project);
     setName(project.name);
@@ -156,6 +166,9 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
           <div className="flex flex-col divide-y divide-slate-700/80 relative">
             {activeProjects.map((project: Project) => {
               const client = allClients.find((c: Client) => c.id === project.clientId);
+              const isExpanded = expandedProjects.includes(project.id);
+              const hasSubtasks = project.subtasks && project.subtasks.length > 0;
+
               const start = project.startDate ? new Date(project.startDate + 'T12:00:00') : null;
               const end = project.deliveryDate ? new Date(project.deliveryDate + 'T12:00:00') : null;
               let offset = 0; let width = 0;
@@ -166,52 +179,116 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
               }
 
               return (
-                <div key={project.id} className="flex group/row hover:bg-slate-800/30 transition-colors relative hover:z-[60]">
-                  {/* Sidebar Projeto: FIXO NA ESQUERDA */}
-                  <div className="w-80 px-6 h-20 flex flex-col justify-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm cursor-pointer group hover:bg-slate-800 transition-all border-l-4 border-transparent" onClick={() => openEdit(project)}>
-                    <span className="text-[9px] font-mono font-black text-indigo-400/40 uppercase tracking-tighter mb-0.5 block">{project.code}</span>
-                    <h4 className="text-xs font-black text-slate-100 truncate group-hover:text-indigo-400 leading-tight whitespace-normal">{project.name}</h4>
-                    <p className="text-[9px] text-slate-500 font-bold truncate mt-1 italic">{client?.name || 'Cliente s/ Ref.'}</p>
-                  </div>
+                <React.Fragment key={project.id}>
+                  {/* LINHA DO PROJETO PAI */}
+                  <div className="flex group/row hover:bg-slate-800/30 transition-colors relative hover:z-[60]">
+                    {/* Sidebar Projeto: FIXO NA ESQUERDA */}
+                    <div className="w-80 px-6 h-20 flex items-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm group hover:bg-slate-800 transition-all border-l-4 border-transparent">
+                      {hasSubtasks ? (
+                        <button
+                          onClick={() => toggleExpand(project.id)}
+                          className={`w-6 h-6 flex items-center justify-center rounded-lg border border-slate-700 mr-3 transition-colors ${isExpanded ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 text-slate-400 hover:text-white hover:border-slate-500'}`}
+                        >
+                          {isExpanded ? (
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M18 12H6" /></svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 6v12m6-6H6" /></svg>
+                          )}
+                        </button>
+                      ) : (
+                        <div className="w-9" /> // Espaço vazio para alinhar se não tiver subtasks
+                      )}
 
-                  {/* Timeline Row */}
-                  <div className="flex-1 h-20 relative bg-slate-900/10 overflow-visible">
-                    {/* Linhas de Grade Verticais */}
-                    <div className="absolute inset-0 flex pointer-events-none z-10">
-                      {timelineDates.map((date, i) => (
-                        <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/80 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/10 border-x border-orange-500/30' : ''}`}></div>
-                      ))}
+                      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openEdit(project)}>
+                        <span className="text-[9px] font-mono font-black text-indigo-400/40 uppercase tracking-tighter mb-0.5 block">{project.code}</span>
+                        <h4 className="text-xs font-black text-slate-100 truncate group-hover:text-indigo-400 leading-tight whitespace-normal">{project.name}</h4>
+                        <p className="text-[9px] text-slate-500 font-bold truncate mt-1 italic">{client?.name || 'Cliente s/ Ref.'}</p>
+                      </div>
                     </div>
 
-                    {/* Barra de Status */}
-                    {width > 0 && (
-                      <div
-                        style={{ left: `${offset}px`, width: `${width}px` }}
-                        className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(project.status)} border-white/5`}
-                        onClick={() => openEdit(project)}
-                      >
-                        {/* TOOLTIP */}
-                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-white/10">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code}</p>
-                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>{project.status}</span>
-                          </div>
-                          <p className="text-xs font-bold text-white mb-3 leading-tight whitespace-normal">{project.name}</p>
-                          <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
-                            <div>
-                              <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p>
-                              <p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p>
+                    {/* Timeline Row */}
+                    <div className="flex-1 h-20 relative bg-slate-900/10 overflow-visible">
+                      <div className="absolute inset-0 flex pointer-events-none z-10">
+                        {timelineDates.map((date, i) => (
+                          <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/80 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/10 border-x border-orange-500/30' : ''}`}></div>
+                        ))}
+                      </div>
+
+                      {width > 0 && (
+                        <div
+                          style={{ left: `${offset}px`, width: `${width}px` }}
+                          className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(project.status)} border-white/5`}
+                          onClick={() => openEdit(project)}
+                        >
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-white/10">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code}</p>
+                              <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>{project.status}</span>
                             </div>
-                            <div>
-                              <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p>
-                              <p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p>
+                            <p className="text-xs font-bold text-white mb-3 leading-tight whitespace-normal">{project.name}</p>
+                            <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
+                              <div><p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p><p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p></div>
+                              <div><p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p><p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p></div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
+
+                  {/* RENDERIZAÇÃO DAS SUB-TAREFAS SE EXPANDIDO */}
+                  {isExpanded && project.subtasks?.map((st) => {
+                    const stStart = st.startDate ? new Date(st.startDate + 'T12:00:00') : null;
+                    const stEnd = st.deliveryDate ? new Date(st.deliveryDate + 'T12:00:00') : null;
+                    let stOffset = 0; let stWidth = 0;
+                    if (stStart && stEnd) {
+                      const diffStart = Math.floor((stStart.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
+                      const diffDuration = Math.ceil((stEnd.getTime() - stStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                      stOffset = diffStart * dayWidth; stWidth = diffDuration * dayWidth;
+                    }
+
+                    return (
+                      <div key={st.id} className="flex group/sub hover:bg-slate-800/20 transition-colors relative hover:z-[55] bg-slate-900/20">
+                        {/* Sidebar Sub-tarefa */}
+                        <div className="w-80 pl-16 pr-6 h-12 flex flex-col justify-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm border-l-4 border-indigo-500/20">
+                          <h5 className="text-[11px] font-bold text-slate-400 truncate leading-tight">{st.name}</h5>
+                          <p className="text-[8px] text-slate-600 font-black uppercase tracking-widest mt-0.5">
+                            {allUsers.find(u => u.id === st.assigneeId)?.username.split(' ')[0] || 'S/ RESP.'}
+                          </p>
+                        </div>
+
+                        {/* Timeline Sub-tarefa */}
+                        <div className="flex-1 h-12 relative bg-slate-900/5 overflow-visible">
+                          <div className="absolute inset-0 flex pointer-events-none z-10">
+                            {timelineDates.map((date, i) => (
+                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/40 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/5' : ''}`}></div>
+                            ))}
+                          </div>
+
+                          {stWidth > 0 && (
+                            <div
+                              style={{ left: `${stOffset}px`, width: `${stWidth}px` }}
+                              className={`absolute top-1/2 -translate-y-1/2 h-2.5 rounded-full shadow-sm transition-all duration-300 hover:brightness-125 z-20 ${getStatusColor(st.status)} opacity-60 hover:opacity-100 animate-in fade-in duration-500`}
+                            >
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl opacity-0 group-hover/sub:opacity-100 transition-all transform translate-y-1 group-hover/sub:translate-y-0 z-[100] pointer-events-none shadow-2xl min-w-[180px] ring-1 ring-white/5">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">SUB-TAREFA</p>
+                                  <span className={`px-1.5 py-0.5 rounded-[4px] text-[7px] font-black uppercase tracking-widest ${getStatusColor(st.status)} text-white`}>{st.status}</span>
+                                </div>
+                                <p className="text-[10px] font-bold text-white mb-2 leading-tight">{st.name}</p>
+                                <div className="flex justify-between items-center text-[9px] font-medium text-slate-400">
+                                  <span>{stStart?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                                  <svg className="w-2 h-2 mx-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                  <span>{stEnd?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
               );
             })}
           </div>
