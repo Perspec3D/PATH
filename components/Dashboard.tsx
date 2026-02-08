@@ -302,16 +302,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
             </h3>
             <PieChart size={20} className="text-indigo-500" />
           </div>
-          <div className="p-4 flex-1">
+          <div className="p-4 flex-1 flex flex-col items-center justify-center min-h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={clientConcentrationData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none">
+                <Pie
+                  data={clientConcentrationData}
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                  stroke="none"
+                  cx="50%"
+                  cy="45%"
+                >
                   {clientConcentrationData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <RechartsTooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
-                <Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }} />
+                <Legend
+                  layout="horizontal"
+                  align="center"
+                  verticalAlign="bottom"
+                  iconType="circle"
+                  wrapperStyle={{
+                    fontSize: '9px',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    paddingTop: '20px'
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
