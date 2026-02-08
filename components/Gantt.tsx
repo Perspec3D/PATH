@@ -512,7 +512,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                             <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{allAssignments.length} Tarefa(s) ativa(s)</p>
                             <p className="text-[9px] text-emerald-500/60 font-black uppercase tracking-widest flex items-center">
                               <span className="w-1 h-1 rounded-full bg-emerald-500 mr-1.5" />
-                              {distinctProjectsCount} {distinctProjectsCount === 1 ? 'Projeto Involvido' : 'Projetos Involvidos'}
+                              {distinctProjectsCount} {distinctProjectsCount === 1 ? 'Projeto' : 'Projetos'}
                             </p>
                           </div>
                           {conflictMap.size > 0 && (
