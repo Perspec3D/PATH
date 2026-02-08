@@ -16,6 +16,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
 
   const [viewMode, setViewMode] = useState<'selector' | 'flow' | 'assignments'>('selector');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [viewingUserCarga, setViewingUserCarga] = useState<any | null>(null);
 
   // Form State for local Edit Modal (Consultancy Base)
   const [name, setName] = useState('');
@@ -441,6 +442,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                       .map(st => ({ ...st, type: 'subtask', parentProject: p }))
                   );
                   const allAssignments = [...userTasks, ...userSubtasks];
+                  const distinctProjectsCount = new Set(allAssignments.map(a => a.type === 'project' ? a.id : a.parentProject?.id)).size;
 
                   if (allAssignments.length === 0) return null;
 
@@ -496,13 +498,23 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                   return (
                     <div className="flex group/user relative hover:bg-slate-800/20 transition-all duration-300 hover:z-[60]" key={user.id}>
                       {/* Sidebar Usuário */}
-                      <div style={{ height: `${rowHeight}px` }} className="w-80 px-6 flex items-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm transition-all border-l-4 border-emerald-500/20">
-                        <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-slate-400 font-black text-sm uppercase overflow-hidden mr-4">
+                      <div
+                        className="w-80 px-6 flex items-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm group hover:bg-slate-800 transition-all cursor-pointer border-l-4 border-transparent hover:border-emerald-500/40"
+                        onClick={() => setViewingUserCarga({ user, assignments: allAssignments, distinctCount: distinctProjectsCount })}
+                        style={{ height: `${rowHeight}px` }}
+                      >
+                        <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-slate-400 font-black text-sm uppercase overflow-hidden mr-4 group-hover:border-emerald-500/50 transition-colors">
                           {user.username.charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <h4 className="text-xs font-black text-slate-100 truncate group-hover:text-emerald-400 transition-colors uppercase tracking-tight">{user.username}</h4>
-                          <p className="text-[9px] text-slate-500 font-bold mt-1 uppercase tracking-widest">{allAssignments.length} Tarefa(s) ativa(s)</p>
+                          <div className="flex flex-col mt-1 space-y-0.5">
+                            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{allAssignments.length} Tarefa(s) ativa(s)</p>
+                            <p className="text-[9px] text-emerald-500/60 font-black uppercase tracking-widest flex items-center">
+                              <span className="w-1 h-1 rounded-full bg-emerald-500 mr-1.5" />
+                              {distinctProjectsCount} {distinctProjectsCount === 1 ? 'Projeto Involvido' : 'Projetos Involvidos'}
+                            </p>
+                          </div>
                           {conflictMap.size > 0 && (
                             <span className="inline-block mt-2 px-2 py-0.5 bg-red-500/10 border border-red-500/20 text-red-500 text-[8px] font-black rounded-full uppercase tracking-tighter animate-pulse">
                               Conflito de Prazos
@@ -711,6 +723,107 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
           </div>
         )
       }
+      {/* MODAL DE RESUMO DE CARGA */}
+      {viewingUserCarga && (
+        <UserCargaModal
+          data={viewingUserCarga}
+          onClose={() => setViewingUserCarga(null)}
+          getStatusColor={getStatusColor}
+          getProjectMarkerColor={getProjectMarkerColor}
+        />
+      )}
     </div >
+  );
+};
+
+// --- MODAL DE RESUMO DE CARGA ---
+const UserCargaModal: React.FC<{
+  data: { user: InternalUser, assignments: any[], distinctCount: number },
+  onClose: () => void,
+  getStatusColor: (s: ProjectStatus) => string,
+  getProjectMarkerColor: (id: string) => string
+}> = ({ data, onClose, getStatusColor, getProjectMarkerColor }) => {
+  // Agrupar tarefas por projeto pai
+  const groupedTasks = data.assignments.reduce((acc: any, task: any) => {
+    const parentId = task.type === 'project' ? task.id : task.parentProject.id;
+    if (!acc[parentId]) {
+      acc[parentId] = {
+        project: task.type === 'project' ? task : task.parentProject,
+        tasks: []
+      };
+    }
+    acc[parentId].tasks.push(task);
+    return acc;
+  }, {});
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-slate-900 border border-white/10 rounded-[40px] shadow-[0_30px_100px_rgba(0,0,0,0.8)] overflow-hidden animate-in zoom-in duration-300">
+        {/* Header Modal */}
+        <div className="px-8 py-8 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-emerald-500/5 to-transparent">
+          <div className="flex items-center space-x-5">
+            <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-black text-2xl uppercase shadow-inner">
+              {data.user.username.charAt(0)}
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-white uppercase tracking-tighter">{data.user.username}</h2>
+              <div className="flex items-center space-x-3 mt-1">
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em]">{data.assignments.length} Tarefa(s) Totais</p>
+                <span className="w-1 h-1 rounded-full bg-slate-700" />
+                <p className="text-[10px] text-emerald-500 font-black uppercase tracking-[0.2em]">{data.distinctCount} Projetos</p>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-800 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 transition-all">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-8 max-h-[60vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+          <div className="space-y-8">
+            {Object.values(groupedTasks).map((group: any) => (
+              <div key={group.project.id} className="bg-slate-800/20 border border-white/5 rounded-3xl p-6 hover:bg-slate-800/40 transition-colors group">
+                <div className="flex items-center justify-between mb-4 pb-4 border-b border-white/5">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-3 h-3 rounded-full shadow-sm ${getProjectMarkerColor(group.project.id)}`} />
+                    <div>
+                      <h4 className="text-sm font-black text-white group-hover:text-emerald-400 transition-colors uppercase">{group.project.name}</h4>
+                      <p className="text-[10px] text-indigo-400/60 font-mono font-bold mt-0.5">{group.project.code}</p>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(group.project.status)} text-white`}>
+                    {group.project.status}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {group.tasks.map((t: any) => (
+                    <div key={t.id} className="flex items-center justify-between pl-6 relative">
+                      <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-slate-700" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-slate-300 truncate">{t.name}</p>
+                        <p className="text-[9px] text-slate-500 font-medium uppercase mt-0.5 tracking-tighter">
+                          {t.startDate ? new Date(t.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'S/ data'} → {t.deliveryDate ? new Date(t.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'S/ data'}
+                        </p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-lg text-[7px] font-black uppercase tracking-widest ${getStatusColor(t.status)} text-white/90`}>
+                        {t.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-8 py-6 bg-slate-950/40 border-t border-white/5 text-center">
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">Painel de Controle de Carga Operacional</p>
+        </div>
+      </div>
+    </div>
   );
 };
