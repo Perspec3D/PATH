@@ -29,6 +29,15 @@ const App: React.FC = () => {
   const [isEmailConfirmed, setIsEmailConfirmed] = useState(true);
   const [isResending, setIsResending] = useState(false);
   const [resendStatus, setResendStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [selectedLicenseCount, setSelectedLicenseCount] = useState(1);
+
+  // Initialize selectedLicenseCount based on active users when data is loaded
+  useEffect(() => {
+    if (db.users.length > 0) {
+      const activeCount = db.users.filter(u => u.isActive).length;
+      setSelectedLicenseCount(Math.max(1, activeCount));
+    }
+  }, [db.users]);
 
   // Sync with Supabase on Login
   useEffect(() => {
@@ -307,7 +316,7 @@ const App: React.FC = () => {
       try {
         const { data, error } = await supabase.functions.invoke('create-subscription', {
           body: {
-            userCount: db.users.filter(u => u.isActive).length || 1,
+            userCount: selectedLicenseCount,
             companyEmail: db.company.email,
             companyId: db.company.id,
             backUrl: window.location.href
@@ -369,31 +378,46 @@ const App: React.FC = () => {
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
-              <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 text-left hover:border-indigo-500/50 transition-colors group">
-                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 group-hover:text-indigo-400">Plano Profissional</h3>
-                <div className="flex items-baseline space-x-1 mb-4">
-                  <span className="text-2xl font-black text-white">R$ 29,90</span>
-                  <span className="text-xs text-slate-500 font-bold">/usuário/mês</span>
+              <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 text-left hover:border-indigo-500/50 transition-colors group flex flex-col justify-between">
+                <div>
+                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 group-hover:text-indigo-400">Plano Profissional</h3>
+                  <div className="flex items-baseline space-x-1 mb-4">
+                    <span className="text-2xl font-black text-white">R$ {(selectedLicenseCount * 29.9).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-xs text-slate-500 font-bold">/mês ({selectedLicenseCount} {selectedLicenseCount === 1 ? 'user' : 'users'})</span>
+                  </div>
                 </div>
-                <ul className="text-[10px] text-slate-400 space-y-2 uppercase font-black tracking-wider">
-                  <li className="flex items-center space-x-2">
-                    <svg className="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                    <span>Dashboard Analytics</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <svg className="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                    <span>Cronograma Gantt ilimitado</span>
-                  </li>
-                </ul>
+
+                <div className="flex items-center space-x-4 bg-slate-800/50 p-3 rounded-2xl border border-white/5">
+                  <button
+                    onClick={() => setSelectedLicenseCount(prev => Math.max(1, prev - 1))}
+                    className="w-10 h-10 bg-slate-700 hover:bg-slate-600 rounded-xl flex items-center justify-center text-white transition-all active:scale-90"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M20 12H4" /></svg>
+                  </button>
+                  <div className="flex-1 text-center">
+                    <span className="text-xl font-black text-white">{selectedLicenseCount}</span>
+                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Quantidade</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedLicenseCount(prev => prev + 1)}
+                    className="w-10 h-10 bg-indigo-600 hover:bg-indigo-500 rounded-xl flex items-center justify-center text-white transition-all active:scale-90 shadow-lg shadow-indigo-500/20"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                  </button>
+                </div>
               </div>
 
               <div
                 className="bg-emerald-600 rounded-3xl p-1 flex flex-col shadow-lg shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer h-full min-h-[120px]"
                 onClick={handleCheckoutOnExpired}
               >
-                <div className="flex-1 flex flex-col items-center justify-center text-white">
+                <div className="flex-1 flex flex-col items-center justify-center text-white p-6">
                   <span className="text-lg font-black uppercase tracking-tight">Ativar Agora</span>
                   <span className="text-[10px] font-bold opacity-70">Checkout Mercado Pago</span>
+                  <div className="mt-4 pt-4 border-t border-white/10 w-full text-center">
+                    <span className="text-md font-black">R$ {(selectedLicenseCount * 29.9).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <p className="text-[8px] font-bold uppercase opacity-50 tracking-widest">Valor Final Mensal</p>
+                  </div>
                 </div>
               </div>
             </div>
