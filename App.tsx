@@ -43,7 +43,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (companySession) {
       const loadData = async () => {
-        setIsLoading(true);
+        // Silent Loading: Only show full screen loading if we don't have company data yet
+        if (!db.company) {
+          setIsLoading(true);
+        }
         try {
           const { data: { user } } = await supabase.auth.getUser();
           setIsEmailConfirmed(!!user?.email_confirmed_at);
@@ -97,6 +100,12 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setIsEmailConfirmed(!!session.user.email_confirmed_at);
+        
+        // Guard: Avoid unnecessary state updates if it's the same user
+        if (companySession?.id === session.user.id) {
+          return;
+        }
+
         const company: Company = {
           id: session.user.id,
           name: session.user.user_metadata.company_name || 'PERSPEC PATH',
@@ -120,6 +129,13 @@ const App: React.FC = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setIsEmailConfirmed(!!session.user.email_confirmed_at);
+
+        // Guard: Avoid unnecessary state updates if it's the same user
+        if (companySession?.id === session.user.id) {
+          setIsLoading(false);
+          return;
+        }
+
         const company: Company = {
           id: session.user.id,
           name: session.user.user_metadata.company_name || 'PERSPEC PATH',
