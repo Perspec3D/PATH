@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Info, CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar, Trophy, Medal } from 'lucide-react';
+import { Info, CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar, Trophy, Medal, Eye, ArrowRight } from 'lucide-react';
 
 interface DashboardProps {
   db: AppDB;
@@ -43,9 +43,102 @@ const InfoTooltip: React.FC<{ title: string; content: string; calculation?: stri
     </div>
   );
 };
+const UserDetailModal: React.FC<{
+  user: { id: string; name: string; projects: Set<string>; stats: Record<string, number> };
+  projects: Project[];
+  onClose: () => void;
+}> = ({ user, projects, onClose }) => {
+  const userProjects = projects.filter(p => user.projects.has(p.id));
+  const userSubtasks = projects.flatMap(p =>
+    (p.subtasks || [])
+      .filter(st => st.assigneeId === user.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED)
+      .map(st => ({ ...st, parentProjectName: p.name, parentProjectCode: p.code }))
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-300">
+      <div className="bg-white dark:bg-[#0f172a] rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 dark:border-white/5 flex flex-col max-h-[85vh] transition-all">
+        {/* Header */}
+        <div className="px-8 py-6 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl text-indigo-600 dark:text-indigo-400">
+              <Users size={20} />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">{user.name}</h3>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-1">Detalhamento de Carga Ativa</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300 dark:hover:bg-white/20 transition-all active:scale-95"
+          >
+            <ArrowRight size={20} className="rotate-180" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-10">
+          {/* Projetos Principais (Onde ele é o titular) */}
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Responsável Principal</h4>
+            <div className="grid gap-3">
+              {userProjects.filter(p => p.assigneeId === user.id).map(p => (
+                <div key={p.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[24px] flex items-center justify-between group hover:border-indigo-500/30 transition-all">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{p.name}</span>
+                    <span className="text-[10px] font-mono font-black text-slate-400 dark:text-slate-500 uppercase mt-1">#{p.code}</span>
+                  </div>
+                  <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${p.status === ProjectStatus.IN_PROGRESS ? 'bg-indigo-500/10 text-indigo-500' :
+                    p.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                      'bg-purple-500/10 text-purple-500'
+                    }`}>
+                    {p.status}
+                  </span>
+                </div>
+              ))}
+              {userProjects.filter(p => p.assigneeId === user.id).length === 0 && (
+                <div className="text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Nenhum projeto sob titularidade</div>
+              )}
+            </div>
+          </div>
+
+          {/* Subtarefas Designadas */}
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Subtarefas em Execução</h4>
+            <div className="grid gap-3">
+              {userSubtasks.map(st => (
+                <div key={st.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[24px] flex flex-col group hover:border-emerald-500/30 transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{st.title}</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${st.status === ProjectStatus.IN_PROGRESS ? 'bg-emerald-500/10 text-emerald-500' :
+                      st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                        'bg-purple-500/10 text-purple-500'
+                      }`}>
+                      {st.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Projeto Pai:</span>
+                    <span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 uppercase truncate">{st.parentProjectName}</span>
+                    <span className="text-[9px] font-mono font-black text-slate-400 dark:text-slate-600">({st.parentProjectCode})</span>
+                  </div>
+                </div>
+              ))}
+              {userSubtasks.length === 0 && (
+                <div className="text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Nenhuma subtarefa designada</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
+  const [viewingUser, setViewingUser] = useState<any>(null);
   const projects = db.projects || [];
   const users = db.users || [];
   const clients = db.clients || [];
@@ -123,10 +216,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
 
   // 5. Matriz de Carga Estratégica (Projetos + Sub-tarefas)
   const userStatusMatrix = useMemo(() => {
-    const matrix: Record<string, { projects: Set<string>; subtasks: number; stats: Record<string, number> }> = {};
+    const matrix: Record<string, { id: string; name: string; projects: Set<string>; subtasks: number; stats: Record<string, number> }> = {};
 
     users.forEach(u => {
       matrix[u.username] = {
+        id: u.id,
+        name: u.username,
         projects: new Set(),
         subtasks: 0,
         stats: {
@@ -811,8 +906,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                   <div key={name} className="group">
                     <div className="flex justify-between items-end mb-4">
                       <div className="flex flex-col">
-                        <span className="text-[11px] font-black text-slate-400 dark:text-slate-400 uppercase tracking-[0.2em] transition-colors group-hover:text-slate-900 dark:group-hover:text-white mb-1.5">{name}</span>
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-2 group-hover:translate-x-1 transition-transform">
+                          <span className="text-[11px] font-black text-slate-400 dark:text-slate-400 uppercase tracking-[0.2em] transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-400 mb-0">{name}</span>
+                          <button
+                            onClick={() => setViewingUser(data)}
+                            className="p-1 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-md hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                          >
+                            <Eye size={12} />
+                          </button>
+                        </div>
+                        <div className="flex items-center space-x-3 mt-3">
                           <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-100 dark:border-indigo-500/20">
                             <span className="text-[11px] font-black text-indigo-700 dark:text-indigo-300">{projectCount}</span>
                             <span className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400/70 uppercase tracking-widest">{projectCount === 1 ? 'Projeto' : 'Projetos'}</span>
@@ -978,6 +1081,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           </div>
         </div>
       </div>
+      {viewingUser && (
+        <UserDetailModal
+          user={viewingUser}
+          projects={projects}
+          onClose={() => setViewingUser(null)}
+        />
+      )}
     </div>
   );
 };
