@@ -44,6 +44,7 @@ const InfoTooltip: React.FC<{ title: string; content: string; calculation?: stri
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
+  const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const projects = db.projects || [];
   const users = db.users || [];
   const clients = db.clients || [];
@@ -264,62 +265,76 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       if (hasConflict) scaleConflictsCount++;
     });
 
-    // 10. Capacidade Operacional da Equipe (Semanal)
+    // 10. Capacidade Operacional da Equipe (Semanal com Previsibilidade)
     const teamCapacity = useMemo(() => {
-      const activeUsersCount = users.filter(u => u.isActive).length;
-      if (activeUsersCount === 0) return { percentage: 0, occupied: 0, total: 0 };
+      const activeUsers = users.filter(u => u.isActive);
+      if (activeUsers.length === 0) return { percentage: 0, occupied: 0, total: 0, userDetails: [] };
 
-      const totalAvailableDays = activeUsersCount * 5; // 5 dias úteis por usuário
+      // Base de cálculo ajustada: se hoje é Sab(6) ou Dom(0), a semana 0 começa na próxima Segunda
+      const baseDate = new Date(now);
+      const currentDay = baseDate.getDay();
 
-      // Definir início e fim da semana atual (Segunda a Sexta)
-      const startOfWeek = new Date(now);
-      const day = startOfWeek.getDay();
-      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Ajuste para Segunda
-      startOfWeek.setDate(diff);
-      startOfWeek.setHours(0, 0, 0, 0);
+      // Ajuste para garantir que a S0 comece na segunda-feira atual ou na próxima (se fds)
+      const startOfS0 = new Date(baseDate);
+      const diffToMonday = currentDay === 0 ? 1 : (currentDay === 6 ? 2 : 1 - currentDay);
+      startOfS0.setDate(baseDate.getDate() + diffToMonday);
+      startOfS0.setHours(0, 0, 0, 0);
+
+      // Range da semana selecionada (Offset 0 a 4)
+      const startOfWeek = new Date(startOfS0);
+      startOfWeek.setDate(startOfS0.getDate() + (selectedWeekOffset * 7));
 
       const endOfWeek = new Date(startOfWeek);
       endOfWeek.setDate(startOfWeek.getDate() + 4); // Sexta
       endOfWeek.setHours(23, 59, 59, 999);
 
+      const totalAvailableDays = activeUsers.length * 5;
       let totalOccupiedDays = 0;
 
-      projects.forEach(p => {
-        p.subtasks?.forEach(st => {
-          // Considerar apenas tarefas não concluídas/canceladas e com responsável
-          if (st.assigneeId && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED && st.startDate && st.deliveryDate) {
-            const stStart = new Date(st.startDate + 'T00:00:00');
-            const stEnd = new Date(st.deliveryDate + 'T23:59:59');
+      const userDetails = activeUsers.map(u => {
+        let userWorkDays = 0;
+        projects.forEach(p => {
+          // Atribuições diretas no projeto (pai) se não houver subtarefas? 
+          // O usuário pediu baseado no cronograma (subtarefas)
+          p.subtasks?.forEach(st => {
+            if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED && st.startDate && st.deliveryDate) {
+              const stStart = new Date(st.startDate + 'T00:00:00');
+              const stEnd = new Date(st.deliveryDate + 'T23:59:59');
 
-            // Intersecção entre a tarefa e a semana atual
-            const overlapStart = new Date(Math.max(stStart.getTime(), startOfWeek.getTime()));
-            const overlapEnd = new Date(Math.min(stEnd.getTime(), endOfWeek.getTime()));
+              const overlapStart = new Date(Math.max(stStart.getTime(), startOfWeek.getTime()));
+              const overlapEnd = new Date(Math.min(stEnd.getTime(), endOfWeek.getTime()));
 
-            if (overlapStart <= overlapEnd) {
-              // Calcular dias úteis na intersecção
-              let workDays = 0;
-              const current = new Date(overlapStart);
-              while (current <= overlapEnd) {
-                const dow = current.getDay();
-                if (dow !== 0 && dow !== 6) { // Pular fds
-                  workDays++;
+              if (overlapStart <= overlapEnd) {
+                const current = new Date(overlapStart);
+                while (current <= overlapEnd) {
+                  const dow = current.getDay();
+                  if (dow !== 0 && dow !== 6) userWorkDays++;
+                  current.setDate(current.getDate() + 1);
                 }
-                current.setDate(current.getDate() + 1);
               }
-              totalOccupiedDays += workDays;
             }
-          }
+          });
         });
+        totalOccupiedDays += userWorkDays;
+        return {
+          id: u.id,
+          name: u.username,
+          occupied: userWorkDays,
+          percentage: Math.round((userWorkDays / 5) * 100)
+        };
       });
 
-      const percentage = Math.round((totalOccupiedDays / totalAvailableDays) * 100);
-
       return {
-        percentage,
+        percentage: Math.round((totalOccupiedDays / totalAvailableDays) * 100),
         occupied: totalOccupiedDays,
-        total: totalAvailableDays
+        total: totalAvailableDays,
+        userDetails,
+        weekRange: {
+          start: startOfWeek.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+          end: endOfWeek.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+        }
       };
-    }, [projects, users]);
+    }, [projects, users, selectedWeekOffset]);
 
     return {
       throughput: { created: createdLast7, done: doneLast7, factor: throughputFactor },
@@ -329,7 +344,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       conflicts: scaleConflictsCount,
       teamCapacity
     };
-  }, [projects, activeProjects, users]);
+  }, [projects, activeProjects, users, selectedWeekOffset]);
 
   const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f97316', '#10b981'];
 
@@ -414,7 +429,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       </div>
 
       {/* SEÇÃO 2: INTELIGÊNCIA DE GESTÃO (DASHBOARD 2.0) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
         {/* VAZÃO OPERACIONAL */}
         <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
           <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
@@ -436,39 +451,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 <span className="text-[10px] font-black text-slate-400 uppercase">vs {dashboard2Logics.throughput.created} novos</span>
               </div>
             </div>
-            {dashboard2Logics.throughput.factor < 0.8 && (
-              <div className="mt-4 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full inline-block">
-                <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest animate-pulse">Gargalo Detectado</p>
-              </div>
-            )}
           </div>
         </div>
 
         {/* RISCO DE INÉRCIA */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group text-center lg:text-left">
           <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
             <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
               <Clock size={80} />
             </div>
           </div>
           <div className="relative z-10">
-            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
+            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center justify-center lg:justify-start">
               Risco de Inércia
               <InfoTooltip title="Inertia Alert" content="Projetos que têm entrega em menos de 48 horas e ainda permanecem no status 'Fila'. Exige mobilização imediata do time." />
             </h4>
-            <div className="flex items-center space-x-6">
+            <div className="flex flex-col lg:flex-row items-center space-y-4 lg:space-y-0 lg:space-x-6">
               <span className={`text-5xl font-black ${dashboard2Logics.inertia > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-700'}`}>
                 {dashboard2Logics.inertia}
               </span>
-              <p className="text-[11px] font-bold text-slate-400 uppercase leading-tight pr-8">
+              <p className="text-[11px] font-bold text-slate-400 uppercase leading-tight">
                 {dashboard2Logics.inertia === 1 ? 'Projeto pendente' : 'Projetos pendentes'} <br />em fila crítica
               </p>
             </div>
-            {dashboard2Logics.inertia > 0 && (
-              <div className="mt-4 px-3 py-1 bg-rose-500/20 border border-rose-500/30 rounded-full inline-block shadow-[0_0_15px_rgba(244,63,94,0.2)]">
-                <p className="text-[9px] font-black text-rose-500 uppercase tracking-widest">Mobilização Necessária</p>
-              </div>
-            )}
           </div>
         </div>
 
@@ -484,85 +489,133 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
               Riscos de Escala
               <InfoTooltip title="Análise de Carga" content="Fragmentação: Profissionais com >3 projetos (dispersão). Sobrecarga: Profissionais com >5 tarefas ativas (excesso de volume). Conflito: Sobreposição temporal real entre projetos." />
             </h4>
-            <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-white/5 pb-4 px-2">
-                <div className="flex flex-col items-center">
-                  <span className={`text-3xl font-black ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-800'}`}>
-                    {dashboard2Logics.fragmentation}
-                  </span>
-                  <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Fragmentados</p>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className={`text-3xl font-black ${dashboard2Logics.overloaded > 0 ? 'text-orange-500' : 'text-slate-800'}`}>
-                    {dashboard2Logics.overloaded}
-                  </span>
-                  <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Sobrecarga</p>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className={`text-3xl font-black ${dashboard2Logics.conflicts > 0 ? 'text-rose-500' : 'text-slate-800'}`}>
-                    {dashboard2Logics.conflicts}
-                  </span>
-                  <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Conflitos</p>
-                </div>
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col items-center">
+                <span className={`text-3xl font-black ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-800'}`}>
+                  {dashboard2Logics.fragmentation}
+                </span>
+                <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Filtro</p>
               </div>
-              <p className="text-[9px] text-slate-500 font-medium leading-relaxed italic">
-                {dashboard2Logics.conflicts > 0 || dashboard2Logics.overloaded > 0 || dashboard2Logics.fragmentation > 0
-                  ? "⚠️ Risco elevado Detectado. redistribua tarefas via Cronograma."
-                  : "Escala e carga operacional saudável."}
-              </p>
+              <div className="flex flex-col items-center">
+                <span className={`text-3xl font-black ${dashboard2Logics.overloaded > 0 ? 'text-orange-500' : 'text-slate-800'}`}>
+                  {dashboard2Logics.overloaded}
+                </span>
+                <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Carga</p>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className={`text-3xl font-black ${dashboard2Logics.conflicts > 0 ? 'text-rose-500' : 'text-slate-800'}`}>
+                  {dashboard2Logics.conflicts}
+                </span>
+                <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Conflito</p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* CAPACIDADE OPERACIONAL DA EQUIPE */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
-          <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
-            <div className="absolute -bottom-2 -right-2 opacity-10 group-hover:opacity-20 transition-opacity">
-              <TrendingUp size={80} className="text-indigo-500" />
-            </div>
-          </div>
-          <div className="relative z-10 h-full flex flex-col">
-            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
-              Capacidade Operacional
-              <InfoTooltip
-                title="Saturação da Equipe"
-                content="Percentual de ocupação baseado em 5 dias úteis por usuário ativo. Soma o tempo de todas as subtarefas pendentes alocadas na semana atual."
-                calculation="(Dias_Atribuídos_Semana / (Usuários_Ativos * 5)) * 100"
-              />
-            </h4>
+        {/* --- CARD EXPANDIDO: CAPACIDADE OPERACIONAL PREVISIVA --- */}
+        <div className="lg:col-span-3 bg-[#1e293b]/40 backdrop-blur-3xl p-10 rounded-[48px] border border-white/10 shadow-2xl relative group overflow-hidden">
+          <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl group-hover:bg-indigo-500/20 transition-all duration-1000"></div>
 
-            <div className="flex-1 flex flex-col justify-center">
-              <div className="flex items-end justify-between mb-4">
-                <span className={`text-5xl font-black tracking-tighter ${dashboard2Logics.teamCapacity.percentage > 100 ? 'text-rose-500' :
-                    dashboard2Logics.teamCapacity.percentage > 95 ? 'text-orange-500' :
-                      dashboard2Logics.teamCapacity.percentage > 80 ? 'text-amber-500' :
-                        'text-emerald-400'
-                  }`}>
-                  {dashboard2Logics.teamCapacity.percentage}%
-                </span>
-                <div className="text-right">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{dashboard2Logics.teamCapacity.occupied} / {dashboard2Logics.teamCapacity.total}</p>
-                  <p className="text-[8px] font-bold text-slate-600 uppercase tracking-tighter">dias/equipe</p>
+          <div className="relative z-10">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
+              <div>
+                <h3 className="text-[12px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-2 px-2">Capacidade Operacional da Equipe</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest px-2">Sincronizado com Ciclo Médio de {avgExecutionTime} dias</p>
+              </div>
+
+              {/* Seletor de Semanas */}
+              <div className="flex bg-slate-900/80 p-1.5 rounded-2xl border border-slate-700/50 shadow-inner">
+                {[0, 1, 2, 3, 4].map(w => (
+                  <button
+                    key={w}
+                    onClick={() => setSelectedWeekOffset(w)}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all flex flex-col items-center min-w-[64px] ${selectedWeekOffset === w
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 ring-1 ring-white/20'
+                        : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+                      }`}
+                  >
+                    <span>{w === 0 ? 'Atual' : `Sêman. ${w}`}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+              {/* Resumo Global */}
+              <div className="lg:col-span-5 flex items-center space-x-8 border-r border-slate-800/50 pr-8">
+                <div className="relative">
+                  <svg className="w-32 h-32 transform -rotate-90 drop-shadow-[0_0_15px_rgba(99,102,241,0.2)]">
+                    <circle cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-800" />
+                    <circle
+                      cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="12" fill="transparent"
+                      className={`transition-all duration-1000 ${dashboard2Logics.teamCapacity.percentage > 100 ? 'text-rose-500' :
+                          dashboard2Logics.teamCapacity.percentage > 95 ? 'text-orange-500' :
+                            dashboard2Logics.teamCapacity.percentage > 80 ? 'text-amber-500' :
+                              'text-emerald-500'
+                        }`}
+                      strokeDasharray={351.8}
+                      strokeDashoffset={351.8 - (351.8 * Math.min(100, dashboard2Logics.teamCapacity.percentage)) / 100}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-3xl font-black text-white">{dashboard2Logics.teamCapacity.percentage}%</span>
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Global</span>
+                  </div>
+                </div>
+
+                <div className="flex-1 space-y-4">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ocupação</span>
+                    <span className="text-xl font-black text-white">{dashboard2Logics.teamCapacity.occupied} <span className="text-[10px] text-slate-500">dias</span></span>
+                  </div>
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Disponível</span>
+                    <span className="text-xl font-black text-slate-700">{dashboard2Logics.teamCapacity.total} <span className="text-[10px] opacity-40">dias</span></span>
+                  </div>
+                  <div className={`text-center py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm ${dashboard2Logics.teamCapacity.percentage > 100 ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' :
+                      dashboard2Logics.teamCapacity.percentage > 95 ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                        dashboard2Logics.teamCapacity.percentage > 80 ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
+                          'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                    }`}>
+                    {dashboard2Logics.teamCapacity.percentage > 100 ? 'Sobrecarga Crítica' :
+                      dashboard2Logics.teamCapacity.percentage > 95 ? 'Limite de Segurança' :
+                        dashboard2Logics.teamCapacity.percentage > 80 ? 'Atenção Necessária' :
+                          'Fluxo Saudável'}
+                  </div>
                 </div>
               </div>
 
-              <div className="h-3 w-full bg-slate-900/50 rounded-full overflow-hidden border border-white/5 p-0.5">
-                <div
-                  className={`h-full rounded-full transition-all duration-1000 ${dashboard2Logics.teamCapacity.percentage > 100 ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.4)]' :
-                      dashboard2Logics.teamCapacity.percentage > 95 ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.4)]' :
-                        dashboard2Logics.teamCapacity.percentage > 80 ? 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]' :
-                          'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]'
-                    }`}
-                  style={{ width: `${Math.min(100, dashboard2Logics.teamCapacity.percentage)}%` }}
-                />
+              {/* Detalhamento por Usuário */}
+              <div className="lg:col-span-7">
+                <div className="flex items-center justify-between mb-6">
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Análise Individual ({dashboard2Logics.teamCapacity.weekRange.start} - {dashboard2Logics.teamCapacity.weekRange.end})</p>
+                  <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Capacidade / Semana</p>
+                </div>
+                <div className="grid grid-cols-2 gap-x-12 gap-y-6">
+                  {dashboard2Logics.teamCapacity.userDetails.map((u: any) => (
+                    <div key={u.id} className="group/user">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-[11px] font-black text-slate-300 uppercase truncate pr-4">{u.name}</span>
+                        <span className={`text-[10px] font-black ${u.percentage > 100 ? 'text-rose-500' : u.percentage > 80 ? 'text-amber-500' : 'text-slate-500'
+                          }`}>{u.percentage}%</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                        <div
+                          className={`h-full rounded-full transition-all duration-1000 ${u.percentage > 100 ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]' :
+                              u.percentage > 80 ? 'bg-amber-500' :
+                                'bg-slate-700 group-hover/user:bg-indigo-500'
+                            }`}
+                          style={{ width: `${Math.min(100, u.percentage)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {dashboard2Logics.teamCapacity.userDetails.length === 0 && (
+                    <div className="col-span-2 text-center py-4 text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Sem dados de alocação para este período</div>
+                  )}
+                </div>
               </div>
-
-              <p className="text-[9px] font-black uppercase tracking-widest mt-4 text-center">
-                {dashboard2Logics.teamCapacity.percentage > 100 ? <span className="text-rose-500 animate-pulse">Sobrecarga Crítica</span> :
-                  dashboard2Logics.teamCapacity.percentage > 95 ? <span className="text-orange-500">Limite de Segurança</span> :
-                    dashboard2Logics.teamCapacity.percentage > 80 ? <span className="text-amber-500">Atenção Necessária</span> :
-                      <span className="text-emerald-500/70">Fluxo Saudável</span>}
-              </p>
             </div>
           </div>
         </div>
