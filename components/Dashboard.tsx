@@ -214,15 +214,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     return last6Months.map(key => months[key]);
   }, [projects]);
 
-  // 5. Matriz de Carga Estratégica (Projetos + Sub-tarefas)
+  // 5. Matriz de Carga Estratégica (Acumulativa: Titularidade + Sub-tarefas)
   const userStatusMatrix = useMemo(() => {
-    const matrix: Record<string, { id: string; name: string; projects: Set<string>; subtasks: number; stats: Record<string, number> }> = {};
+    const matrix: Record<string, { id: string; name: string; mainProjects: number; subtasks: number; stats: Record<string, number> }> = {};
 
     users.forEach(u => {
       matrix[u.username] = {
         id: u.id,
         name: u.username,
-        projects: new Set(),
+        mainProjects: 0,
         subtasks: 0,
         stats: {
           [ProjectStatus.QUEUE]: 0,
@@ -233,21 +233,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     });
 
     activeProjects.forEach((p: Project) => {
-      // 1. Checar se o usuário é o responsável principal
+      // 1. Usuário é o Responsável Principal (Titular)
       if (p.assigneeId) {
         const user = users.find(u => u.id === p.assigneeId);
         if (user) {
-          matrix[user.username].projects.add(p.id);
+          matrix[user.username].mainProjects++;
           matrix[user.username].stats[p.status]++;
         }
       }
 
-      // 2. Checar sub-tarefas ativas
+      // 2. Sub-tarefas ativas
       p.subtasks?.forEach(st => {
-        if (st.assigneeId && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
+        const isActiveST = st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED;
+        if (st.assigneeId && isActiveST) {
           const user = users.find(u => u.id === st.assigneeId);
           if (user) {
-            matrix[user.username].projects.add(p.id);
             matrix[user.username].subtasks++;
             matrix[user.username].stats[st.status]++;
           }
@@ -255,7 +255,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       });
     });
 
-    return Object.entries(matrix).filter(([_, data]) => data.projects.size > 0 || data.subtasks > 0);
+    return Object.entries(matrix).filter(([_, data]) => data.mainProjects > 0 || data.subtasks > 0);
   }, [activeProjects, users]);
 
   // 6. Média de Tempo de Execução (Dias)
@@ -898,9 +898,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           <div className="p-10 flex-1 overflow-y-auto max-h-[400px] custom-scrollbar">
             <div className="space-y-10">
               {userStatusMatrix.map(([name, data]) => {
-                const projectCount = data.projects.size;
+                const projectCount = data.mainProjects;
                 const subtaskCount = data.subtasks;
-                const totalItems = data.stats[ProjectStatus.QUEUE] + data.stats[ProjectStatus.IN_PROGRESS] + data.stats[ProjectStatus.PAUSED];
+                const totalItems = projectCount + subtaskCount;
 
                 return (
                   <div key={name} className="group">
