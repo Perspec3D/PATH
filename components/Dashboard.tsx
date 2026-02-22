@@ -94,8 +94,8 @@ const UserDetailModal: React.FC<{
                     <span className="text-[10px] font-mono font-black text-slate-400 dark:text-slate-500 uppercase mt-1">#{p.code}</span>
                   </div>
                   <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${p.status === ProjectStatus.IN_PROGRESS ? 'bg-indigo-500/10 text-indigo-500' :
-                      p.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
-                        'bg-purple-500/10 text-purple-500'
+                    p.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                      'bg-purple-500/10 text-purple-500'
                     }`}>
                     {p.status}
                   </span>
@@ -116,8 +116,8 @@ const UserDetailModal: React.FC<{
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{st.title}</span>
                     <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${st.status === ProjectStatus.IN_PROGRESS ? 'bg-emerald-500/10 text-emerald-500' :
-                        st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
-                          'bg-purple-500/10 text-purple-500'
+                      st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                        'bg-purple-500/10 text-purple-500'
                       }`}>
                       {st.status}
                     </span>
@@ -1090,6 +1090,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           userId={viewingUser.id}
           userName={viewingUser.name}
           projects={projects}
+          clients={clients}
           onClose={() => setViewingUser(null)}
         />
       )}
