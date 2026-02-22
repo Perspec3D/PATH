@@ -7,9 +7,10 @@ interface SettingsProps {
   db: AppDB;
   setDb: (db: AppDB) => void;
   currentUser: InternalUser;
+  theme: 'dark' | 'light';
 }
 
-export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) => {
+export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, theme }) => {
   const [showUserModal, setShowUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<InternalUser | null>(null);
 
@@ -232,10 +233,10 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
   return (
     <div className="space-y-8 max-w-4xl animate-in fade-in duration-500">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-black text-white tracking-tight">Configurações do Sistema</h1>
+        <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors">Configurações do Sistema</h1>
         <button
           onClick={() => setShowAboutModal(true)}
-          className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-indigo-400 transition flex items-center space-x-2"
+          className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center space-x-2"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           <span>Sobre</span>
@@ -243,9 +244,9 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       </div>
 
       {/* Company Section */}
-      <section className="bg-[#1e293b] rounded-3xl shadow-xl border border-slate-800 overflow-hidden">
-        <div className="px-8 py-6 border-b border-slate-800 bg-slate-800/30">
-          <h2 className="font-black text-xs text-slate-400 uppercase tracking-widest">Workspace / Empresa</h2>
+      <section className="bg-white dark:bg-[#1e293b] rounded-3xl shadow-sm dark:shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
+        <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 transition-colors">
+          <h2 className="font-black text-xs text-slate-400 dark:text-slate-400 uppercase tracking-widest">Workspace / Empresa</h2>
         </div>
         <form onSubmit={handleSaveCompany} className="p-8 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -255,29 +256,30 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
+                autoComplete="organization"
               />
             </div>
             <div>
               <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Licença Atual</label>
-              <div className="flex items-center space-x-3 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-indigo-400 font-bold">
+              <div className="flex items-center space-x-3 px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-indigo-600 dark:text-indigo-400 font-bold transition-colors">
                 <div className={`w-2 h-2 rounded-full ${db.company.licenseStatus === LicenseStatus.ACTIVE ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`}></div>
                 <span className="uppercase tracking-widest">{db.company.licenseStatus}</span>
               </div>
             </div>
           </div>
-          <button type="submit" className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20">
+          <button type="submit" className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 active:scale-95">
             Salvar Alterações
           </button>
         </form>
       </section>
 
       {/* Billing Section */}
-      <section className="bg-[#1e293b] rounded-3xl shadow-xl border border-slate-800 overflow-hidden relative">
-        <div className="px-8 py-6 border-b border-slate-800 bg-slate-800/30 flex justify-between items-center">
-          <h2 className="font-black text-xs text-slate-400 uppercase tracking-widest">Plano e Faturamento</h2>
+      <section className="bg-white dark:bg-[#1e293b] rounded-3xl shadow-sm dark:shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden relative transition-colors">
+        <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex justify-between items-center transition-colors">
+          <h2 className="font-black text-xs text-slate-400 dark:text-slate-400 uppercase tracking-widest">Plano e Faturamento</h2>
           {db.company?.licenseStatus === LicenseStatus.TRIAL && (
-            <span className="text-[10px] font-black bg-amber-500/20 text-amber-500 px-3 py-1 rounded-full uppercase tracking-widest animate-pulse">
+            <span className="text-[10px] font-black bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-500 px-3 py-1 rounded-full uppercase tracking-widest animate-pulse border border-amber-200 dark:border-amber-500/20">
               Período de Teste
             </span>
           )}
@@ -285,12 +287,12 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
         <div className="p-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
             <div>
-              <p className="text-sm text-slate-300 font-medium mb-2">
-                Modelo de Assinatura: <span className="text-indigo-400 font-black uppercase">Per Seat (Por Usuário)</span>
+              <p className="text-sm text-slate-600 dark:text-slate-300 font-medium mb-2 transition-colors">
+                Modelo de Assinatura: <span className="text-indigo-600 dark:text-indigo-400 font-black uppercase">Per Seat (Por Usuário)</span>
               </p>
-              <p className="text-xs text-slate-500 leading-relaxed mb-6">
+              <p className="text-xs text-slate-500 dark:text-slate-500 leading-relaxed mb-6 transition-colors">
                 Sua assinatura é calculada com base no número de usuários ativos.
-                Valor atual: <span className="text-white font-bold">R$ 29,90 / usuário</span>.
+                Valor atual: <span className="text-slate-900 dark:text-white font-bold transition-colors">R$ 29,90 / usuário</span>.
               </p>
               <div className="flex space-x-4">
                 {db.company?.licenseStatus === LicenseStatus.TRIAL ? (
@@ -300,7 +302,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                       setShowSeatModal(true);
                     }}
                     disabled={isProcessingSubscription}
-                    className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+                    className="px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-700 transition shadow-lg shadow-emerald-500/20 disabled:opacity-50 active:scale-95"
                   >
                     {isProcessingSubscription ? 'Processando...' : 'Ativar Assinatura'}
                   </button>
@@ -311,36 +313,36 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                       setShowSeatModal(true);
                     }}
                     disabled={isProcessingSubscription}
-                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+                    className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 disabled:opacity-50 active:scale-95"
                   >
                     {isProcessingSubscription ? 'Processando...' : 'Alterar Assinatura'}
                   </button>
                 )}
               </div>
             </div>
-            <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50 space-y-4">
+            <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800/50 space-y-4 transition-colors">
               <div className="flex justify-between items-center">
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Usuários Contratados</span>
                   {isSyncing && (
-                    <span className="text-[9px] text-indigo-400 font-bold animate-pulse mt-1">Sincronizando...</span>
+                    <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-bold animate-pulse mt-1">Sincronizando...</span>
                   )}
                 </div>
-                <span className="text-sm font-black text-white">{db.company?.licenseStatus === LicenseStatus.TRIAL ? 5 : (db.company?.userLimit || 0)}</span>
+                <span className="text-sm font-black text-slate-900 dark:text-white transition-colors">{db.company?.licenseStatus === LicenseStatus.TRIAL ? 5 : (db.company?.userLimit || 0)}</span>
               </div>
 
-              <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
+              <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-800/50 transition-colors">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Investimento Mensal</span>
-                <span className="text-sm font-black text-emerald-500">
+                <span className="text-sm font-black text-emerald-600 dark:text-emerald-500 transition-colors">
                   {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((db.company?.userLimit || 0) * 29.9)}
                 </span>
               </div>
 
-              <div className="pt-4 border-t border-slate-800/50">
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800/50 transition-colors">
                 <button
                   onClick={handleManualSync}
                   disabled={isSyncing}
-                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center space-x-2"
+                  className="w-full py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-400 hover:text-indigo-600 dark:hover:text-white border border-slate-200 dark:border-transparent rounded-xl text-[10px] font-black uppercase tracking-widest transition flex items-center justify-center space-x-2 shadow-sm dark:shadow-none"
                 >
                   <svg className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                   <span>{isSyncing ? 'Sincronizando...' : 'Atualizar Status'}</span>
@@ -366,9 +368,9 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
               )}
 
               {db.company?.licenseStatus === LicenseStatus.TRIAL && (
-                <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
+                <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-800/50 transition-colors">
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Trial Restante</span>
-                  <span className="text-sm font-black text-amber-500">
+                  <span className="text-sm font-black text-amber-600 dark:text-amber-500 transition-colors">
                     {(() => {
                       const daysPassed = (Date.now() - (db.company?.trialStart || Date.now())) / (1000 * 60 * 60 * 24);
                       const remaining = Math.max(0, Math.ceil(7 - daysPassed));
@@ -379,25 +381,25 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
               )}
 
               {(db.company?.licenseStatus === LicenseStatus.ACTIVE || db.company?.licenseStatus === LicenseStatus.CANCELLED) && db.company?.subscriptionEnd && (
-                <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
+                <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-800/50 transition-colors">
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
                     {db.company.licenseStatus === LicenseStatus.ACTIVE ? 'Próxima Renovação' : 'Acesso Válido Até'}
                   </span>
-                  <span className={`text-sm font-black ${db.company.licenseStatus === LicenseStatus.ACTIVE ? 'text-indigo-400' : 'text-rose-400'}`}>
+                  <span className={`text-sm font-black transition-colors ${db.company.licenseStatus === LicenseStatus.ACTIVE ? 'text-indigo-600 dark:text-indigo-400' : 'text-rose-600 dark:text-rose-400'}`}>
                     {new Date(db.company.subscriptionEnd).toLocaleDateString('pt-BR')}
                   </span>
                 </div>
               )}
 
               {db.company?.licenseStatus === LicenseStatus.ACTIVE && (
-                <div className="pt-4 border-t border-slate-800/50 text-center">
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800/50 text-center transition-colors">
                   <button
                     onClick={handleCancelSubscription}
                     className="text-[10px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-400 transition"
                   >
                     Cancelar Assinatura
                   </button>
-                  <p className="text-[9px] text-slate-600 mt-2">
+                  <p className="text-[9px] text-slate-500 dark:text-slate-600 mt-2 transition-colors">
                     O cancelamento interrompe a renovação automática. Seu acesso continua até o fim do ciclo pago.
                   </p>
                 </div>
@@ -408,17 +410,17 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       </section>
 
       {/* Users Section */}
-      <section className="bg-[#1e293b] rounded-3xl shadow-xl border border-slate-800 overflow-hidden">
-        <div className="px-8 py-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/30">
-          <h2 className="font-black text-xs text-slate-400 uppercase tracking-widest">Usuários Internos</h2>
+      <section className="bg-white dark:bg-[#1e293b] rounded-3xl shadow-sm dark:shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
+        <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/30 transition-colors">
+          <h2 className="font-black text-xs text-slate-400 dark:text-slate-400 uppercase tracking-widest">Usuários Internos</h2>
 
           <div className="flex items-center space-x-4">
             {db.users.filter(u => u.isActive).length > (db.company?.userLimit || 1) && (
-              <span className="text-[10px] font-black text-rose-500 bg-rose-500/10 px-3 py-1 rounded-full uppercase tracking-widest animate-pulse">
+              <span className="text-[10px] font-black text-rose-600 dark:text-rose-500 bg-rose-500/10 px-3 py-1 rounded-full uppercase tracking-widest animate-pulse border border-rose-200 dark:border-rose-500/20">
                 Limite Excedido! Desative usuários.
               </span>
             )}
-            <span className={`text-[9px] font-black uppercase tracking-widest ${db.users.filter(u => u.isActive).length > (db.company?.userLimit || 1) ? 'text-rose-500' : 'text-slate-500'}`}>
+            <span className={`text-[9px] font-black uppercase tracking-widest transition-colors ${db.users.filter(u => u.isActive).length > (db.company?.userLimit || 1) ? 'text-rose-600 dark:text-rose-500' : 'text-slate-400 dark:text-slate-500'}`}>
               Uso: {db.users.filter(u => u.isActive).length} / {db.company?.userLimit || 1}
             </span>
             <button
@@ -432,7 +434,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                 resetUserForm();
                 setShowUserModal(true);
               }}
-              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition ${db.users.length >= (db.company?.licenseStatus === LicenseStatus.TRIAL ? 5 : (db.company?.userLimit || 1)) ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition active:scale-95 ${db.users.length >= (db.company?.licenseStatus === LicenseStatus.TRIAL ? 5 : (db.company?.userLimit || 1)) ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-500/10'}`}
             >
               Novo Usuário
             </button>
@@ -441,25 +443,25 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-900/30 text-[9px] uppercase tracking-widest text-slate-600 font-black border-b border-slate-800">
+              <tr className="bg-slate-50 dark:bg-slate-900/30 text-[9px] uppercase tracking-widest text-slate-500 dark:text-slate-600 font-black border-b border-slate-100 dark:border-slate-800 transition-colors">
                 <th className="px-8 py-4">Username</th>
                 <th className="px-8 py-4">Função</th>
                 <th className="px-8 py-4">Status</th>
                 <th className="px-8 py-4 text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors">
               {db.users.map((user: InternalUser) => (
-                <tr key={user.id} className="text-sm hover:bg-slate-800/30 transition-colors">
-                  <td className="px-8 py-5 font-bold text-slate-100">{user.username}</td>
-                  <td className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-widest">{user.role}</td>
+                <tr key={user.id} className="text-sm hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                  <td className="px-8 py-5 font-bold text-slate-900 dark:text-slate-100 transition-colors">{user.username}</td>
+                  <td className="px-8 py-5 text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest transition-colors">{user.role}</td>
                   <td className="px-8 py-5">
-                    <span className={`inline-block w-2 h-2 rounded-full ${user.isActive ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-700'}`}></span>
+                    <span className={`inline-block w-2 h-2 rounded-full ${user.isActive ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-300 dark:bg-slate-700 transition-colors'}`}></span>
                   </td>
                   <td className="px-8 py-5 text-right space-x-4">
                     <button
                       onClick={() => { setEditingUser(user); setUsername(user.username); setRole(user.role); setIsActive(user.isActive); setShowUserModal(true); }}
-                      className="text-[10px] text-indigo-400 font-black uppercase tracking-widest hover:text-indigo-300 transition"
+                      className="text-[10px] text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-widest hover:text-indigo-700 dark:hover:text-indigo-300 transition"
                     >
                       Editar
                     </button>
@@ -478,11 +480,11 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       </section>
 
       {showUserModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-700">
-            <div className="px-8 py-6 border-b border-slate-800 bg-slate-800/30 flex justify-between items-center">
-              <h3 className="font-black text-white uppercase tracking-widest text-sm">{editingUser ? 'Configurar Usuário' : 'Novo Perfil'}</h3>
-              <button onClick={() => setShowUserModal(false)} className="text-slate-500 hover:text-white transition-colors">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-700 transition-colors duration-500">
+            <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex justify-between items-center transition-colors">
+              <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm transition-colors">{editingUser ? 'Configurar Usuário' : 'Novo Perfil'}</h3>
+              <button onClick={() => setShowUserModal(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-white transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -494,8 +496,9 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
                   placeholder="ex: joao.eng"
+                  autoComplete="username"
                 />
               </div>
               <div>
@@ -505,8 +508,9 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                   required={!editingUser}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
                   placeholder="••••••••"
+                  autoComplete="new-password"
                 />
               </div>
               <div>
@@ -514,15 +518,15 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                 <select
                   value={role}
                   onChange={(e: any) => setRole(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
                 >
                   <option value={UserRole.USER}>Usuário Padrão</option>
                   <option value={UserRole.ADMIN}>Administrador (Master)</option>
                 </select>
               </div>
               <div className="pt-6 flex space-x-3">
-                <button type="button" onClick={() => setShowUserModal(false)} className="flex-1 py-3 bg-slate-800 text-slate-500 rounded-xl text-xs font-black uppercase tracking-widest hover:text-white transition">Cancelar</button>
-                <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition">Salvar Usuário</button>
+                <button type="button" onClick={() => setShowUserModal(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-xs font-black uppercase tracking-widest hover:text-slate-700 dark:hover:text-white transition active:scale-95">Cancelar</button>
+                <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition active:scale-95">Salvar Usuário</button>
               </div>
             </form>
           </div>
@@ -593,10 +597,10 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
               )}
 
               {legalView === 'terms' && (
-                <div className="text-left overflow-y-auto pr-2 custom-scrollbar max-h-[50vh]">
-                  <h3 className="text-lg font-black text-white uppercase tracking-tight mb-4">Termos de Uso</h3>
-                  <div className="text-xs text-slate-400 space-y-4 leading-relaxed font-medium">
-                    <p>Ao utilizar o <span className="text-indigo-400 font-bold">PERSPEC PATH</span>, você concorda com:</p>
+                <div className="text-left overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 max-h-[50vh] transition-colors">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-4 transition-colors">Termos de Uso</h3>
+                  <div className="text-xs text-slate-600 dark:text-slate-400 space-y-4 leading-relaxed font-medium transition-colors">
+                    <p>Ao utilizar o <span className="text-indigo-600 dark:text-indigo-400 font-bold transition-colors">PERSPEC PATH</span>, você concorda com:</p>
                     <p><span className="text-white font-bold">1. Licenciamento:</span> O software é fornecido como serviço (SaaS). A licença é pessoal, intransferível e revogável em caso de violação técnica.</p>
                     <p><span className="text-white font-bold">2. Responsabilidade:</span> O Usuário Administrador é o único responsável pela precisão e legalidade dos dados inseridos. O sistema é uma ferramenta de apoio à gestão.</p>
                     <p><span className="text-white font-bold">3. Uso de Dados:</span> O PERSPEC PATH processa informações operacionais para gerar dashboards e cronogramas. Não garantimos resultados jurídicos baseados nessas automações.</p>
@@ -606,14 +610,14 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
               )}
 
               {legalView === 'privacy' && (
-                <div className="text-left overflow-y-auto pr-2 custom-scrollbar max-h-[50vh]">
-                  <h3 className="text-lg font-black text-white uppercase tracking-tight mb-4">Política de Privacidade</h3>
-                  <div className="text-xs text-slate-400 space-y-4 leading-relaxed font-medium">
-                    <p>Em conformidade com a <span className="text-emerald-400 font-bold">LGPD (Lei 13.709/18)</span>:</p>
-                    <p><span className="text-white font-bold">1. Coleta:</span> Coletamos apenas dados essenciais para o funcionamento do workspace (E-mail, Nome da Empresa e Dados de Projetos).</p>
-                    <p><span className="text-white font-bold">2. Segurança:</span> Utilizamos infraestrutura de nuvem certificada com criptografia de ponta e isolamento de banco de dados (RLS).</p>
-                    <p><span className="text-white font-bold">3. Compartilhamento:</span> Seus dados <span className="text-white font-bold underline">nunca</span> são vendidos. O compartilhamento ocorre apenas com processadores de pagamento (Mercado Pago) para fins de faturamento.</p>
-                    <p><span className="text-white font-bold">4. Direitos:</span> Você pode exportar ou solicitar a exclusão de todos os seus dados a qualquer momento através do suporte oficial.</p>
+                <div className="text-left overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 max-h-[50vh] transition-colors">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-4 transition-colors">Política de Privacidade</h3>
+                  <div className="text-xs text-slate-600 dark:text-slate-400 space-y-4 leading-relaxed font-medium transition-colors">
+                    <p>Em conformidade com a <span className="text-emerald-600 dark:text-emerald-400 font-bold transition-colors">LGPD (Lei 13.709/18)</span>:</p>
+                    <p><span className="text-slate-900 dark:text-white font-bold transition-colors">1. Coleta:</span> Coletamos apenas dados essenciais para o funcionamento do workspace (E-mail, Nome da Empresa e Dados de Projetos).</p>
+                    <p><span className="text-slate-900 dark:text-white font-bold transition-colors">2. Segurança:</span> Utilizamos infraestrutura de nuvem certificada com criptografia de ponta e isolamento de banco de dados (RLS).</p>
+                    <p><span className="text-slate-900 dark:text-white font-bold underline transition-colors">3. Compartilhamento:</span> Seus dados <span className="text-slate-900 dark:text-white font-bold underline transition-colors">nunca</span> são vendidos. O compartilhamento ocorre apenas com processadores de pagamento (Mercado Pago) para fins de faturamento.</p>
+                    <p><span className="text-slate-900 dark:text-white font-bold transition-colors">4. Direitos:</span> Você pode exportar ou solicitar a exclusão de todos os seus dados a qualquer momento através do suporte oficial.</p>
                   </div>
                 </div>
               )}
@@ -623,56 +627,56 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
       )}
 
       {showSeatModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-[#1e293b] rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-700">
-            <div className="p-8 text-center border-b border-slate-800 bg-slate-800/30">
-              <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">Quantos usuários?</h3>
-              <p className="text-slate-400 text-sm">Selecione o número total de licenças que deseja contratar.</p>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-[#1e293b] rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-slate-700 transition-colors duration-500">
+            <div className="p-8 text-center border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 transition-colors">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight mb-2 transition-colors">Quantos usuários?</h3>
+              <p className="text-slate-500 dark:text-slate-400 text-sm transition-colors">Selecione o número total de licenças que deseja contratar.</p>
             </div>
 
             <div className="p-10 space-y-8">
               <div className="flex items-center justify-center space-x-6">
                 <button
                   onClick={() => setTargetSeatCount(Math.max(1, targetSeatCount - 1))}
-                  className="w-12 h-12 rounded-2xl bg-slate-800 text-white hover:bg-slate-700 flex items-center justify-center transition"
+                  className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-white hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center transition active:scale-90"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4" /></svg>
                 </button>
 
                 <div className="text-center">
-                  <span className="text-5xl font-black text-white tracking-tighter">{targetSeatCount}</span>
-                  <span className="block text-xs font-black uppercase tracking-widest text-slate-500 mt-1">Usuários</span>
+                  <span className="text-5xl font-black text-slate-900 dark:text-white tracking-tighter transition-colors">{targetSeatCount}</span>
+                  <span className="block text-xs font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-1 transition-colors">Usuários</span>
                 </div>
 
                 <button
                   onClick={() => setTargetSeatCount(targetSeatCount + 1)}
-                  className="w-12 h-12 rounded-2xl bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center transition shadow-lg shadow-indigo-500/20"
+                  className="w-12 h-12 rounded-2xl bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center transition shadow-lg shadow-indigo-500/20 active:scale-90"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                 </button>
               </div>
 
-              <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 text-center">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Resumo do Investimento</p>
+              <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800 text-center transition-colors">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 transition-colors">Resumo do Investimento</p>
                 <div className="flex items-center justify-center space-x-2">
-                  <span className="text-3xl font-black text-emerald-400">
+                  <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400 transition-colors">
                     {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(targetSeatCount * 29.90)}
                   </span>
-                  <span className="text-xs font-bold text-slate-500">/mês</span>
+                  <span className="text-xs font-bold text-slate-500 transition-colors">/mês</span>
                 </div>
               </div>
 
               <div className="flex space-x-3">
                 <button
                   onClick={() => setShowSeatModal(false)}
-                  className="flex-1 py-4 bg-slate-800 text-slate-400 rounded-2xl text-xs font-black uppercase tracking-widest hover:text-white transition"
+                  className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-2xl text-xs font-black uppercase tracking-widest hover:text-slate-700 dark:hover:text-white transition active:scale-95"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={() => handleActivateSubscription(targetSeatCount)}
                   disabled={isProcessingSubscription}
-                  className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:bg-emerald-700 transition flex items-center justify-center space-x-2 disabled:opacity-70"
+                  className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-emerald-500/20 hover:bg-emerald-700 transition flex items-center justify-center space-x-2 disabled:opacity-70 active:scale-95"
                 >
                   {isProcessingSubscription ? (
                     <span>Gerando Checkout...</span>

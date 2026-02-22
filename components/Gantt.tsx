@@ -7,9 +7,10 @@ interface GanttProps {
   db: AppDB;
   setDb: (db: AppDB) => void;
   currentUser: InternalUser;
+  theme: 'dark' | 'light';
 }
 
-export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
+export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) => {
   const allProjects = db.projects || [];
   const allClients = db.clients || [];
   const allUsers = db.users || [];
@@ -146,13 +147,13 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
         <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-emerald-600/10 rounded-full blur-[100px] animate-pulse pointer-events-none delay-1000" />
 
         <div className="text-center relative z-10 mb-16 animate-in fade-in slide-in-from-top-10 duration-1000">
-          <h1 className="text-5xl font-black text-white tracking-[0.2em] uppercase mb-4 drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-            Central de <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-emerald-400">Cronogramas</span>
+          <h1 className="text-5xl font-black text-slate-900 dark:text-white tracking-[0.2em] uppercase mb-4 drop-shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-colors">
+            Central de <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-emerald-500 dark:from-indigo-400 dark:to-emerald-400">Cronogramas</span>
           </h1>
           <div className="flex items-center justify-center space-x-4">
-            <div className="h-px w-12 bg-gradient-to-r from-transparent to-slate-700" />
-            <p className="text-slate-500 font-black uppercase text-[10px] tracking-[0.4em]">Personalize sua Perspectiva de Gestão</p>
-            <div className="h-px w-12 bg-gradient-to-l from-transparent to-slate-700" />
+            <div className="h-px w-12 bg-gradient-to-r from-transparent to-slate-200 dark:to-slate-700 transition-colors" />
+            <p className="text-slate-400 dark:text-slate-500 font-black uppercase text-[10px] tracking-[0.4em] transition-colors">Personalize sua Perspectiva de Gestão</p>
+            <div className="h-px w-12 bg-gradient-to-l from-transparent to-slate-200 dark:to-slate-700 transition-colors" />
           </div>
         </div>
 
@@ -163,30 +164,30 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
             className="group cursor-pointer relative animate-in fade-in slide-in-from-left-12 duration-1000"
           >
             <div className="absolute inset-0 bg-gradient-to-br from-indigo-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 rounded-[48px] blur-2xl" />
-            <div className="relative bg-slate-900/40 backdrop-blur-2xl border border-white/5 rounded-[48px] p-10 hover:border-indigo-500/50 transition-all duration-500 hover:translate-y-[-8px] shadow-2xl">
+            <div className="relative bg-white/60 dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-white/5 rounded-[48px] p-10 hover:border-indigo-500/50 transition-all duration-500 hover:translate-y-[-8px] shadow-xl dark:shadow-2xl">
               <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-20 group-hover:scale-110 transition-all duration-700">
-                <svg className="w-32 h-32 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="0.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                <svg className="w-32 h-32 text-indigo-500 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="0.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
               </div>
 
               <div className="flex items-center space-x-6 mb-8">
-                <div className="w-20 h-20 bg-indigo-500/10 rounded-[24px] flex items-center justify-center border border-indigo-500/20 group-hover:bg-indigo-500/20 group-hover:scale-110 transition-all duration-500 shadow-inner">
-                  <svg className="w-10 h-10 text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
+                <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-500/10 rounded-[24px] flex items-center justify-center border border-indigo-100 dark:border-indigo-500/20 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-500/20 group-hover:scale-110 transition-all duration-500 shadow-inner">
+                  <svg className="w-10 h-10 text-indigo-500 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
                 </div>
                 <div>
-                  <h3 className="text-3xl font-black text-white uppercase tracking-tighter mb-1">Fluxo <span className="text-indigo-400">Geral</span></h3>
+                  <h3 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tighter mb-1 transition-colors">Fluxo <span className="text-indigo-600 dark:text-indigo-400">Geral</span></h3>
                   <div className="h-1 w-12 bg-indigo-500/40 rounded-full" />
                 </div>
               </div>
 
-              <p className="text-slate-400 text-lg font-medium leading-relaxed mb-10 pr-10">
+              <p className="text-slate-600 dark:text-slate-400 text-lg font-medium leading-relaxed mb-10 pr-10 transition-colors">
                 Acompanhe o pulso operacional através da visão clássica de projetos e suas etapas críticas de entrega.
               </p>
 
               <div className="flex items-center justify-between">
-                <span className="px-5 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[10px] font-black text-indigo-400 uppercase tracking-widest group-hover:bg-indigo-500/30 transition-colors">
+                <span className="px-5 py-2 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-full text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest group-hover:bg-indigo-100 dark:group-hover:bg-indigo-500/30 transition-colors">
                   Alta Performance
                 </span>
-                <div className="flex items-center text-white font-black text-xs uppercase tracking-[0.2em] group-hover:text-indigo-400 transition-colors">
+                <div className="flex items-center text-slate-900 dark:text-white font-black text-xs uppercase tracking-[0.2em] group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                   Explorar Visão <svg className="w-5 h-5 ml-3 animate-bounce-x" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                 </div>
               </div>
@@ -199,30 +200,30 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
             className="group cursor-pointer relative animate-in fade-in slide-in-from-right-12 duration-1000"
           >
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 rounded-[48px] blur-2xl" />
-            <div className="relative bg-slate-900/40 backdrop-blur-2xl border border-white/5 rounded-[48px] p-10 hover:border-emerald-500/50 transition-all duration-500 hover:translate-y-[-8px] shadow-2xl">
+            <div className="relative bg-white/60 dark:bg-slate-900/40 backdrop-blur-2xl border border-slate-200 dark:border-white/5 rounded-[48px] p-10 hover:border-emerald-500/50 transition-all duration-500 hover:translate-y-[-8px] shadow-xl dark:shadow-2xl">
               <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-20 group-hover:scale-110 transition-all duration-700">
-                <svg className="w-32 h-32 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="0.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                <svg className="w-32 h-32 text-emerald-500 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="0.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
               </div>
 
               <div className="flex items-center space-x-6 mb-8">
-                <div className="w-20 h-20 bg-emerald-500/10 rounded-[24px] flex items-center justify-center border border-emerald-500/20 group-hover:bg-emerald-500/20 group-hover:scale-110 transition-all duration-500 shadow-inner">
-                  <svg className="w-10 h-10 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-500/10 rounded-[24px] flex items-center justify-center border border-emerald-100 dark:border-emerald-500/20 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-500/20 group-hover:scale-110 transition-all duration-500 shadow-inner">
+                  <svg className="w-10 h-10 text-emerald-500 dark:text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                 </div>
                 <div>
-                  <h3 className="text-3xl font-black text-white uppercase tracking-tighter mb-1">Time <span className="text-emerald-400">& Carga</span></h3>
+                  <h3 className="text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tighter mb-1 transition-colors">Time <span className="text-emerald-600 dark:text-emerald-400">& Carga</span></h3>
                   <div className="h-1 w-12 bg-emerald-500/40 rounded-full" />
                 </div>
               </div>
 
-              <p className="text-slate-400 text-lg font-medium leading-relaxed mb-10 pr-10">
+              <p className="text-slate-600 dark:text-slate-400 text-lg font-medium leading-relaxed mb-10 pr-10 transition-colors">
                 Visualize a distribuição de tarefas por profissional e identifique gargalos de produtividade em tempo real.
               </p>
 
               <div className="flex items-center justify-between">
-                <span className="px-5 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] font-black text-emerald-400 uppercase tracking-widest group-hover:bg-emerald-500/30 transition-colors">
+                <span className="px-5 py-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-full text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest group-hover:bg-emerald-100 dark:group-hover:bg-emerald-500/30 transition-colors">
                   Visão Analítica
                 </span>
-                <div className="flex items-center text-white font-black text-xs uppercase tracking-[0.2em] group-hover:text-emerald-400 transition-colors">
+                <div className="flex items-center text-slate-900 dark:text-white font-black text-xs uppercase tracking-[0.2em] group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
                   Explorar Visão <svg className="w-5 h-5 ml-3 animate-bounce-x" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                 </div>
               </div>
@@ -239,34 +240,34 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
         <div>
           <button
             onClick={() => setViewMode('selector')}
-            className="group mb-2 flex items-center text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-indigo-400 transition-colors"
+            className="group mb-2 flex items-center text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
           >
             <svg className="w-4 h-4 mr-1 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7" /></svg>
             Voltar para Seleção
           </button>
-          <h1 className="text-2xl font-black text-white tracking-tight">
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors">
             {viewMode === 'flow' ? 'Cronograma de Fluxo' : 'Cronograma de Atribuições'}
           </h1>
-          <p className="text-slate-500 text-sm font-medium">
+          <p className="text-slate-500 dark:text-slate-500 text-sm font-medium transition-colors">
             {viewMode === 'flow' ? 'Controle temporal de projetos operacionais' : 'Gestão de carga e disponibilidade da equipe'}
           </p>
         </div>
       </div>
 
-      <div className="bg-[#1e293b] rounded-[40px] shadow-2xl border border-slate-700 p-3 overflow-hidden relative">
-        <div className="overflow-auto max-h-[calc(100vh-240px)] rounded-[24px] scrollbar-thin scrollbar-thumb-slate-700/50 scrollbar-track-transparent">
+      <div className="bg-white dark:bg-[#1e293b] rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-slate-700 p-3 overflow-hidden relative transition-colors duration-500">
+        <div className="overflow-auto max-h-[calc(100vh-240px)] rounded-[24px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700/50 scrollbar-track-transparent">
           <div style={{ minWidth: `${320 + timelineDates.length * dayWidth}px` }} className="flex flex-col pb-64">
             {/* HEADER FIXO (TOP E LEFT) */}
-            <div className="flex sticky top-0 z-50 bg-[#1e293b]">
+            <div className="flex sticky top-0 z-50 bg-white dark:bg-[#1e293b] transition-colors">
               {/* Canto superior esquerdo fixo */}
-              <div className="w-80 border-r border-b border-slate-700/80 px-6 h-16 flex items-center shrink-0 sticky left-0 z-[60] bg-slate-800/80 backdrop-blur-md">
-                <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-400">
+              <div className="w-80 border-r border-b border-slate-100 dark:border-slate-700/80 px-6 h-16 flex items-center shrink-0 sticky left-0 z-[60] bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur-md transition-colors">
+                <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-400">
                   {viewMode === 'flow' ? 'Projetos Ativos' : 'Equipe / Atribuições'}
                 </span>
               </div>
 
               {/* Cabeçalho de Datas fixo no Topo */}
-              <div className="flex border-b border-slate-700/80 bg-slate-800/50 flex-1 h-16 relative">
+              <div className="flex border-b border-slate-100 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/50 flex-1 h-16 relative transition-colors">
                 {/* Hoje Highlight no Header */}
                 <div className="absolute inset-0 flex pointer-events-none z-10">
                   {timelineDates.map((date, i) => (
@@ -277,11 +278,11 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                   {timelineDates.map((date, idx) => {
                     const isToday = date.toDateString() === todayStr;
                     return (
-                      <div key={idx} style={{ width: `${dayWidth}px` }} className={`shrink-0 flex flex-col items-center justify-center border-r border-slate-700/80 ${isToday ? 'bg-orange-500/20' : ''}`}>
-                        <span className={`text-[10px] font-black ${isToday ? 'text-orange-400 scale-110' : 'text-slate-200'}`}>
+                      <div key={idx} style={{ width: `${dayWidth}px` }} className={`shrink-0 flex flex-col items-center justify-center border-r border-slate-100 dark:border-slate-700/80 ${isToday ? 'bg-orange-500/20' : ''} transition-colors`}>
+                        <span className={`text-[10px] font-black ${isToday ? 'text-orange-600 dark:text-orange-400 scale-110' : 'text-slate-600 dark:text-slate-200'}`}>
                           {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                         </span>
-                        <span className={`text-[8px] font-black uppercase tracking-tighter mt-1 ${isToday ? 'text-orange-500' : 'text-slate-500'}`}>
+                        <span className={`text-[8px] font-black uppercase tracking-tighter mt-1 ${isToday ? 'text-orange-600 dark:text-orange-500' : 'text-slate-400 dark:text-slate-500'}`}>
                           {date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}
                         </span>
                       </div>
@@ -311,13 +312,13 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                   return (
                     <React.Fragment key={project.id}>
                       {/* LINHA DO PROJETO PAI */}
-                      <div className="flex group/row hover:bg-slate-800/30 transition-colors relative hover:z-[60]">
+                      <div className="flex group/row hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors relative hover:z-[60]">
                         {/* Sidebar Projeto: FIXO NA ESQUERDA */}
-                        <div className="w-80 px-6 h-20 flex items-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm group hover:bg-slate-800 transition-all border-l-4 border-transparent">
+                        <div className="w-80 px-6 h-20 flex items-center border-r border-slate-100 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-sm group hover:bg-slate-50 dark:hover:bg-slate-800 transition-all border-l-4 border-transparent">
                           {hasSubtasks ? (
                             <button
                               onClick={() => toggleExpand(project.id)}
-                              className={`w-6 h-6 flex items-center justify-center rounded-lg border border-slate-700 mr-3 transition-colors ${isExpanded ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 text-slate-400 hover:text-white hover:border-slate-500'}`}
+                              className={`w-6 h-6 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 mr-3 transition-colors ${isExpanded ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-white hover:border-indigo-200 dark:hover:border-slate-500'}`}
                             >
                               {isExpanded ? (
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M18 12H6" /></svg>
@@ -330,39 +331,39 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                           )}
 
                           <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openEdit(project)}>
-                            <span className="text-[9px] font-mono font-black text-indigo-400/40 uppercase tracking-tighter mb-0.5 block">{project.code}</span>
-                            <h4 className="text-xs font-black text-slate-100 truncate group-hover:text-indigo-400 leading-tight whitespace-normal">{project.name}</h4>
-                            <p className="text-[9px] text-slate-500 font-bold truncate mt-1 italic">{client?.name || 'Cliente s/ Ref.'}</p>
+                            <span className="text-[9px] font-mono font-black text-indigo-500/40 dark:text-indigo-400/40 uppercase tracking-tighter mb-0.5 block">{project.code}</span>
+                            <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 leading-tight whitespace-normal transition-colors">{project.name}</h4>
+                            <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold truncate mt-1 italic transition-colors">{client?.name || 'Cliente s/ Ref.'}</p>
                           </div>
                         </div>
 
                         {/* Timeline Row */}
-                        <div className="flex-1 h-20 relative bg-slate-900/10 overflow-visible">
+                        <div className="flex-1 h-20 relative bg-slate-50/10 dark:bg-slate-900/10 overflow-visible transition-colors">
                           <div className="absolute inset-0 flex pointer-events-none z-10">
                             {timelineDates.map((date, i) => (
-                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/80 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/10 border-x border-orange-500/30' : ''}`}></div>
+                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/10 border-x border-orange-500/30' : ''}`}></div>
                             ))}
                           </div>
 
                           {width > 0 && (
                             <div
                               style={{ left: `${offset}px`, width: `${width}px` }}
-                              className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(project.status)} border-white/5 flex items-center px-3`}
+                              className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-110 dark:hover:brightness-125 z-20 cursor-pointer ${getStatusColor(project.status)} border-white/5 flex items-center px-3`}
                               onClick={() => openEdit(project)}
                             >
                               <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(project.id)}`} />
                               <span className="text-[9px] font-black text-white/90 truncate uppercase tracking-tighter">
                                 {project.name}
                               </span>
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-white/10">
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-xl dark:shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-slate-200 dark:ring-white/10">
                                 <div className="flex items-center justify-between mb-2">
-                                  <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{project.code}</p>
+                                  <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{project.code}</p>
                                   <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>{project.status}</span>
                                 </div>
-                                <p className="text-xs font-bold text-white mb-3 leading-tight whitespace-normal">{project.name}</p>
-                                <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
-                                  <div><p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p><p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p></div>
-                                  <div><p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p><p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p></div>
+                                <p className="text-xs font-bold text-slate-900 dark:text-white mb-3 leading-tight whitespace-normal">{project.name}</p>
+                                <div className="grid grid-cols-2 gap-4 border-t border-slate-100 dark:border-slate-800 pt-3">
+                                  <div><p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase mb-1">Início</p><p className="text-[10px] font-bold text-slate-600 dark:text-slate-300">{start?.toLocaleDateString('pt-BR')}</p></div>
+                                  <div><p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase mb-1">Entrega</p><p className="text-[10px] font-bold text-slate-600 dark:text-slate-300">{end?.toLocaleDateString('pt-BR')}</p></div>
                                 </div>
                               </div>
                             </div>
@@ -382,20 +383,20 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser }) => {
                         }
 
                         return (
-                          <div key={st.id} className="flex group/sub hover:bg-slate-800/20 transition-colors relative hover:z-[55] bg-slate-900/20">
+                          <div key={st.id} className="flex group/sub hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors relative hover:z-[55] bg-slate-100/30 dark:bg-slate-900/20">
                             {/* Sidebar Sub-tarefa */}
-                            <div className="w-80 pl-16 pr-6 h-12 flex flex-col justify-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm border-l-4 border-indigo-500/20">
-                              <h5 className="text-[11px] font-bold text-slate-400 truncate leading-tight">{st.name}</h5>
-                              <p className="text-[8px] text-slate-600 font-black uppercase tracking-widest mt-0.5">
+                            <div className="w-80 pl-16 pr-6 h-12 flex flex-col justify-center border-r border-slate-100 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-sm border-l-4 border-indigo-500/10 transition-colors">
+                              <h5 className="text-[11px] font-bold text-slate-600 dark:text-slate-400 truncate leading-tight transition-colors">{st.name}</h5>
+                              <p className="text-[8px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest mt-0.5 transition-colors">
                                 {allUsers.find(u => u.id === st.assigneeId)?.username.split(' ')[0] || 'S/ RESP.'}
                               </p>
                             </div>
 
                             {/* Timeline Sub-tarefa */}
-                            <div className="flex-1 h-12 relative bg-slate-900/5 overflow-visible">
+                            <div className="flex-1 h-12 relative bg-slate-50/5 dark:bg-slate-900/5 overflow-visible transition-colors">
                               <div className="absolute inset-0 flex pointer-events-none z-10">
                                 {timelineDates.map((date, i) => (
-                                  <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/40 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/5' : ''}`}></div>
+                                  <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/40 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/5 transition-colors' : ''}`}></div>
                                 ))}
                               </div>
 

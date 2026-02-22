@@ -9,6 +9,7 @@ import { Info, CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar, 
 
 interface DashboardProps {
   db: AppDB;
+  theme?: 'dark' | 'light';
 }
 
 const InfoTooltip: React.FC<{ title: string; content: string; calculation?: string; position?: 'top' | 'bottom' }> = ({
@@ -22,28 +23,28 @@ const InfoTooltip: React.FC<{ title: string; content: string; calculation?: stri
         type="button"
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={() => setIsOpen(false)}
-        className="p-1 rounded-full hover:bg-slate-700/50 transition-colors text-slate-500 hover:text-indigo-400"
+        className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700/50 transition-colors text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400"
       >
         <Info size={14} />
       </button>
       {isOpen && (
-        <div className={`absolute ${position === 'top' ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'} left-1/2 -translate-x-1/2 p-4 bg-[#0f172a] border border-slate-700 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] z-[200] w-72 pointer-events-none animate-in fade-in duration-200 ring-1 ring-white/10`}>
-          <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 border-b border-slate-800 pb-2">{title}</p>
-          <p className="text-[11px] text-slate-300 font-medium leading-relaxed mb-3">{content}</p>
+        <div className={`absolute ${position === 'top' ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'} left-1/2 -translate-x-1/2 p-4 bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl dark:shadow-[0_20px_50px_rgba(0,0,0,0.7)] z-[200] w-72 pointer-events-none animate-in fade-in duration-200 ring-1 ring-slate-200 dark:ring-white/10`}>
+          <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-2 border-b border-slate-100 dark:border-slate-800 pb-2">{title}</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed mb-3">{content}</p>
           {calculation && (
-            <div className="bg-slate-900/50 p-2 rounded-lg border border-slate-800">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-tighter mb-1">Base de Cálculo:</p>
-              <p className="text-[10px] text-indigo-300/80 font-mono italic">{calculation}</p>
+            <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+              <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter mb-1">Base de Cálculo:</p>
+              <p className="text-[10px] text-indigo-600 dark:text-indigo-300/80 font-mono italic">{calculation}</p>
             </div>
           )}
-          <div className={`absolute ${position === 'top' ? 'top-full border-t-[#0f172a]' : 'bottom-full border-b-[#0f172a]'} left-1/2 -translate-x-1/2 border-8 border-transparent`}></div>
+          <div className={`absolute ${position === 'top' ? 'top-full border-t-white dark:border-t-[#0f172a]' : 'bottom-full border-b-white dark:border-b-[#0f172a]'} left-1/2 -translate-x-1/2 border-8 border-transparent`}></div>
         </div>
       )}
     </div>
   );
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const projects = db.projects || [];
   const users = db.users || [];
@@ -373,24 +374,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-12 relative">
       {/* BACKGROUND DE ALTA TECNOLOGIA */}
-      <div className="fixed inset-0 pointer-events-none opacity-20 overflow-hidden z-[-1]">
-        <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px]"></div>
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0f172a] via-transparent to-[#0f172a]"></div>
+      <div className="fixed inset-0 pointer-events-none opacity-20 dark:opacity-20 overflow-hidden z-[-1]">
+        <div className="absolute inset-0 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px]"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-50 via-transparent to-slate-50 dark:from-[#0f172a] dark:via-transparent dark:to-[#0f172a]"></div>
         <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 3px, transparent 3px)' }}></div>
       </div>
 
       {/* SEÇÃO 1: SAÚDE DO ESCRITÓRIO */}
-      <div className="bg-[#1e293b]/40 backdrop-blur-3xl p-12 rounded-[56px] shadow-[0_0_80px_rgba(0,0,0,0.4)] border border-white/5 relative group overflow-hidden">
+      <div className="bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl p-12 rounded-[56px] shadow-xl dark:shadow-[0_0_80px_rgba(0,0,0,0.4)] border border-slate-200 dark:border-white/5 relative group overflow-hidden transition-all duration-500">
         {/* AURA DE SAÚDE DINÂMICA */}
-        <div className={`absolute -top-24 -right-24 w-96 h-96 blur-[120px] opacity-20 transition-all duration-1000 ${health > 80 ? 'bg-emerald-500' : health > 50 ? 'bg-amber-500' : 'bg-rose-500'}`}></div>
+        <div className={`absolute -top-24 -right-24 w-96 h-96 blur-[120px] opacity-10 dark:opacity-20 transition-all duration-1000 ${health > 80 ? 'bg-emerald-500' : health > 50 ? 'bg-amber-500' : 'bg-rose-500'}`}></div>
 
-        <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none transition-opacity group-hover:opacity-10 scale-150">
+        <div className="absolute top-0 right-0 p-12 opacity-[0.03] dark:opacity-5 pointer-events-none transition-opacity group-hover:opacity-10 scale-150">
           <TrendingUp className="w-48 h-48 text-indigo-500" />
         </div>
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-12 relative z-10">
           <div className="flex flex-col items-start">
-            <h3 className="text-[12px] font-black text-slate-500 uppercase tracking-[0.3em] mb-4 px-2 flex items-center">
+            <h3 className="text-[12px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] mb-4 px-2 flex items-center transition-colors">
               Saúde Estratégica
               <InfoTooltip
                 title="Saúde da Operação"
@@ -411,10 +412,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
               <span className="text-[11px] font-black text-emerald-500 uppercase tracking-[0.2em]">Excelente</span>
             </div>
 
-            <div className="h-12 w-full bg-slate-900/90 rounded-3xl overflow-hidden relative border-2 border-slate-700 shadow-[inset_0_4px_12px_rgba(0,0,0,0.6)] p-1.5">
-              <div className="absolute inset-0 bg-gradient-to-r from-rose-900 via-amber-900 to-emerald-900 opacity-20"></div>
+            <div className="h-12 w-full bg-slate-100 dark:bg-slate-900/90 rounded-3xl overflow-hidden relative border-2 border-slate-200 dark:border-slate-700 shadow-inner dark:shadow-[inset_0_4px_12px_rgba(0,0,0,0.6)] p-1.5 transition-colors duration-500">
+              <div className="absolute inset-0 bg-gradient-to-r from-rose-900 via-amber-900 to-emerald-900 opacity-5 dark:opacity-20"></div>
               <div
-                className={`h-full rounded-2xl transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)] relative shadow-[0_0_30px_rgba(0,0,0,0.7)] ${health > 80 ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : health > 50 ? 'bg-gradient-to-r from-amber-600 to-amber-400' : 'bg-gradient-to-r from-rose-700 to-rose-500'}`}
+                className={`h-full rounded-2xl transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)] relative shadow-lg dark:shadow-[0_0_30px_rgba(0,0,0,0.7)] ${health > 80 ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : health > 50 ? 'bg-gradient-to-r from-amber-600 to-amber-400' : 'bg-gradient-to-r from-rose-700 to-rose-500'}`}
                 style={{ width: `${health}%` }}
               >
                 <div className="absolute top-0 right-0 bottom-0 w-3 bg-white/30 blur-[2px] animate-pulse"></div>
@@ -424,21 +425,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-10 pt-12 mt-12 border-t border-slate-800/80 relative z-10">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-10 pt-12 mt-12 border-t border-slate-200 dark:border-slate-800/80 relative z-10 transition-colors duration-500">
           <div className="text-center group/card">
-            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-400">Ciclo Médio</p>
-            <p className="text-4xl font-black text-white">{avgExecutionTime} <span className="text-[14px] text-slate-600 font-bold uppercase tracking-tighter">dias</span></p>
+            <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-600 dark:group-hover/card:text-indigo-400">Ciclo Médio</p>
+            <p className="text-4xl font-black text-slate-900 dark:text-white transition-colors">{avgExecutionTime} <span className="text-[14px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-tighter">dias</span></p>
           </div>
-          <div className="text-center border-l border-slate-800/80 group/card">
-            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-rose-400">Prazos Expirados</p>
+          <div className="text-center border-l border-slate-200 dark:border-slate-800/80 group/card transition-colors">
+            <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-rose-600 dark:group-hover/card:text-rose-400">Prazos Expirados</p>
             <p className="text-4xl font-black text-rose-500">{overdueProjects.length}</p>
           </div>
-          <div className="text-center border-l border-slate-800/80 group/card">
-            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-400">Em Aberto</p>
-            <p className="text-4xl font-black text-indigo-400">{activeProjects.length}</p>
+          <div className="text-center border-l border-slate-200 dark:border-slate-800/80 group/card transition-colors">
+            <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-600 dark:group-hover/card:text-indigo-400">Em Aberto</p>
+            <p className="text-4xl font-black text-indigo-600 dark:text-indigo-400 transition-colors">{activeProjects.length}</p>
           </div>
-          <div className="text-center border-l border-slate-800/80 group/card">
-            <p className="text-[11px] font-black text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-emerald-400">Concluídos</p>
+          <div className="text-center border-l border-slate-200 dark:border-slate-800/80 group/card transition-colors">
+            <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-emerald-600 dark:group-hover/card:text-emerald-400">Concluído</p>
             <p className="text-4xl font-black text-emerald-500">{projects.filter((p: any) => p.status === ProjectStatus.DONE).length}</p>
           </div>
         </div>
@@ -447,46 +448,46 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       {/* SEÇÃO 2: INTELIGÊNCIA DE GESTÃO (DASHBOARD 2.0) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
         {/* VAZÃO OPERACIONAL */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
+        <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-slate-200 dark:border-white/5 relative group transition-all duration-300 shadow-sm dark:shadow-none">
           <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
-            <div className="absolute -bottom-4 -right-4 opacity-5 group-hover:opacity-10 transition-opacity">
+            <div className="absolute -bottom-4 -right-4 opacity-[0.03] dark:opacity-5 group-hover:opacity-10 transition-opacity">
               <TrendingUp size={100} />
             </div>
           </div>
           <div className="relative z-10">
-            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center transition-colors">
               Vazão Operacional
               <InfoTooltip title="Efficiency Throughput" content="Saldo de projetos concluídos vs criados nos últimos 7 dias. Um saldo negativo indica que a carga de trabalho está crescendo mais rápido que as entregas." />
             </h4>
             <div className="flex items-end space-x-4">
-              <span className={`text-5xl font-black ${dashboard2Logics.throughput.factor >= 1 ? 'text-emerald-400' : 'text-amber-500'}`}>
+              <span className={`text-5xl font-black transition-colors ${dashboard2Logics.throughput.factor >= 1 ? 'text-emerald-500' : 'text-amber-500'}`}>
                 {Math.round(dashboard2Logics.throughput.factor * 100)}%
               </span>
               <div className="flex flex-col pb-1">
-                <span className="text-[10px] font-black text-slate-500 uppercase">{dashboard2Logics.throughput.done} entregas</span>
-                <span className="text-[10px] font-black text-slate-400 uppercase">vs {dashboard2Logics.throughput.created} novos</span>
+                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase transition-colors">{dashboard2Logics.throughput.done} entregas</span>
+                <span className="text-[10px] font-black text-slate-300 dark:text-slate-400 uppercase transition-colors">vs {dashboard2Logics.throughput.created} novos</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* RISCO DE INÉRCIA */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group text-center lg:text-left">
+        <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-slate-200 dark:border-white/5 relative group text-center lg:text-left transition-all duration-300 shadow-sm dark:shadow-none">
           <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
-            <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
+            <div className="absolute -bottom-2 -right-2 opacity-[0.03] dark:opacity-5 group-hover:opacity-10 transition-opacity">
               <Clock size={80} />
             </div>
           </div>
           <div className="relative z-10">
-            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center justify-center lg:justify-start">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center justify-center lg:justify-start transition-colors">
               Risco de Inércia
               <InfoTooltip title="Inertia Alert" content="Projetos que têm entrega em menos de 48 horas e ainda permanecem no status 'Fila'. Exige mobilização imediata do time." />
             </h4>
             <div className="flex flex-col lg:flex-row items-center space-y-4 lg:space-y-0 lg:space-x-6">
-              <span className={`text-5xl font-black ${dashboard2Logics.inertia > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-700'}`}>
+              <span className={`text-5xl font-black transition-colors ${dashboard2Logics.inertia > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-200 dark:text-slate-700'}`}>
                 {dashboard2Logics.inertia}
               </span>
-              <p className="text-[11px] font-bold text-slate-400 uppercase leading-tight">
+              <p className="text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase leading-tight transition-colors">
                 {dashboard2Logics.inertia === 1 ? 'Projeto pendente' : 'Projetos pendentes'} <br />em fila crítica
               </p>
             </div>
@@ -494,48 +495,48 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* ÍNDICE DE RISCOS DE ESCALA */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
+        <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-slate-200 dark:border-white/5 relative group transition-all duration-300 shadow-sm dark:shadow-none">
           <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
-            <div className="absolute -bottom-2 -right-2 opacity-5 group-hover:opacity-10 transition-opacity">
+            <div className="absolute -bottom-2 -right-2 opacity-[0.03] dark:opacity-5 group-hover:opacity-10 transition-opacity">
               <Users size={80} />
             </div>
           </div>
           <div className="relative z-10">
-            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center transition-colors">
               Riscos de Escala
               <InfoTooltip title="Análise de Carga" content="Fragmentação: Profissionais com >3 projetos (dispersão). Sobrecarga: Profissionais com >5 tarefas ativas (excesso de volume). Conflito: Sobreposição temporal real entre projetos." />
             </h4>
             <div className="flex items-center justify-between">
               <div className="flex flex-col items-center">
-                <span className={`text-3xl font-black ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-800'}`}>
+                <span className={`text-3xl font-black transition-colors ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-200 dark:text-slate-800'}`}>
                   {dashboard2Logics.fragmentation}
                 </span>
-                <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Filtro</p>
+                <p className="text-[7px] font-black text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest text-center transition-colors">Filtro</p>
               </div>
               <div className="flex flex-col items-center">
-                <span className={`text-3xl font-black ${dashboard2Logics.overloaded > 0 ? 'text-orange-500' : 'text-slate-800'}`}>
+                <span className={`text-3xl font-black transition-colors ${dashboard2Logics.overloaded > 0 ? 'text-orange-500' : 'text-slate-200 dark:text-slate-800'}`}>
                   {dashboard2Logics.overloaded}
                 </span>
-                <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Carga</p>
+                <p className="text-[7px] font-black text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest text-center transition-colors">Carga</p>
               </div>
               <div className="flex flex-col items-center">
-                <span className={`text-3xl font-black ${dashboard2Logics.conflicts > 0 ? 'text-rose-500' : 'text-slate-800'}`}>
+                <span className={`text-3xl font-black transition-colors ${dashboard2Logics.conflicts > 0 ? 'text-rose-500' : 'text-slate-200 dark:text-slate-800'}`}>
                   {dashboard2Logics.conflicts}
                 </span>
-                <p className="text-[7px] font-black text-slate-500 uppercase mt-1 tracking-widest text-center">Conflito</p>
+                <p className="text-[7px] font-black text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest text-center transition-colors">Conflito</p>
               </div>
             </div>
           </div>
         </div>
 
         {/* --- CARD EXPANDIDO: CAPACIDADE OPERACIONAL PREVISIVA --- */}
-        <div className="lg:col-span-3 bg-[#1e293b]/40 backdrop-blur-3xl p-10 rounded-[48px] border border-white/10 shadow-2xl relative group overflow-hidden">
+        <div className="lg:col-span-3 bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl p-10 rounded-[48px] border border-slate-200 dark:border-white/10 shadow-xl dark:shadow-2xl relative group overflow-hidden transition-all duration-500">
           <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl group-hover:bg-indigo-500/20 transition-all duration-1000"></div>
 
           <div className="relative z-10">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
               <div>
-                <h3 className="text-[12px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-2 px-2 flex items-center">
+                <h3 className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.4em] mb-2 px-2 flex items-center transition-colors">
                   Capacidade Operacional da Equipe
                   <InfoTooltip
                     title="Saturação da Equipe"
@@ -543,18 +544,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                     calculation="(Dias_Atribuídos_Semana / (Usuários_Ativos * 5)) * 100"
                   />
                 </h3>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest px-2">Sincronizado com Ciclo Médio de {avgExecutionTime} dias</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest px-2 transition-colors">Sincronizado com Ciclo Médio de {avgExecutionTime} dias</p>
               </div>
 
               {/* Seletor de Semanas */}
-              <div className="flex bg-slate-900/80 p-1.5 rounded-2xl border border-slate-700/50 shadow-inner">
+              <div className="flex bg-slate-100 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/50 shadow-inner transition-colors duration-500">
                 {[0, 1, 2, 3, 4].map(w => (
                   <button
                     key={w}
                     onClick={() => setSelectedWeekOffset(w)}
                     className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all flex flex-col items-center min-w-[64px] ${selectedWeekOffset === w
-                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 ring-1 ring-white/20'
-                      : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
+                      : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
                       }`}
                   >
                     <span>{w === 0 ? 'Atual' : `Sêman. ${w}`}</span>
@@ -565,10 +566,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
               {/* Resumo Global */}
-              <div className="lg:col-span-5 flex items-center space-x-8 border-r border-slate-800/50 pr-8">
+              <div className="lg:col-span-5 flex items-center space-x-8 border-r border-slate-100 dark:border-slate-800/50 pr-8 transition-colors duration-500">
                 <div className="relative">
                   <svg className="w-32 h-32 transform -rotate-90 drop-shadow-[0_0_15px_rgba(99,102,241,0.2)]">
-                    <circle cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-800" />
+                    <circle cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-100 dark:text-slate-800 transition-colors" />
                     <circle
                       cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="12" fill="transparent"
                       className={`transition-all duration-1000 ${dashboard2Logics.teamCapacity.percentage > 100 ? 'text-rose-500' :
@@ -582,21 +583,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                     />
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-3xl font-black text-white">{dashboard2Logics.teamCapacity.percentage}%</span>
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Global</span>
+                    <span className="text-3xl font-black text-slate-900 dark:text-white transition-colors">{dashboard2Logics.teamCapacity.percentage}%</span>
+                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter transition-colors">Global</span>
                   </div>
                 </div>
 
                 <div className="flex-1 space-y-4">
                   <div className="flex justify-between items-baseline">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ocupação</span>
-                    <span className="text-xl font-black text-white">{dashboard2Logics.teamCapacity.occupied} <span className="text-[10px] text-slate-500">dias</span></span>
+                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Ocupação</span>
+                    <span className="text-xl font-black text-slate-900 dark:text-white transition-colors">{dashboard2Logics.teamCapacity.occupied} <span className="text-[10px] text-slate-400 dark:text-slate-500">dias</span></span>
                   </div>
                   <div className="flex justify-between items-baseline">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Disponível</span>
-                    <span className="text-xl font-black text-slate-700">{dashboard2Logics.teamCapacity.total} <span className="text-[10px] opacity-40">dias</span></span>
+                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Disponível</span>
+                    <span className="text-xl font-black text-slate-300 dark:text-slate-700 transition-colors">{dashboard2Logics.teamCapacity.total} <span className="text-[10px] opacity-40">dias</span></span>
                   </div>
-                  <div className={`text-center py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm ${dashboard2Logics.teamCapacity.percentage > 100 ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' :
+                  <div className={`text-center py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm transition-all ${dashboard2Logics.teamCapacity.percentage > 100 ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' :
                     dashboard2Logics.teamCapacity.percentage > 95 ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
                       dashboard2Logics.teamCapacity.percentage > 80 ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
                         'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
@@ -612,22 +613,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
               {/* Detalhamento por Usuário */}
               <div className="lg:col-span-7">
                 <div className="flex items-center justify-between mb-6">
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Análise Individual ({dashboard2Logics.teamCapacity.weekRange.start} - {dashboard2Logics.teamCapacity.weekRange.end})</p>
-                  <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">Capacidade / Semana</p>
+                  <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Análise Individual ({dashboard2Logics.teamCapacity.weekRange.start} - {dashboard2Logics.teamCapacity.weekRange.end})</p>
+                  <p className="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest transition-colors">Capacidade / Semana</p>
                 </div>
                 <div className="grid grid-cols-2 gap-x-12 gap-y-6">
                   {dashboard2Logics.teamCapacity.userDetails.map((u: any) => (
                     <div key={u.id} className="group/user">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-[11px] font-black text-slate-300 uppercase truncate pr-4">{u.name}</span>
-                        <span className={`text-[10px] font-black ${u.percentage > 100 ? 'text-rose-500' : u.percentage > 80 ? 'text-amber-500' : 'text-slate-500'
-                          }`}>{u.percentage}%</span>
+                        <span className="text-[11px] font-black text-slate-600 dark:text-slate-300 uppercase truncate pr-4 transition-colors">{u.name}</span>
+                        <span className={`text-[10px] font-black ${u.percentage > 100 ? 'text-rose-500' : u.percentage > 80 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'
+                          } transition-colors`}>{u.percentage}%</span>
                       </div>
-                      <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                      <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-900 rounded-full overflow-hidden border border-slate-200 dark:border-white/5 transition-colors duration-500">
                         <div
                           className={`h-full rounded-full transition-all duration-1000 ${u.percentage > 100 ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]' :
                             u.percentage > 80 ? 'bg-amber-500' :
-                              'bg-slate-700 group-hover/user:bg-indigo-500'
+                              'bg-slate-300 dark:bg-slate-700 group-hover/user:bg-indigo-500'
                             }`}
                           style={{ width: `${Math.min(100, u.percentage)}%` }}
                         />
@@ -635,7 +636,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                     </div>
                   ))}
                   {dashboard2Logics.teamCapacity.userDetails.length === 0 && (
-                    <div className="col-span-2 text-center py-4 text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Sem dados de alocação para este período</div>
+                    <div className="col-span-2 text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Sem dados de alocação para este período</div>
                   )}
                 </div>
               </div>
@@ -648,9 +649,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* TENDÊNCIA DE PRODUÇÃO - NOVO */}
-        <div className="lg:col-span-2 bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col min-h-[400px]">
-          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
-            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
+        <div className="lg:col-span-2 bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col min-h-[400px] transition-all duration-500">
+          <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
+            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
               Tendência de Fluxo
               <InfoTooltip
                 title="Entradas vs Saídas"
@@ -658,37 +659,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 calculation="Projetos_Criados_Mes vs Projetos_Done_Mes"
               />
             </h3>
-            <TrendingUp size={20} className="text-indigo-500" />
+            <TrendingUp size={20} className="text-indigo-600 dark:text-indigo-500" />
           </div>
           <div className="p-8 flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={monthlyTimeline} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorCreated" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={theme === 'dark' ? 0.3 : 0.15} />
                     <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="colorDone" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={theme === 'dark' ? 0.3 : 0.15} />
                     <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2a374a" vertical={false} />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10, fontWeight: 900 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10 }} />
-                <RechartsTooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2a374a' : '#e2e8f0'} vertical={false} />
+                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 900 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 900 }} />
+                <RechartsTooltip contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px', color: theme === 'dark' ? '#ffffff' : '#0f172a' }} />
                 <Area type="monotone" dataKey="created" name="Criados" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorCreated)" />
                 <Area type="monotone" dataKey="done" name="Concluídos" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorDone)" />
-                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '10px', textTransform: 'uppercase', fontWeight: 900 }} />
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '10px', textTransform: 'uppercase', fontWeight: 900, color: theme === 'dark' ? '#64748b' : '#94a3b8' }} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* CONCENTRAÇÃO DE CLIENTES - NOVO */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col min-h-[400px]">
-          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
-            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
+        <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col min-h-[400px] transition-all duration-500">
+          <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
+            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
               Concentração
               <InfoTooltip
                 title="Volume por Cliente"
@@ -696,7 +697,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 calculation="Projetos_por_Cliente / Projetos_Totais * 100"
               />
             </h3>
-            <PieChart size={20} className="text-indigo-500" />
+            <PieChart size={20} className="text-indigo-600 dark:text-indigo-500" />
           </div>
           <div className="p-4 flex-1 flex flex-col items-center justify-center min-h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -715,7 +716,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <RechartsTooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
+                <RechartsTooltip contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px', color: theme === 'dark' ? '#ffffff' : '#0f172a' }} />
                 <Legend
                   layout="horizontal"
                   align="center"
@@ -725,7 +726,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                     fontSize: '9px',
                     fontWeight: 900,
                     textTransform: 'uppercase',
-                    paddingTop: '20px'
+                    paddingTop: '20px',
+                    color: theme === 'dark' ? '#64748b' : '#94a3b8'
                   }}
                 />
               </PieChart>
@@ -736,9 +738,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* EFICIÊNCIA DO TIME - NOVO (BarChart Recharts) */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 min-h-[450px] flex flex-col">
-          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
-            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
+        <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 min-h-[450px] flex flex-col transition-all duration-500">
+          <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
+            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
               Eficiência Operacional
               <InfoTooltip
                 title="Entregas por Usuário"
@@ -751,10 +753,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           <div className="p-8 flex-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={userEfficiencyData} layout="vertical" margin={{ left: 20, right: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2a374a" horizontal={true} vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2a374a' : '#e2e8f0'} horizontal={true} vertical={false} />
                 <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 900 }} width={80} />
-                <RechartsTooltip cursor={{ fill: '#334155', opacity: 0.1 }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px' }} />
+                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 900 }} width={80} />
+                <RechartsTooltip cursor={{ fill: theme === 'dark' ? '#334155' : '#f1f5f9', opacity: 0.2 }} contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px', color: theme === 'dark' ? '#ffffff' : '#0f172a' }} />
                 <Bar dataKey="value" name="Concluídos" fill="#10b981" radius={[0, 10, 10, 0]} barSize={24} />
               </BarChart>
             </ResponsiveContainer>
@@ -762,9 +764,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* CARGA ATIVA POR USUÁRIO (Melhorado com Stacked Bar) */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col">
-          <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
-            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
+        <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col transition-all duration-500">
+          <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
+            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
               Carga Ativa por Usuário
               <InfoTooltip
                 title="Distribuição de Status"
@@ -772,7 +774,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 calculation="Agrupamento(Status) por Usuário"
               />
             </h3>
-            <Users size={20} className="text-indigo-500" />
+            <Users size={20} className="text-indigo-600 dark:text-indigo-500" />
           </div>
           <div className="p-10 flex-1 overflow-y-auto max-h-[400px] custom-scrollbar">
             <div className="space-y-8">
@@ -781,23 +783,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 return (
                   <div key={name} className="group">
                     <div className="flex justify-between items-center mb-3">
-                      <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest transition-colors group-hover:text-white">{name}</span>
-                      <span className="text-[12px] font-black text-indigo-400">{total} ativos</span>
+                      <span className="text-[11px] font-black text-slate-400 dark:text-slate-400 uppercase tracking-widest transition-colors group-hover:text-slate-900 dark:group-hover:text-white">{name}</span>
+                      <span className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 transition-colors">{total} ativos</span>
                     </div>
-                    <div className="h-8 w-full flex rounded-2xl overflow-hidden border border-slate-900 shadow-[inset_0_4px_8px_rgba(0,0,0,0.5)] bg-slate-900/40 p-1">
-                      <div className="bg-slate-700/60 h-full rounded-l-xl transition-all duration-700 hover:brightness-125 border-r border-white/5" style={{ width: `${(statusData[ProjectStatus.QUEUE] / total) * 100}%` }}></div>
-                      <div className="bg-indigo-600 h-full transition-all duration-700 hover:brightness-125 shadow-[inset_0_0_15px_rgba(0,0,0,0.2)] border-r border-white/5" style={{ width: `${(statusData[ProjectStatus.IN_PROGRESS] / total) * 100}%` }}></div>
-                      <div className="bg-purple-600 h-full rounded-r-xl transition-all duration-700 hover:brightness-125" style={{ width: `${(statusData[ProjectStatus.PAUSED] / total) * 100}%` }}></div>
+                    <div className="h-8 w-full flex rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-900 shadow-inner dark:shadow-[inset_0_4px_8px_rgba(0,0,0,0.5)] bg-slate-100 dark:bg-slate-900/40 p-1 transition-colors duration-500">
+                      <div className="bg-slate-300 dark:bg-slate-700/60 h-full rounded-l-xl transition-all duration-700 hover:brightness-110 dark:hover:brightness-125 border-r border-white/5" style={{ width: `${(statusData[ProjectStatus.QUEUE] / total) * 100}%` }}></div>
+                      <div className="bg-indigo-600 h-full transition-all duration-700 hover:brightness-110 dark:hover:brightness-125 shadow-lg border-r border-white/5" style={{ width: `${(statusData[ProjectStatus.IN_PROGRESS] / total) * 100}%` }}></div>
+                      <div className="bg-purple-600 h-full rounded-r-xl transition-all duration-700 hover:brightness-110 dark:hover:brightness-125" style={{ width: `${(statusData[ProjectStatus.PAUSED] / total) * 100}%` }}></div>
                     </div>
                   </div>
                 );
               })}
               {userStatusMatrix.length === 0 && (
-                <div className="h-64 flex flex-col items-center justify-center text-slate-600 font-black uppercase text-[12px] tracking-widest italic opacity-40">Sem colaboradores ativos</div>
+                <div className="h-64 flex flex-col items-center justify-center text-slate-400 font-black uppercase text-[12px] tracking-widest italic opacity-40">Sem colaboradores ativos</div>
               )}
             </div>
-            <div className="mt-12 flex justify-center space-x-8 bg-slate-900/60 p-4 rounded-3xl border border-slate-800/80">
-              <div className="flex items-center"><div className="w-3 h-3 bg-slate-700 rounded-full mr-3 border border-white/10"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Fila</span></div>
+            <div className="mt-12 flex justify-center space-x-8 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-3xl border border-slate-200 dark:border-slate-800/80 transition-colors duration-500">
+              <div className="flex items-center transition-colors"><div className="w-3 h-3 bg-slate-300 dark:bg-slate-700 rounded-full mr-3 border border-slate-200 dark:border-white/10"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Fila</span></div>
               <div className="flex items-center"><div className="w-3 h-3 bg-indigo-600 rounded-full mr-3 shadow-[0_0_8px_rgba(79,70,229,0.4)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Andamento</span></div>
               <div className="flex items-center"><div className="w-3 h-3 bg-purple-600 rounded-full mr-3 shadow-[0_0_8px_rgba(147,51,234,0.4)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Pausado</span></div>
             </div>
@@ -807,9 +809,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* RADAR DE ATRASOS */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5">
-          <div className="px-10 py-8 border-b border-white/5 flex items-center justify-between bg-rose-500/10 rounded-t-[40px]">
-            <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-rose-500 flex items-center">
+        <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col transition-all duration-500">
+          <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-rose-50 dark:bg-rose-500/10 rounded-t-[40px] transition-colors">
+            <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-rose-600 dark:text-rose-500 flex items-center transition-colors">
               <AlertTriangle size={16} className="mr-4 text-rose-500 animate-pulse" />
               Prazos Expirados
               <InfoTooltip
@@ -818,22 +820,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 calculation="Filtro(Active_Projects onde Delivery_Date < Hoje)"
               />
             </h3>
-            <span className="text-sm font-black text-rose-500 bg-rose-500/10 px-4 py-1.5 rounded-full ring-1 ring-rose-500/30">{overdueProjects.length}</span>
+            <span className="text-sm font-black text-rose-600 dark:text-rose-500 bg-rose-100 dark:bg-rose-500/10 px-4 py-1.5 rounded-full ring-1 ring-rose-300 dark:ring-rose-500/30 transition-colors">{overdueProjects.length}</span>
           </div>
-          <div className="divide-y divide-slate-800/50 max-h-[450px] overflow-y-auto custom-scrollbar">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800/50 max-h-[450px] overflow-y-auto custom-scrollbar transition-colors">
             {overdueProjects.length === 0 ? (
-              <div className="p-20 text-center text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">Operação em Dia</div>
+              <div className="p-20 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">Operação em Dia</div>
             ) : overdueProjects.map((p: Project) => (
-              <div key={p.id} className="p-10 hover:bg-rose-500/[0.05] transition-colors group">
+              <div key={p.id} className="p-10 hover:bg-rose-50 dark:hover:bg-rose-500/[0.05] transition-colors group">
                 <div className="flex justify-between items-center">
                   <div className="flex flex-col min-w-0 pr-4">
-                    <h4 className="text-base font-black text-white truncate uppercase tracking-tighter group-hover:text-rose-400 transition-colors">{p.name}</h4>
-                    <p className="text-[12px] text-slate-500 font-mono font-black uppercase tracking-[0.1em] mt-2">{p.code}</p>
+                    <h4 className="text-base font-black text-slate-900 dark:text-white truncate uppercase tracking-tighter group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">{p.name}</h4>
+                    <p className="text-[12px] text-slate-400 dark:text-slate-500 font-mono font-black uppercase tracking-[0.1em] mt-2 transition-colors">{p.code}</p>
                   </div>
                   <div className="text-right shrink-0 pl-6">
-                    <span className="text-xl font-black text-rose-500 drop-shadow-[0_0_10px_rgba(244,63,94,0.3)]">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
-                    <div className="mt-2">
-                      <span className="text-[9px] text-rose-600 uppercase font-black tracking-widest bg-rose-500/10 px-4 py-1.5 rounded-full ring-1 ring-rose-500/20">ATRASO</span>
+                    <span className="text-xl font-black text-rose-600 dark:text-rose-500 drop-shadow-[0_0_10px_rgba(244,63,94,0.3)] transition-colors">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
+                    <div className="mt-2 text-right">
+                      <span className="inline-block text-[9px] text-rose-600 uppercase font-black tracking-widest bg-rose-100 dark:bg-rose-500/10 px-4 py-1.5 rounded-full ring-1 ring-rose-200 dark:ring-rose-500/20 transition-colors">ATRASO</span>
                     </div>
                   </div>
                 </div>
@@ -843,9 +845,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         </div>
 
         {/* PRÓXIMAS ENTREGAS */}
-        <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5">
-          <div className="px-10 py-8 border-b border-white/5 flex items-center justify-between bg-emerald-500/10 rounded-t-[40px]">
-            <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-emerald-400 flex items-center">
+        <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col transition-all duration-500">
+          <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-emerald-50 dark:bg-emerald-500/10 rounded-t-[40px] transition-colors">
+            <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400 flex items-center transition-colors">
               <Calendar size={16} className="mr-4 text-emerald-500" />
               Próximos 7 Dias
               <InfoTooltip
@@ -854,22 +856,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                 calculation="Filtro(Projetos onde Delivery_Date está entre Hoje e +7 dias)"
               />
             </h3>
-            <span className="text-sm font-black text-emerald-400 bg-emerald-500/10 px-4 py-1.5 rounded-full ring-1 ring-emerald-500/30">{upcomingProjects.length}</span>
+            <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/10 px-4 py-1.5 rounded-full ring-1 ring-emerald-300 dark:ring-emerald-500/30 transition-colors">{upcomingProjects.length}</span>
           </div>
-          <div className="divide-y divide-slate-800/50 max-h-[450px] overflow-y-auto custom-scrollbar">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800/50 max-h-[450px] overflow-y-auto custom-scrollbar transition-colors">
             {upcomingProjects.length === 0 ? (
-              <div className="p-20 text-center text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">Sem Entregas Agendadas</div>
+              <div className="p-20 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">Sem Entregas Agendadas</div>
             ) : upcomingProjects.map((p: Project) => (
-              <div key={p.id} className="p-10 hover:bg-emerald-500/[0.05] transition-colors group">
+              <div key={p.id} className="p-10 hover:bg-emerald-50 dark:hover:bg-emerald-500/[0.05] transition-colors group">
                 <div className="flex justify-between items-center">
                   <div className="flex flex-col min-w-0 pr-4">
-                    <h4 className="text-base font-black text-white truncate uppercase tracking-tighter group-hover:text-emerald-400 transition-colors">{p.name}</h4>
-                    <p className="text-[12px] text-slate-500 font-mono font-black uppercase tracking-[0.1em] mt-2">{p.code}</p>
+                    <h4 className="text-base font-black text-slate-900 dark:text-white truncate uppercase tracking-tighter group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{p.name}</h4>
+                    <p className="text-[12px] text-slate-400 dark:text-slate-500 font-mono font-black uppercase tracking-[0.1em] mt-2 transition-colors">{p.code}</p>
                   </div>
                   <div className="text-right shrink-0 pl-6">
-                    <span className="text-xl font-black text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.3)]">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
-                    <div className="mt-2">
-                      <span className="text-[9px] text-emerald-500/70 uppercase font-black tracking-widest bg-emerald-500/10 px-4 py-1.5 rounded-full">CHECK-OUT</span>
+                    <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.3)] transition-colors">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
+                    <div className="mt-2 text-right">
+                      <span className="inline-block text-[9px] text-emerald-600 dark:text-emerald-500/70 uppercase font-black tracking-widest bg-emerald-100 dark:bg-emerald-500/10 px-4 py-1.5 rounded-full transition-colors">CHECK-OUT</span>
                     </div>
                   </div>
                 </div>
@@ -880,9 +882,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       </div>
 
       {/* NOVO: RANKING TOP 10 CLIENTES (TABELA) */}
-      <div className="bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-2xl border border-white/5 flex flex-col">
-        <div className="px-10 py-8 border-b border-white/5 bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
-          <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-white flex items-center">
+      <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col transition-all duration-500">
+        <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
+          <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
             Ranking Estratégico de Clientes
             <InfoTooltip
               title="Top Clientes"
@@ -896,18 +898,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-slate-800">
-                  <th className="pb-6 text-[10px] font-black text-slate-500 uppercase tracking-widest px-4">Posição</th>
-                  <th className="pb-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Cliente</th>
-                  <th className="pb-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right px-4">Total Projetos</th>
+                <tr className="border-b border-slate-100 dark:border-slate-800 transition-colors">
+                  <th className="pb-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-4 transition-colors">Posição</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Cliente</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-right px-4 transition-colors">Total Projetos</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/50">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors">
                 {rankingTopClients.map(([name, data], idx) => (
-                  <tr key={name} className="group hover:bg-slate-800/20 transition-colors">
+                  <tr key={name} className="group hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors">
                     <td className="py-6 px-4">
                       <div className="flex items-center space-x-3">
-                        <span className="text-xs font-black text-slate-500">#{String(idx + 1).padStart(2, '0')}</span>
+                        <span className="text-xs font-black text-slate-400 dark:text-slate-500 transition-colors">#{String(idx + 1).padStart(2, '0')}</span>
                         {idx === 0 && <Trophy size={16} className="text-amber-400" />}
                         {idx === 1 && <Medal size={16} className="text-slate-300" />}
                         {idx === 2 && <Medal size={16} className="text-amber-700/80" />}
@@ -915,18 +917,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                     </td>
                     <td className="py-6">
                       <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-100 group-hover:text-indigo-400 transition-colors">{name}</span>
-                        <span className="text-[10px] font-mono font-black text-slate-600 uppercase tracking-tighter">{data.code.padStart(3, '0')}</span>
+                        <span className="text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{name}</span>
+                        <span className="text-[10px] font-mono font-black text-slate-400 dark:text-slate-600 uppercase tracking-tighter transition-colors">{data.code.padStart(3, '0')}</span>
                       </div>
                     </td>
                     <td className="py-6 px-4 text-right">
-                      <span className="text-lg font-black text-indigo-400">{data.count}</span>
+                      <span className="text-lg font-black text-indigo-600 dark:text-indigo-400 transition-colors">{data.count}</span>
                     </td>
                   </tr>
                 ))}
                 {rankingTopClients.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="py-20 text-center text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">Sem dados de clientes registrados</td>
+                    <td colSpan={3} className="py-20 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40 transition-colors">Sem dados de clientes registrados</td>
                   </tr>
                 )}
               </tbody>

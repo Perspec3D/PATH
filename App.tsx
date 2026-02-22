@@ -25,6 +25,10 @@ const App: React.FC = () => {
   const [userSession, setUserSession] = useState<InternalUser | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('PATH_THEME');
+    return (saved as 'dark' | 'light') || 'dark';
+  });
 
   const [isEmailConfirmed, setIsEmailConfirmed] = useState(true);
   const [isResending, setIsResending] = useState(false);
@@ -181,6 +185,13 @@ const App: React.FC = () => {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(theme);
+    localStorage.setItem('PATH_THEME', theme);
+  }, [theme]);
 
   const isOverLimit = useMemo(() => {
     if (!db.company) return false;
@@ -500,13 +511,15 @@ const App: React.FC = () => {
       onLogout={handleLogout}
       onSwitchUser={switchUser}
       companyName={db.company?.name || 'PERSPEC PATH'}
+      theme={theme}
+      setTheme={setTheme}
     >
-      {currentPage === 'dashboard' && <Dashboard db={db} />}
-      {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} />}
-      {currentPage === 'projects' && <Projects db={db} setDb={setDb} currentUser={userSession} />}
-      {currentPage === 'timeline' && <Gantt db={db} setDb={setDb} currentUser={userSession} />}
+      {currentPage === 'dashboard' && <Dashboard db={db} theme={theme} />}
+      {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+      {currentPage === 'projects' && <Projects db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+      {currentPage === 'timeline' && <Gantt db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
       {currentPage === 'settings' && userSession.role === UserRole.ADMIN && (
-        <Settings db={db} setDb={setDb} currentUser={userSession} />
+        <Settings db={db} setDb={setDb} currentUser={userSession} theme={theme} />
       )}
     </Layout>
   );
