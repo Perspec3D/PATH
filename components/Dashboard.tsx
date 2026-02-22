@@ -264,12 +264,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       if (hasConflict) scaleConflictsCount++;
     });
 
+    // 10. Capacidade Operacional da Equipe (Semanal)
+    const teamCapacity = useMemo(() => {
+      const activeUsersCount = users.filter(u => u.isActive).length;
+      if (activeUsersCount === 0) return { percentage: 0, occupied: 0, total: 0 };
+
+      const totalAvailableDays = activeUsersCount * 5; // 5 dias úteis por usuário
+
+      // Definir início e fim da semana atual (Segunda a Sexta)
+      const startOfWeek = new Date(now);
+      const day = startOfWeek.getDay();
+      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Ajuste para Segunda
+      startOfWeek.setDate(diff);
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 4); // Sexta
+      endOfWeek.setHours(23, 59, 59, 999);
+
+      let totalOccupiedDays = 0;
+
+      projects.forEach(p => {
+        p.subtasks?.forEach(st => {
+          // Considerar apenas tarefas não concluídas/canceladas e com responsável
+          if (st.assigneeId && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED && st.startDate && st.deliveryDate) {
+            const stStart = new Date(st.startDate + 'T00:00:00');
+            const stEnd = new Date(st.deliveryDate + 'T23:59:59');
+
+            // Intersecção entre a tarefa e a semana atual
+            const overlapStart = new Date(Math.max(stStart.getTime(), startOfWeek.getTime()));
+            const overlapEnd = new Date(Math.min(stEnd.getTime(), endOfWeek.getTime()));
+
+            if (overlapStart <= overlapEnd) {
+              // Calcular dias úteis na intersecção
+              let workDays = 0;
+              const current = new Date(overlapStart);
+              while (current <= overlapEnd) {
+                const dow = current.getDay();
+                if (dow !== 0 && dow !== 6) { // Pular fds
+                  workDays++;
+                }
+                current.setDate(current.getDate() + 1);
+              }
+              totalOccupiedDays += workDays;
+            }
+          }
+        });
+      });
+
+      const percentage = Math.round((totalOccupiedDays / totalAvailableDays) * 100);
+
+      return {
+        percentage,
+        occupied: totalOccupiedDays,
+        total: totalAvailableDays
+      };
+    }, [projects, users]);
+
     return {
       throughput: { created: createdLast7, done: doneLast7, factor: throughputFactor },
       inertia: inertiaRiskCount,
       fragmentation: fragmentedUsersCount,
       overloaded: overloadedUsersCount,
-      conflicts: scaleConflictsCount
+      conflicts: scaleConflictsCount,
+      teamCapacity
     };
   }, [projects, activeProjects, users]);
 
@@ -356,7 +414,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       </div>
 
       {/* SEÇÃO 2: INTELIGÊNCIA DE GESTÃO (DASHBOARD 2.0) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
         {/* VAZÃO OPERACIONAL */}
         <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
           <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
@@ -455,6 +513,61 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
             </div>
           </div>
         </div>
+
+        {/* CAPACIDADE OPERACIONAL DA EQUIPE */}
+        <div className="bg-[#1e293b]/30 backdrop-blur-xl p-8 rounded-[40px] border border-white/5 relative group">
+          <div className="absolute inset-0 rounded-[40px] overflow-hidden pointer-events-none">
+            <div className="absolute -bottom-2 -right-2 opacity-10 group-hover:opacity-20 transition-opacity">
+              <TrendingUp size={80} className="text-indigo-500" />
+            </div>
+          </div>
+          <div className="relative z-10 h-full flex flex-col">
+            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center">
+              Capacidade Operacional
+              <InfoTooltip
+                title="Saturação da Equipe"
+                content="Percentual de ocupação baseado em 5 dias úteis por usuário ativo. Soma o tempo de todas as subtarefas pendentes alocadas na semana atual."
+                calculation="(Dias_Atribuídos_Semana / (Usuários_Ativos * 5)) * 100"
+              />
+            </h4>
+
+            <div className="flex-1 flex flex-col justify-center">
+              <div className="flex items-end justify-between mb-4">
+                <span className={`text-5xl font-black tracking-tighter ${dashboard2Logics.teamCapacity.percentage > 100 ? 'text-rose-500' :
+                    dashboard2Logics.teamCapacity.percentage > 95 ? 'text-orange-500' :
+                      dashboard2Logics.teamCapacity.percentage > 80 ? 'text-amber-500' :
+                        'text-emerald-400'
+                  }`}>
+                  {dashboard2Logics.teamCapacity.percentage}%
+                </span>
+                <div className="text-right">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{dashboard2Logics.teamCapacity.occupied} / {dashboard2Logics.teamCapacity.total}</p>
+                  <p className="text-[8px] font-bold text-slate-600 uppercase tracking-tighter">dias/equipe</p>
+                </div>
+              </div>
+
+              <div className="h-3 w-full bg-slate-900/50 rounded-full overflow-hidden border border-white/5 p-0.5">
+                <div
+                  className={`h-full rounded-full transition-all duration-1000 ${dashboard2Logics.teamCapacity.percentage > 100 ? 'bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.4)]' :
+                      dashboard2Logics.teamCapacity.percentage > 95 ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.4)]' :
+                        dashboard2Logics.teamCapacity.percentage > 80 ? 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]' :
+                          'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]'
+                    }`}
+                  style={{ width: `${Math.min(100, dashboard2Logics.teamCapacity.percentage)}%` }}
+                />
+              </div>
+
+              <p className="text-[9px] font-black uppercase tracking-widest mt-4 text-center">
+                {dashboard2Logics.teamCapacity.percentage > 100 ? <span className="text-rose-500 animate-pulse">Sobrecarga Crítica</span> :
+                  dashboard2Logics.teamCapacity.percentage > 95 ? <span className="text-orange-500">Limite de Segurança</span> :
+                    dashboard2Logics.teamCapacity.percentage > 80 ? <span className="text-amber-500">Atenção Necessária</span> :
+                      <span className="text-emerald-500/70">Fluxo Saudável</span>}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ÍNDICE DE RISCOS DE ESCALA (REPOSITIONED BELOW IF NEEDED, BUT HERE REPLACING OR ADDING AS 4th CARD WOULD REQUIRE GRID CHANGE. USER SAID 'NEW CARD WITHOUT REMOVING', so I should probably change the grid to 4 cols or put it somewhere else. I will change md:grid-cols-3 to md:grid-cols-4) */}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
