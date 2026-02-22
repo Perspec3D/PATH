@@ -266,10 +266,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
     });
 
     // 10. Capacidade Operacional da Equipe (Semanal com Previsibilidade)
-    const teamCapacity = useMemo(() => {
-      const activeUsers = users.filter(u => u.isActive);
-      if (activeUsers.length === 0) return { percentage: 0, occupied: 0, total: 0, userDetails: [] };
+    const activeUsers_Capacity = users.filter(u => u.isActive);
 
+    let teamCapacity;
+    if (activeUsers_Capacity.length === 0) {
+      teamCapacity = {
+        percentage: 0,
+        occupied: 0,
+        total: 0,
+        userDetails: [],
+        weekRange: { start: '--/--', end: '--/--' }
+      };
+    } else {
       // Base de cálculo ajustada: se hoje é Sab(6) ou Dom(0), a semana 0 começa na próxima Segunda
       const baseDate = new Date(now);
       const currentDay = baseDate.getDay();
@@ -288,14 +296,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
       endOfWeek.setDate(startOfWeek.getDate() + 4); // Sexta
       endOfWeek.setHours(23, 59, 59, 999);
 
-      const totalAvailableDays = activeUsers.length * 5;
+      const totalAvailableDays = activeUsers_Capacity.length * 5;
       let totalOccupiedDays = 0;
 
-      const userDetails = activeUsers.map(u => {
+      const userDetails = activeUsers_Capacity.map(u => {
         let userWorkDays = 0;
         projects.forEach(p => {
-          // Atribuições diretas no projeto (pai) se não houver subtarefas? 
-          // O usuário pediu baseado no cronograma (subtarefas)
           p.subtasks?.forEach(st => {
             if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED && st.startDate && st.deliveryDate) {
               const stStart = new Date(st.startDate + 'T00:00:00');
@@ -324,7 +330,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
         };
       });
 
-      return {
+      teamCapacity = {
         percentage: Math.round((totalOccupiedDays / totalAvailableDays) * 100),
         occupied: totalOccupiedDays,
         total: totalAvailableDays,
@@ -334,7 +340,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           end: endOfWeek.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
         }
       };
-    }, [projects, users, selectedWeekOffset]);
+    }
 
     return {
       throughput: { created: createdLast7, done: doneLast7, factor: throughputFactor },
@@ -530,8 +536,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                     key={w}
                     onClick={() => setSelectedWeekOffset(w)}
                     className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all flex flex-col items-center min-w-[64px] ${selectedWeekOffset === w
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 ring-1 ring-white/20'
-                        : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 ring-1 ring-white/20'
+                      : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
                       }`}
                   >
                     <span>{w === 0 ? 'Atual' : `Sêman. ${w}`}</span>
@@ -549,9 +555,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                     <circle
                       cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="12" fill="transparent"
                       className={`transition-all duration-1000 ${dashboard2Logics.teamCapacity.percentage > 100 ? 'text-rose-500' :
-                          dashboard2Logics.teamCapacity.percentage > 95 ? 'text-orange-500' :
-                            dashboard2Logics.teamCapacity.percentage > 80 ? 'text-amber-500' :
-                              'text-emerald-500'
+                        dashboard2Logics.teamCapacity.percentage > 95 ? 'text-orange-500' :
+                          dashboard2Logics.teamCapacity.percentage > 80 ? 'text-amber-500' :
+                            'text-emerald-500'
                         }`}
                       strokeDasharray={351.8}
                       strokeDashoffset={351.8 - (351.8 * Math.min(100, dashboard2Logics.teamCapacity.percentage)) / 100}
@@ -574,9 +580,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                     <span className="text-xl font-black text-slate-700">{dashboard2Logics.teamCapacity.total} <span className="text-[10px] opacity-40">dias</span></span>
                   </div>
                   <div className={`text-center py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm ${dashboard2Logics.teamCapacity.percentage > 100 ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' :
-                      dashboard2Logics.teamCapacity.percentage > 95 ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
-                        dashboard2Logics.teamCapacity.percentage > 80 ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
-                          'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                    dashboard2Logics.teamCapacity.percentage > 95 ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                      dashboard2Logics.teamCapacity.percentage > 80 ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
+                        'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                     }`}>
                     {dashboard2Logics.teamCapacity.percentage > 100 ? 'Sobrecarga Crítica' :
                       dashboard2Logics.teamCapacity.percentage > 95 ? 'Limite de Segurança' :
@@ -603,8 +609,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
                       <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden border border-white/5">
                         <div
                           className={`h-full rounded-full transition-all duration-1000 ${u.percentage > 100 ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]' :
-                              u.percentage > 80 ? 'bg-amber-500' :
-                                'bg-slate-700 group-hover/user:bg-indigo-500'
+                            u.percentage > 80 ? 'bg-amber-500' :
+                              'bg-slate-700 group-hover/user:bg-indigo-500'
                             }`}
                           style={{ width: `${Math.min(100, u.percentage)}%` }}
                         />
@@ -620,7 +626,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           </div>
         </div>
 
-        {/* ÍNDICE DE RISCOS DE ESCALA (REPOSITIONED BELOW IF NEEDED, BUT HERE REPLACING OR ADDING AS 4th CARD WOULD REQUIRE GRID CHANGE. USER SAID 'NEW CARD WITHOUT REMOVING', so I should probably change the grid to 4 cols or put it somewhere else. I will change md:grid-cols-3 to md:grid-cols-4) */}
+
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
