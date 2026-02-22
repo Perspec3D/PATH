@@ -121,22 +121,46 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     return last6Months.map(key => months[key]);
   }, [projects]);
 
-  // 5. Comparativo de Status por Usuário (Original melhorado)
+  // 5. Matriz de Carga Estratégica (Projetos + Sub-tarefas)
   const userStatusMatrix = useMemo(() => {
-    const matrix: Record<string, Record<string, number>> = {};
-    activeProjects.forEach((p: Project) => {
-      if (p.assigneeId) {
-        const user = users.find((u: InternalUser) => u.id === p.assigneeId);
-        const name = user ? user.username : 'Indefinido';
-        if (!matrix[name]) matrix[name] = {
+    const matrix: Record<string, { projects: Set<string>; subtasks: number; stats: Record<string, number> }> = {};
+
+    users.forEach(u => {
+      matrix[u.username] = {
+        projects: new Set(),
+        subtasks: 0,
+        stats: {
           [ProjectStatus.QUEUE]: 0,
           [ProjectStatus.IN_PROGRESS]: 0,
           [ProjectStatus.PAUSED]: 0
-        };
-        matrix[name][p.status] = (matrix[name][p.status] || 0) + 1;
-      }
+        }
+      };
     });
-    return Object.entries(matrix);
+
+    activeProjects.forEach((p: Project) => {
+      // 1. Checar se o usuário é o responsável principal
+      if (p.assigneeId) {
+        const user = users.find(u => u.id === p.assigneeId);
+        if (user) {
+          matrix[user.username].projects.add(p.id);
+          matrix[user.username].stats[p.status]++;
+        }
+      }
+
+      // 2. Checar sub-tarefas ativas
+      p.subtasks?.forEach(st => {
+        if (st.assigneeId && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
+          const user = users.find(u => u.id === st.assigneeId);
+          if (user) {
+            matrix[user.username].projects.add(p.id);
+            matrix[user.username].subtasks++;
+            matrix[user.username].stats[st.status]++;
+          }
+        }
+      });
+    });
+
+    return Object.entries(matrix).filter(([_, data]) => data.projects.size > 0 || data.subtasks > 0);
   }, [activeProjects, users]);
 
   // 6. Média de Tempo de Execução (Dias)
@@ -777,19 +801,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             <Users size={20} className="text-indigo-600 dark:text-indigo-500" />
           </div>
           <div className="p-10 flex-1 overflow-y-auto max-h-[400px] custom-scrollbar">
-            <div className="space-y-8">
-              {userStatusMatrix.map(([name, statusData]) => {
-                const total = statusData[ProjectStatus.QUEUE] + statusData[ProjectStatus.IN_PROGRESS] + statusData[ProjectStatus.PAUSED];
+            <div className="space-y-10">
+              {userStatusMatrix.map(([name, data]) => {
+                const projectCount = data.projects.size;
+                const subtaskCount = data.subtasks;
+                const totalItems = data.stats[ProjectStatus.QUEUE] + data.stats[ProjectStatus.IN_PROGRESS] + data.stats[ProjectStatus.PAUSED];
+
                 return (
                   <div key={name} className="group">
-                    <div className="flex justify-between items-center mb-3">
-                      <span className="text-[11px] font-black text-slate-400 dark:text-slate-400 uppercase tracking-widest transition-colors group-hover:text-slate-900 dark:group-hover:text-white">{name}</span>
-                      <span className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 transition-colors">{total} ativos</span>
+                    <div className="flex justify-between items-end mb-4">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-black text-slate-400 dark:text-slate-400 uppercase tracking-[0.2em] transition-colors group-hover:text-slate-900 dark:group-hover:text-white mb-1.5">{name}</span>
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-100 dark:border-indigo-500/20">
+                            <span className="text-[11px] font-black text-indigo-700 dark:text-indigo-300">{projectCount}</span>
+                            <span className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400/70 uppercase tracking-widest">{projectCount === 1 ? 'Projeto' : 'Projetos'}</span>
+                          </div>
+                          <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg border border-emerald-100 dark:border-emerald-500/20">
+                            <span className="text-[11px] font-black text-emerald-700 dark:text-emerald-300">{subtaskCount}</span>
+                            <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400/70 uppercase tracking-widest">{subtaskCount === 1 ? 'Subtarefa' : 'Subtarefas'}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right flex flex-col items-end">
+                        <span className="text-[14px] font-black text-slate-900 dark:text-white transition-colors leading-none">{totalItems}</span>
+                        <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">Total Ativo</span>
+                      </div>
                     </div>
-                    <div className="h-8 w-full flex rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-900 shadow-inner dark:shadow-[inset_0_4px_8px_rgba(0,0,0,0.5)] bg-slate-100 dark:bg-slate-900/40 p-1 transition-colors duration-500">
-                      <div className="bg-slate-300 dark:bg-slate-700/60 h-full rounded-l-xl transition-all duration-700 hover:brightness-110 dark:hover:brightness-125 border-r border-white/5" style={{ width: `${(statusData[ProjectStatus.QUEUE] / total) * 100}%` }}></div>
-                      <div className="bg-indigo-600 h-full transition-all duration-700 hover:brightness-110 dark:hover:brightness-125 shadow-lg border-r border-white/5" style={{ width: `${(statusData[ProjectStatus.IN_PROGRESS] / total) * 100}%` }}></div>
-                      <div className="bg-purple-600 h-full rounded-r-xl transition-all duration-700 hover:brightness-110 dark:hover:brightness-125" style={{ width: `${(statusData[ProjectStatus.PAUSED] / total) * 100}%` }}></div>
+                    <div className="h-4 w-full flex rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800 shadow-inner dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.4)] bg-slate-50 dark:bg-slate-900/40 p-0.5 transition-colors duration-500">
+                      <div className="bg-slate-300 dark:bg-slate-700/60 h-full rounded-l-lg transition-all duration-700 hover:brightness-110 dark:hover:brightness-125 border-r border-white/5" style={{ width: `${(data.stats[ProjectStatus.QUEUE] / totalItems) * 100}%` }}></div>
+                      <div className="bg-indigo-600 h-full transition-all duration-700 hover:brightness-110 dark:hover:brightness-125 shadow-lg border-r border-white/5" style={{ width: `${(data.stats[ProjectStatus.IN_PROGRESS] / totalItems) * 100}%` }}></div>
+                      <div className="bg-purple-600 h-full rounded-r-lg transition-all duration-700 hover:brightness-110 dark:hover:brightness-125" style={{ width: `${(data.stats[ProjectStatus.PAUSED] / totalItems) * 100}%` }}></div>
                     </div>
                   </div>
                 );
