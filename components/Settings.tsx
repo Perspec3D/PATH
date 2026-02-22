@@ -378,6 +378,17 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser }) =>
                 </div>
               )}
 
+              {(db.company?.licenseStatus === LicenseStatus.ACTIVE || db.company?.licenseStatus === LicenseStatus.CANCELLED) && db.company?.subscriptionEnd && (
+                <div className="flex justify-between items-center pt-2 border-t border-slate-800/50">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                    {db.company.licenseStatus === LicenseStatus.ACTIVE ? 'Próxima Renovação' : 'Acesso Válido Até'}
+                  </span>
+                  <span className={`text-sm font-black ${db.company.licenseStatus === LicenseStatus.ACTIVE ? 'text-indigo-400' : 'text-rose-400'}`}>
+                    {new Date(db.company.subscriptionEnd).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+              )}
+
               {db.company?.licenseStatus === LicenseStatus.ACTIVE && (
                 <div className="pt-4 border-t border-slate-800/50 text-center">
                   <button

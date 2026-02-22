@@ -100,7 +100,7 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setIsEmailConfirmed(!!session.user.email_confirmed_at);
-        
+
         // Guard: Avoid unnecessary state updates if it's the same user
         if (companySession?.id === session.user.id) {
           return;
@@ -390,7 +390,7 @@ const App: React.FC = () => {
               {db.company?.licenseStatus === LicenseStatus.SUSPENDED
                 ? 'Identificamos uma pendência no seu pagamento. Regularize sua assinatura para retomar o acesso imediato.'
                 : (db.company?.licenseStatus === LicenseStatus.CANCELLED
-                  ? 'Sua assinatura foi cancelada e o período de acesso vigente chegou ao fim.'
+                  ? `Sua assinatura foi cancelada e seu período de acesso encerrou em ${db.company.subscriptionEnd ? new Date(db.company.subscriptionEnd).toLocaleDateString('pt-BR') : ''}.`
                   : 'O seu período de teste do PERSPEC PATH chegou ao fim. Mantenha o controle total dos seus projetos e ative sua assinatura mensal agora mesmo.')}
             </p>
 
