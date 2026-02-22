@@ -44,14 +44,18 @@ const InfoTooltip: React.FC<{ title: string; content: string; calculation?: stri
   );
 };
 const UserDetailModal: React.FC<{
-  user: { id: string; name: string; projects: Set<string>; stats: Record<string, number> };
+  userId: string;
+  userName: string;
   projects: Project[];
   onClose: () => void;
-}> = ({ user, projects, onClose }) => {
-  const userProjects = projects.filter(p => user.projects.has(p.id));
+}> = ({ userId, userName, projects, onClose }) => {
+  const titularProjects = projects.filter(p =>
+    p.assigneeId === userId && [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status)
+  );
+
   const userSubtasks = projects.flatMap(p =>
     (p.subtasks || [])
-      .filter(st => st.assigneeId === user.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED)
+      .filter(st => st.assigneeId === userId && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED)
       .map(st => ({ ...st, parentProjectName: p.name, parentProjectCode: p.code }))
   );
 
@@ -65,7 +69,7 @@ const UserDetailModal: React.FC<{
               <Users size={20} />
             </div>
             <div>
-              <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">{user.name}</h3>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">{userName}</h3>
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-1">Detalhamento de Carga Ativa</p>
             </div>
           </div>
@@ -81,23 +85,23 @@ const UserDetailModal: React.FC<{
         <div className="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-10">
           {/* Projetos Principais (Onde ele é o titular) */}
           <div className="space-y-4">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Responsável Principal</h4>
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Responsável Principal ({titularProjects.length})</h4>
             <div className="grid gap-3">
-              {userProjects.filter(p => p.assigneeId === user.id).map(p => (
+              {titularProjects.map(p => (
                 <div key={p.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[24px] flex items-center justify-between group hover:border-indigo-500/30 transition-all">
                   <div className="flex flex-col">
                     <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{p.name}</span>
                     <span className="text-[10px] font-mono font-black text-slate-400 dark:text-slate-500 uppercase mt-1">#{p.code}</span>
                   </div>
                   <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${p.status === ProjectStatus.IN_PROGRESS ? 'bg-indigo-500/10 text-indigo-500' :
-                    p.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
-                      'bg-purple-500/10 text-purple-500'
+                      p.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                        'bg-purple-500/10 text-purple-500'
                     }`}>
                     {p.status}
                   </span>
                 </div>
               ))}
-              {userProjects.filter(p => p.assigneeId === user.id).length === 0 && (
+              {titularProjects.length === 0 && (
                 <div className="text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Nenhum projeto sob titularidade</div>
               )}
             </div>
@@ -105,15 +109,15 @@ const UserDetailModal: React.FC<{
 
           {/* Subtarefas Designadas */}
           <div className="space-y-4">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Subtarefas em Execução</h4>
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Subtarefas em Execução ({userSubtasks.length})</h4>
             <div className="grid gap-3">
               {userSubtasks.map(st => (
                 <div key={st.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[24px] flex flex-col group hover:border-emerald-500/30 transition-all">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{st.title}</span>
                     <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${st.status === ProjectStatus.IN_PROGRESS ? 'bg-emerald-500/10 text-emerald-500' :
-                      st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
-                        'bg-purple-500/10 text-purple-500'
+                        st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                          'bg-purple-500/10 text-purple-500'
                       }`}>
                       {st.status}
                     </span>
@@ -1083,7 +1087,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       </div>
       {viewingUser && (
         <UserDetailModal
-          user={viewingUser}
+          userId={viewingUser.id}
+          userName={viewingUser.name}
           projects={projects}
           onClose={() => setViewingUser(null)}
         />
