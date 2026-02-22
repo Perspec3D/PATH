@@ -47,8 +47,9 @@ const UserDetailModal: React.FC<{
   userId: string;
   userName: string;
   projects: Project[];
+  clients: Client[];
   onClose: () => void;
-}> = ({ userId, userName, projects, onClose }) => {
+}> = ({ userId, userName, projects, clients, onClose }) => {
   const titularProjects = projects.filter(p =>
     p.assigneeId === userId && [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status)
   );
@@ -58,6 +59,16 @@ const UserDetailModal: React.FC<{
       .filter(st => st.assigneeId === userId && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED)
       .map(st => ({ ...st, parentProjectName: p.name, parentProjectCode: p.code }))
   );
+
+  const getClientName = (clientId: string) => {
+    return clients.find(c => c.id === clientId)?.name || 'Cliente não encontrado';
+  };
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return null;
+    const [y, m, d] = dateStr.split('-');
+    return `${d}/${m}/${y.slice(-2)}`;
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-300">
@@ -88,17 +99,35 @@ const UserDetailModal: React.FC<{
             <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Responsável Principal ({titularProjects.length})</h4>
             <div className="grid gap-3">
               {titularProjects.map(p => (
-                <div key={p.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[24px] flex items-center justify-between group hover:border-indigo-500/30 transition-all">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{p.name}</span>
-                    <span className="text-[10px] font-mono font-black text-slate-400 dark:text-slate-500 uppercase mt-1">#{p.code}</span>
+                <div key={p.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[32px] flex flex-col group hover:border-indigo-500/30 transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{p.name}</span>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <span className="text-[10px] font-mono font-black text-indigo-600/60 dark:text-indigo-400/50 uppercase">#{p.code}</span>
+                        <span className="text-[9px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md">REV.{p.revision || '00'}</span>
+                      </div>
+                    </div>
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${p.status === ProjectStatus.IN_PROGRESS ? 'bg-indigo-500/10 text-indigo-500' :
+                        p.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                          'bg-purple-500/10 text-purple-500'
+                      }`}>
+                      {p.status}
+                    </span>
                   </div>
-                  <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${p.status === ProjectStatus.IN_PROGRESS ? 'bg-indigo-500/10 text-indigo-500' :
-                    p.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
-                      'bg-purple-500/10 text-purple-500'
-                    }`}>
-                    {p.status}
-                  </span>
+
+                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-200/50 dark:border-white/5">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/40"></div>
+                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight truncate max-w-[200px]">{getClientName(p.clientId)}</span>
+                    </div>
+                    {p.deliveryDate && (
+                      <div className="flex items-center space-x-1.5 text-slate-500">
+                        <Calendar size={10} className="text-indigo-500/60" />
+                        <span className="text-[9px] font-black uppercase tracking-tighter">{formatDate(p.deliveryDate)}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
               {titularProjects.length === 0 && (
@@ -112,20 +141,28 @@ const UserDetailModal: React.FC<{
             <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Subtarefas em Execução ({userSubtasks.length})</h4>
             <div className="grid gap-3">
               {userSubtasks.map(st => (
-                <div key={st.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[24px] flex flex-col group hover:border-emerald-500/30 transition-all">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{st.title}</span>
+                <div key={st.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[32px] flex flex-col group hover:border-emerald-500/30 transition-all">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{st.name}</span>
+                      {st.deliveryDate && (
+                        <div className="flex items-center space-x-1.5 text-emerald-600/60 dark:text-emerald-400/40 mt-1">
+                          <Calendar size={10} />
+                          <span className="text-[9px] font-black uppercase tracking-tighter">Entrega: {formatDate(st.deliveryDate)}</span>
+                        </div>
+                      )}
+                    </div>
                     <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${st.status === ProjectStatus.IN_PROGRESS ? 'bg-emerald-500/10 text-emerald-500' :
-                      st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
-                        'bg-purple-500/10 text-purple-500'
+                        st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                          'bg-purple-500/10 text-purple-500'
                       }`}>
                       {st.status}
                     </span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Projeto Pai:</span>
+                  <div className="flex items-center space-x-2 bg-white/40 dark:bg-white/5 p-2 rounded-xl border border-slate-200/50 dark:border-white/5">
+                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Projeto:</span>
                     <span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 uppercase truncate">{st.parentProjectName}</span>
-                    <span className="text-[9px] font-mono font-black text-slate-400 dark:text-slate-600">({st.parentProjectCode})</span>
+                    <span className="text-[9px] font-mono font-black text-indigo-500/40 dark:text-indigo-400/30">({st.parentProjectCode})</span>
                   </div>
                 </div>
               ))}
