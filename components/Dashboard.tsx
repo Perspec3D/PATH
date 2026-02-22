@@ -301,23 +301,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
 
       const userDetails = activeUsers_Capacity.map(u => {
         let userWorkDays = 0;
+
+        const calculateDays = (startStr: string, endStr: string) => {
+          const start = new Date(startStr + 'T00:00:00');
+          const end = new Date(endStr + 'T23:59:59');
+          const overlapStart = new Date(Math.max(start.getTime(), startOfWeek.getTime()));
+          const overlapEnd = new Date(Math.min(end.getTime(), endOfWeek.getTime()));
+          let days = 0;
+          if (overlapStart <= overlapEnd) {
+            const current = new Date(overlapStart);
+            while (current <= overlapEnd) {
+              const dow = current.getDay();
+              if (dow !== 0 && dow !== 6) days++;
+              current.setDate(current.getDate() + 1);
+            }
+          }
+          return days;
+        };
+
         projects.forEach(p => {
+          // Atividade principal do projeto
+          if (p.assigneeId === u.id && p.status !== ProjectStatus.DONE && p.status !== ProjectStatus.CANCELED && p.startDate && p.deliveryDate) {
+            userWorkDays += calculateDays(p.startDate, p.deliveryDate);
+          }
+          // Subtarefas
           p.subtasks?.forEach(st => {
             if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED && st.startDate && st.deliveryDate) {
-              const stStart = new Date(st.startDate + 'T00:00:00');
-              const stEnd = new Date(st.deliveryDate + 'T23:59:59');
-
-              const overlapStart = new Date(Math.max(stStart.getTime(), startOfWeek.getTime()));
-              const overlapEnd = new Date(Math.min(stEnd.getTime(), endOfWeek.getTime()));
-
-              if (overlapStart <= overlapEnd) {
-                const current = new Date(overlapStart);
-                while (current <= overlapEnd) {
-                  const dow = current.getDay();
-                  if (dow !== 0 && dow !== 6) userWorkDays++;
-                  current.setDate(current.getDate() + 1);
-                }
-              }
+              userWorkDays += calculateDays(st.startDate, st.deliveryDate);
             }
           });
         });
@@ -525,7 +535,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ db }) => {
           <div className="relative z-10">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
               <div>
-                <h3 className="text-[12px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-2 px-2">Capacidade Operacional da Equipe</h3>
+                <h3 className="text-[12px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-2 px-2 flex items-center">
+                  Capacidade Operacional da Equipe
+                  <InfoTooltip
+                    title="Saturação da Equipe"
+                    content="Percentual de ocupação baseado em 5 dias úteis por usuário ativo. Soma o tempo de todos os projetos e subtarefas pendentes alocados na semana selecionada."
+                    calculation="(Dias_Atribuídos_Semana / (Usuários_Ativos * 5)) * 100"
+                  />
+                </h3>
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest px-2">Sincronizado com Ciclo Médio de {avgExecutionTime} dias</p>
               </div>
 
