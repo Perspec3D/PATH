@@ -500,15 +500,15 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                     <div className="flex group/user relative hover:bg-slate-800/20 transition-all duration-300 hover:z-[60]" key={user.id}>
                       {/* Sidebar Usuário */}
                       <div
-                        className="w-80 px-6 flex items-center border-r border-slate-700/80 shrink-0 sticky left-0 z-40 bg-[#1e293b]/95 backdrop-blur-sm group hover:bg-slate-800 transition-all cursor-pointer border-l-4 border-transparent hover:border-emerald-500/40"
+                        className="w-80 px-6 flex items-center border-r border-slate-100 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-sm group hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer border-l-4 border-transparent hover:border-emerald-500/40"
                         onClick={() => setViewingUserCarga({ user, assignments: allAssignments, distinctCount: distinctProjectsCount })}
                         style={{ height: `${rowHeight}px` }}
                       >
-                        <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-slate-400 font-black text-sm uppercase overflow-hidden mr-4 group-hover:border-emerald-500/50 transition-colors">
+                        <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500 font-black text-sm uppercase overflow-hidden mr-4 group-hover:border-emerald-500/50 transition-colors">
                           {user.username.charAt(0)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-xs font-black text-slate-100 truncate group-hover:text-emerald-400 transition-colors uppercase tracking-tight">{user.username}</h4>
+                          <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors uppercase tracking-tight">{user.username}</h4>
                           <div className="flex flex-col mt-1 space-y-0.5">
                             <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{allAssignments.length} Tarefa(s) ativa(s)</p>
                             <p className="text-[9px] text-emerald-500/60 font-black uppercase tracking-widest flex items-center">
@@ -525,14 +525,14 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                       </div>
 
                       {/* Timeline Usuário */}
-                      <div style={{ height: `${rowHeight}px` }} className="flex-1 relative bg-slate-900/10 overflow-visible">
+                      <div style={{ height: `${rowHeight}px` }} className="flex-1 relative bg-slate-50/10 dark:bg-slate-900/10 overflow-visible transition-colors">
                         {/* Background Grid & Conflict Highlight */}
                         <div className="absolute inset-0 flex pointer-events-none z-10">
                           {timelineDates.map((date, i) => {
                             const isConflict = conflictMap.has(date.toDateString());
                             const isToday = date.toDateString() === todayStr;
                             return (
-                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-700/80 shrink-0 transition-colors duration-500 ${isConflict ? 'bg-red-500/10' : ''} ${isToday ? 'bg-orange-500/10 shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}`}>
+                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 transition-colors duration-500 ${isConflict ? 'bg-red-500/10' : ''} ${isToday ? 'bg-orange-500/10 shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}`}>
                               </div>
                             );
                           })}
@@ -599,53 +599,53 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
       {
         editingProject && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-            <div className="bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl border border-slate-700 p-8 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
-              <h3 className="text-white font-black uppercase mb-6 text-sm tracking-widest">Consultar / Alterar Cadastro</h3>
+            <div className="bg-white dark:bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl border border-slate-200 dark:border-slate-700 p-8 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar transition-colors">
+              <h3 className="text-slate-900 dark:text-white font-black uppercase mb-6 text-sm tracking-widest transition-colors">Consultar / Alterar Cadastro</h3>
               <form onSubmit={handleSave} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="md:col-span-1">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Código</label>
-                    <div className="w-full bg-slate-900/50 border border-slate-700/50 p-3 rounded-xl text-indigo-400 font-mono font-bold text-xs">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Código</label>
+                    <div className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700/50 p-3 rounded-xl text-indigo-600 dark:text-indigo-400 font-mono font-bold text-xs transition-colors">
                       {editingProject.code}
                     </div>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Nome do Projeto</label>
-                    <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none focus:ring-2 focus:ring-indigo-500" />
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Nome do Projeto</label>
+                    <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Início</label>
-                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" />
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Início</label>
+                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Entrega</label>
-                    <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" />
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Entrega</label>
+                    <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Status</label>
-                    <select value={status} onChange={(e: any) => setStatus(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Status</label>
+                    <select value={status} onChange={(e: any) => setStatus(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors">
                       {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">Revisão</label>
-                    <input type="text" value={revision} onChange={e => setRevision(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-3 rounded-xl text-white outline-none" />
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Revisão</label>
+                    <input type="text" value={revision} onChange={e => setRevision(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors" />
                   </div>
                 </div>
 
                 {/* EDIÇÃO DE SUB-TAREFAS */}
                 {subtasks.length > 0 && (
-                  <div className="pt-6 border-t border-slate-800">
-                    <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Cronograma de Sub-tarefas</h4>
-                    <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="pt-6 border-t border-slate-100 dark:border-slate-800 transition-colors">
+                    <h4 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-4 transition-colors">Cronograma de Sub-tarefas</h4>
+                    <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar transition-colors">
                       {subtasks.map((st, idx) => (
-                        <div key={st.id} className="bg-slate-900/50 border border-slate-700/50 p-4 rounded-2xl">
+                        <div key={st.id} className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700/50 p-4 rounded-2xl transition-colors">
                           <div className="flex items-center justify-between mb-4">
-                            <span className="text-[10px] font-bold text-white uppercase truncate flex-1 mr-4">{st.name}</span>
+                            <span className="text-[10px] font-bold text-slate-900 dark:text-white uppercase truncate flex-1 mr-4 transition-colors">{st.name}</span>
                             <div className="flex items-center space-x-3">
                               <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest hidden md:block">Status Etapa</label>
                               <select
@@ -657,7 +657,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                 }}
                                 className={`px-2 py-1 rounded-[6px] text-[8px] font-black uppercase text-white outline-none cursor-pointer transition-all hover:brightness-110 shadow-sm ${getStatusColor(st.status)} border border-white/10`}
                               >
-                                {Object.values(ProjectStatus).map(s => <option key={s} value={s} className="bg-slate-900 border-none">{s}</option>)}
+                                {Object.values(ProjectStatus).map(s => <option key={s} value={s} className="bg-slate-900 dark:bg-slate-900 border-none">{s}</option>)}
                               </select>
                             </div>
                           </div>
@@ -674,7 +674,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                   newSts[idx] = { ...st, startDate: e.target.value };
                                   setSubtasks(newSts);
                                 }}
-                                className="w-full bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-white outline-none focus:border-indigo-500 transition-colors"
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
                               />
                             </div>
                             <div>
@@ -689,7 +689,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                   newSts[idx] = { ...st, deliveryDate: e.target.value };
                                   setSubtasks(newSts);
                                 }}
-                                className="w-full bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-white outline-none focus:border-indigo-500 transition-colors"
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
                               />
                             </div>
                             <div>
@@ -701,7 +701,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                   newSts[idx] = { ...st, assigneeId: e.target.value };
                                   setSubtasks(newSts);
                                 }}
-                                className="w-full bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-white outline-none focus:border-indigo-500 transition-colors"
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
                               >
                                 <option value="">Sem responsável</option>
                                 {allUsers.map(u => (
@@ -715,8 +715,8 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                     </div>
                   </div>
                 )}
-                <div className="flex space-x-3 pt-6 border-t border-slate-800">
-                  <button type="button" onClick={() => setEditingProject(null)} className="flex-1 bg-slate-800 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-500 hover:text-white transition">Cancelar</button>
+                <div className="flex space-x-3 pt-6 border-t border-slate-100 dark:border-slate-800 transition-colors">
+                  <button type="button" onClick={() => setEditingProject(null)} className="flex-1 bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">Cancelar</button>
                   <button type="submit" className="flex-1 bg-indigo-600 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all">Salvar Projeto</button>
                 </div>
               </form>
@@ -760,23 +760,23 @@ const UserCargaModal: React.FC<{
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-slate-900 border border-white/10 rounded-[40px] shadow-[0_30px_100px_rgba(0,0,0,0.8)] overflow-hidden animate-in zoom-in duration-300">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-300 transition-colors">
         {/* Header Modal */}
-        <div className="px-8 py-8 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-emerald-500/5 to-transparent">
+        <div className="px-8 py-8 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-gradient-to-r from-emerald-500/5 to-transparent transition-colors">
           <div className="flex items-center space-x-5">
             <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-black text-2xl uppercase shadow-inner">
               {data.user.username.charAt(0)}
             </div>
             <div>
-              <h2 className="text-2xl font-black text-white uppercase tracking-tighter">{data.user.username}</h2>
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter transition-colors">{data.user.username}</h2>
               <div className="flex items-center space-x-3 mt-1">
                 <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em]">{data.assignments.length} Tarefa(s) Totais</p>
                 <span className="w-1 h-1 rounded-full bg-slate-700" />
-                <p className="text-[10px] text-emerald-500 font-black uppercase tracking-[0.2em]">{data.distinctCount} Projetos</p>
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-500 font-black uppercase tracking-[0.2em] transition-colors">{data.distinctCount} Projetos</p>
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-800 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 transition-all">
+          <button onClick={onClose} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 transition-all">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -785,13 +785,13 @@ const UserCargaModal: React.FC<{
         <div className="p-8 max-h-[60vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
           <div className="space-y-8">
             {Object.values(groupedTasks).map((group: any) => (
-              <div key={group.project.id} className="bg-slate-800/20 border border-white/5 rounded-3xl p-6 hover:bg-slate-800/40 transition-colors group">
-                <div className="flex items-center justify-between mb-4 pb-4 border-b border-white/5">
+              <div key={group.project.id} className="bg-slate-50 dark:bg-slate-800/20 border border-slate-100 dark:border-white/5 rounded-3xl p-6 hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors group">
+                <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100 dark:border-white/5">
                   <div className="flex items-center space-x-3">
                     <div className={`w-3 h-3 rounded-full shadow-sm ${getProjectMarkerColor(group.project.id)}`} />
                     <div>
-                      <h4 className="text-sm font-black text-white group-hover:text-emerald-400 transition-colors uppercase">{group.project.name}</h4>
-                      <p className="text-[10px] text-indigo-400/60 font-mono font-bold mt-0.5">{group.project.code}</p>
+                      <h4 className="text-sm font-black text-slate-900 dark:text-white group-hover:text-emerald-500 dark:group-hover:text-emerald-400 transition-colors uppercase">{group.project.name}</h4>
+                      <p className="text-[10px] text-indigo-600/60 dark:text-indigo-400/60 font-mono font-bold mt-0.5 transition-colors">{group.project.code}</p>
                     </div>
                   </div>
                   <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(group.project.status)} text-white`}>
@@ -802,10 +802,10 @@ const UserCargaModal: React.FC<{
                 <div className="space-y-3">
                   {group.tasks.map((t: any) => (
                     <div key={t.id} className="flex items-center justify-between pl-6 relative">
-                      <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-slate-700" />
+                      <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 transition-colors" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-slate-300 truncate">{t.name}</p>
-                        <p className="text-[9px] text-slate-500 font-medium uppercase mt-0.5 tracking-tighter">
+                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate transition-colors">{t.name}</p>
+                        <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium uppercase mt-0.5 tracking-tighter transition-colors">
                           {t.startDate ? new Date(t.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'S/ data'} → {t.deliveryDate ? new Date(t.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'S/ data'}
                         </p>
                       </div>
@@ -821,8 +821,8 @@ const UserCargaModal: React.FC<{
         </div>
 
         {/* Footer */}
-        <div className="px-8 py-6 bg-slate-950/40 border-t border-white/5 text-center">
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em]">Painel de Controle de Carga Operacional</p>
+        <div className="px-8 py-6 bg-slate-100/50 dark:bg-slate-950/40 border-t border-slate-100 dark:border-white/5 text-center transition-colors">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-[0.2em] transition-colors">Painel de Controle de Carga Operacional</p>
         </div>
       </div>
     </div>

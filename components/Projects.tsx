@@ -242,7 +242,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h1 className="text-2xl font-black text-white tracking-tight">Gestão de Projetos</h1>
+        <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors">Gestão de Projetos</h1>
         <button
           onClick={() => { resetForm(); setShowModal(true); }}
           className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 flex items-center font-bold text-sm"
@@ -252,19 +252,19 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
         </button>
       </div>
 
-      <div className="bg-[#1e293b] p-6 rounded-2xl shadow-xl border border-slate-800 flex flex-wrap gap-4 items-center">
+      <div className="bg-white dark:bg-[#1e293b] p-6 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 flex flex-wrap gap-4 items-center transition-colors">
         <div className="relative flex-1 min-w-[250px]">
           <input
             type="text"
             placeholder="Pesquisar projetos..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-12 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition text-sm text-white"
+            className="w-full pl-12 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition text-sm text-slate-900 dark:text-white"
           />
           <svg className="w-5 h-5 absolute left-4 top-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
         </div>
         <select
-          className="bg-slate-900/50 border border-slate-700 text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer"
+          className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer transition-colors"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
         >
@@ -272,7 +272,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
           {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <select
-          className="bg-slate-900/50 border border-slate-700 text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer"
+          className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer transition-colors"
           value={clientFilter}
           onChange={(e) => setClientFilter(e.target.value)}
         >
@@ -283,11 +283,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
         </select>
       </div>
 
-      <div className="bg-[#1e293b] rounded-2xl shadow-xl border border-slate-800 overflow-hidden">
+      <div className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10">
-              <tr className="bg-[#2a374a] border-b border-slate-800">
+              <tr className="bg-slate-50 dark:bg-[#2a374a] border-b border-slate-200 dark:border-slate-800 transition-colors">
                 <th className="w-2 px-0 py-4"></th>
                 <th className="px-2.5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-12">Mini</th>
                 <th className="px-2.5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[450px]">Nome do Projeto</th>
@@ -299,7 +299,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 <th className="px-2.5 py-4 text-right w-12"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/50">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors">
               {filteredProjects.map((project: Project) => {
                 const client = db.clients.find((c: Client) => c.id === project.clientId);
                 const assignee = db.users.find((u: InternalUser) => u.id === project.assigneeId);
@@ -307,7 +307,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 const dateStyle = getDeliveryDateStyle(project.deliveryDate || '', project.status);
 
                 return (
-                  <tr key={project.id} className="hover:bg-slate-700/20 transition-colors group relative border-l-4 border-transparent">
+                  <tr key={project.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors group relative border-l-4 border-transparent">
                     <td className="w-2 p-0">
                       <div className={`absolute left-0 top-0 bottom-0 w-1 ${project.status === ProjectStatus.DONE ? 'bg-emerald-500' : project.status === ProjectStatus.IN_PROGRESS ? 'bg-blue-500' : project.status === ProjectStatus.PAUSED ? 'bg-purple-500' : project.status === ProjectStatus.CANCELED ? 'bg-orange-500' : 'bg-slate-600'}`}></div>
                     </td>
@@ -318,9 +318,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                           onClick={() => project.photoUrl && setShowImageZoom(project.photoUrl)}
                         >
                           {project.photoUrl ? (
-                            <img src={project.photoUrl} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-700 shadow-lg mx-auto" />
+                            <img src={project.photoUrl} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-700 shadow-lg mx-auto transition-colors" />
                           ) : (
-                            <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-600 border border-slate-700/50 mx-auto">
+                            <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-300 dark:text-slate-600 border border-slate-100 dark:border-slate-700/50 mx-auto transition-colors">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                             </div>
                           )}
@@ -328,16 +328,16 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                       </div>
                     </td>
                     <td className="px-2.5 py-4">
-                      <button onClick={() => openEdit(project)} className="font-bold text-slate-100 hover:text-indigo-400 transition-colors text-left outline-none whitespace-normal break-words leading-tight block w-full">
+                      <button onClick={() => openEdit(project)} className="font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-left outline-none whitespace-normal break-words leading-tight block w-full">
                         {project.name}
                       </button>
                     </td>
                     <td className="px-2.5 py-4 text-center">
                       <div className="flex flex-col whitespace-nowrap">
-                        <span className="font-mono text-[10px] text-indigo-400 tracking-tighter uppercase font-black">
+                        <span className="font-mono text-[10px] text-indigo-600 dark:text-indigo-400 tracking-tighter uppercase font-black transition-colors">
                           {project.code}
                         </span>
-                        <span className="text-[8px] text-slate-600 font-black uppercase tracking-widest">{project.revision}</span>
+                        <span className="text-[8px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest transition-colors">{project.revision}</span>
                       </div>
                     </td>
                     <td className="px-2.5 py-4">
@@ -356,10 +356,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     <td className="px-2.5 py-4">
                       {assignee ? (
                         <div className="flex items-center space-x-1.5">
-                          <div className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[8px] font-black text-indigo-400 uppercase">
+                          <div className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase transition-colors">
                             {assignee.username.charAt(0)}
                           </div>
-                          <span className="text-[11px] text-slate-300 font-bold truncate max-w-[100px]">{assignee.username}</span>
+                          <span className="text-[11px] text-slate-600 dark:text-slate-300 font-bold truncate max-w-[100px] transition-colors">{assignee.username}</span>
                         </div>
                       ) : (
                         <span className="text-[11px] text-slate-600 italic">---</span>
@@ -375,13 +375,13 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                           {formatDate(project.deliveryDate)}
                           <span className="text-rose-500 ml-1.5 font-black">→</span>
                         </div>
-                        <div className="text-[8px] font-black text-slate-600 bg-slate-800/60 px-2 py-0.5 rounded-full border border-slate-700/50 uppercase tracking-tighter mt-0.5">
+                        <div className="text-[8px] font-black text-slate-500 dark:text-slate-600 bg-slate-100 dark:bg-slate-800/60 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700/50 uppercase tracking-tighter mt-0.5 transition-colors">
                           {workingDays.split(' ')[0]}d úteis
                         </div>
                       </div>
                     </td>
                     <td className="px-2.5 py-4 text-right">
-                      <button onClick={() => openEdit(project)} className="p-1.5 text-slate-500 hover:text-white transition-colors bg-slate-800/40 hover:bg-slate-800 rounded-lg">
+                      <button onClick={() => openEdit(project)} className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors bg-slate-100 dark:bg-slate-800/40 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg">
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                       </button>
                     </td>
@@ -454,12 +454,12 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Revisão</label>
-                      <input type="text" value={revision} onChange={(e) => setRevision(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 outline-none font-medium" />
+                      <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Revisão</label>
+                      <input type="text" value={revision} onChange={(e) => setRevision(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 outline-none font-medium transition-colors" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Status</label>
-                      <select value={status} onChange={(e: any) => setStatus(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 outline-none font-medium cursor-pointer">
+                      <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Status</label>
+                      <select value={status} onChange={(e: any) => setStatus(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 outline-none font-medium cursor-pointer transition-colors">
                         {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
@@ -468,17 +468,17 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 <div className="space-y-5">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Data Início</label>
-                      <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
+                      <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Data Início</label>
+                      <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Data Entrega</label>
-                      <input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium" />
+                      <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Data Entrega</label>
+                      <input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Imagem do Projeto</label>
-                    <div className="relative h-56 w-full rounded-2xl bg-slate-900 border-2 border-slate-700 border-dashed overflow-hidden flex flex-col items-center justify-center group transition-all hover:border-indigo-500/50">
+                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Imagem do Projeto</label>
+                    <div className="relative h-56 w-full rounded-2xl bg-slate-50 dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 border-dashed overflow-hidden flex flex-col items-center justify-center group transition-all hover:border-indigo-500/50">
                       {photoUrl ? (
                         <div className="relative w-full h-full">
                           <img src={photoUrl} className="absolute inset-0 w-full h-full object-cover" />

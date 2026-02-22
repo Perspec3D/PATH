@@ -536,19 +536,19 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
       {/* About Modal */}
       {showAboutModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-[#0f172a] rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-700 relative max-h-[90vh] flex flex-col">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-slate-700 relative max-h-[90vh] flex flex-col transition-colors">
             <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none"></div>
 
             <div className="p-8 text-center relative z-10 flex-shrink-0">
               <div className="flex justify-between items-center mb-6">
                 {legalView !== 'about' && (
-                  <button onClick={() => setLegalView('about')} className="text-slate-500 hover:text-white transition flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest">
+                  <button onClick={() => setLegalView('about')} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
                     <span>Voltar</span>
                   </button>
                 )}
                 <div className="flex-1"></div>
-                <button onClick={() => { setShowAboutModal(false); setLegalView('about'); }} className="text-slate-500 hover:text-white transition">
+                <button onClick={() => { setShowAboutModal(false); setLegalView('about'); }} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -561,27 +561,27 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
                     alt="Logo PERSPEC PATH"
                   />
 
-                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-1">
-                    PERSPEC <span className="text-[#ccff00]">PATH</span>
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter mb-1 transition-colors">
+                    PERSPEC <span className="text-indigo-600 dark:text-[#ccff00]">PATH</span>
                   </h3>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-8">Soluções em Engenharia & Gestão</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-8 transition-colors">Soluções em Engenharia & Gestão</p>
 
-                  <div className="space-y-4 text-left bg-slate-900/50 p-6 rounded-2xl border border-slate-800/50 mb-6">
-                    <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Suporte WhatsApp</span>
-                      <a href="https://wa.me/5514998892017" target="_blank" rel="noreferrer" className="text-xs font-bold text-emerald-400 hover:text-emerald-300 transition">(14) 9 9889-2017</a>
+                  <div className="space-y-4 text-left bg-slate-50 dark:bg-slate-900/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800/50 mb-6 transition-colors">
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800/50 transition-colors">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Suporte WhatsApp</span>
+                      <a href="https://wa.me/5514998892017" target="_blank" rel="noreferrer" className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 transition-colors">(14) 9 9889-2017</a>
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">E-mail</span>
-                      <a href="mailto:perspec03d@gmail.com" className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition">perspec03d@gmail.com</a>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800/50 transition-colors">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">E-mail</span>
+                      <a href="mailto:perspec03d@gmail.com" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors">perspec03d@gmail.com</a>
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Website</span>
-                      <a href="https://www.perspec3d.com" target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition">www.perspec3d.com</a>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800/50 transition-colors">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Website</span>
+                      <a href="https://www.perspec3d.com" target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors">www.perspec3d.com</a>
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-slate-800/50">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Versão</span>
-                      <span className="text-xs font-bold text-white">v1.2.6 (Beta)</span>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800/50 transition-colors">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Versão</span>
+                      <span className="text-xs font-bold text-slate-700 dark:text-white transition-colors">v1.2.6 (Beta)</span>
                     </div>
                     <div className="flex justify-between items-center py-2">
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Copyright</span>
