@@ -316,20 +316,27 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       <div className="relative w-full h-full group">
                         <img src={photoUrl} className="w-full h-full object-cover transition-all duration-300 group-hover:scale-105" />
                         <div className="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-3 p-4">
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="w-full py-2 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-indigo-700 transition active:scale-95"
-                          >
-                            Alterar Foto
-                          </button>
-                          <button
-                            type="button"
-                            onClick={removePhoto}
-                            className="w-full py-2 bg-rose-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-rose-700 transition active:scale-95"
-                          >
-                            Remover Imagem
-                          </button>
+                          {currentUser.role !== UserRole.VIEWER && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="w-full py-2 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-indigo-700 transition active:scale-95"
+                              >
+                                Alterar Foto
+                              </button>
+                              <button
+                                type="button"
+                                onClick={removePhoto}
+                                className="w-full py-2 bg-rose-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-rose-700 transition active:scale-95"
+                              >
+                                Remover Imagem
+                              </button>
+                            </>
+                          )}
+                          {currentUser.role === UserRole.VIEWER && (
+                            <span className="text-[10px] font-black text-white uppercase tracking-widest">Somente Leitura</span>
+                          )}
                         </div>
                       </div>
                     ) : (
@@ -366,8 +373,9 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Tipo de Pessoa *</label>
                       <select
                         value={type}
+                        disabled={currentUser.role === UserRole.VIEWER}
                         onChange={(e: any) => setType(e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none font-bold focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none font-bold focus:ring-2 focus:ring-indigo-500 transition-all appearance-none disabled:opacity-60"
                       >
                         <option value="PF">Pessoa Física (PF)</option>
                         <option value="PJ">Pessoa Jurídica (PJ)</option>
@@ -381,8 +389,9 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       type="text"
                       required
                       value={name}
+                      disabled={currentUser.role === UserRole.VIEWER}
                       onChange={(e) => setName(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                      className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all disabled:opacity-60"
                     />
                   </div>
 
@@ -392,16 +401,18 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       <input
                         type="text"
                         value={cpfCnpj}
+                        disabled={currentUser.role === UserRole.VIEWER}
                         onChange={(e) => setCpfCnpj(e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none font-mono focus:ring-2 focus:ring-indigo-500 transition-all"
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none font-mono focus:ring-2 focus:ring-indigo-500 transition-all disabled:opacity-60"
                       />
                     </div>
                     <div>
                       <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Situação</label>
                       <select
                         value={status}
+                        disabled={currentUser.role === UserRole.VIEWER}
                         onChange={(e: any) => setStatus(e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none font-bold focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none font-bold focus:ring-2 focus:ring-indigo-500 transition-all appearance-none disabled:opacity-60"
                       >
                         <option value="ACTIVE" className="text-emerald-500">Ativo</option>
                         <option value="INACTIVE" className="text-amber-500">Inativo</option>
@@ -467,26 +478,30 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest transition-colors">Contatos da Empresa</h4>
                       <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider mt-1 transition-colors">Gerencie múltiplos contatos por departamento</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleAddContact}
-                      className="px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all flex items-center"
-                    >
-                      <svg className="w-3 h-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
-                      Adicionar Contato
-                    </button>
+                    {currentUser.role !== UserRole.VIEWER && (
+                      <button
+                        type="button"
+                        onClick={handleAddContact}
+                        className="px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all flex items-center"
+                      >
+                        <svg className="w-3 h-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
+                        Adicionar Contato
+                      </button>
+                    )}
                   </div>
 
                   <div className="space-y-4">
                     {contacts.map((contact, index) => (
                       <div key={contact.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 relative group animate-in fade-in slide-in-from-top-2 duration-300 transition-all">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveContact(contact.id)}
-                          className="absolute -top-2 -right-2 w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
+                        {currentUser.role !== UserRole.VIEWER && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveContact(contact.id)}
+                            className="absolute -top-2 -right-2 w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           <div className="lg:col-span-1">
@@ -494,8 +509,9 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                             <input
                               type="text"
                               value={contact.name}
+                              disabled={currentUser.role === UserRole.VIEWER}
                               onChange={(e) => handleUpdateContact(contact.id, 'name', e.target.value)}
-                              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
                               placeholder="Nome Completo"
                             />
                           </div>
@@ -504,8 +520,9 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                             <input
                               type="text"
                               value={contact.position}
+                              disabled={currentUser.role === UserRole.VIEWER}
                               onChange={(e) => handleUpdateContact(contact.id, 'position', e.target.value)}
-                              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
                               placeholder="Ex: Gerente de Projetos"
                             />
                           </div>
@@ -514,8 +531,9 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                             <input
                               type="text"
                               value={contact.department}
+                              disabled={currentUser.role === UserRole.VIEWER}
                               onChange={(e) => handleUpdateContact(contact.id, 'department', e.target.value)}
-                              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
                               placeholder="Ex: Engenharia"
                             />
                           </div>
@@ -524,8 +542,9 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                             <input
                               type="email"
                               value={contact.email}
+                              disabled={currentUser.role === UserRole.VIEWER}
                               onChange={(e) => handleUpdateContact(contact.id, 'email', e.target.value)}
-                              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
                               placeholder="contato@empresa.com"
                             />
                           </div>
@@ -534,8 +553,9 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                             <input
                               type="text"
                               value={contact.phone}
+                              disabled={currentUser.role === UserRole.VIEWER}
                               onChange={(e) => handleUpdateContact(contact.id, 'phone', e.target.value)}
-                              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
                               placeholder="(00) 00000-0000"
                             />
                           </div>

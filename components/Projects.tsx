@@ -454,13 +454,14 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
 
               {/* PREFIX SETUP */}
               <div className="bg-slate-50 dark:bg-slate-900/40 p-5 rounded-[24px] border border-slate-100 dark:border-white/5 space-y-4">
-                <label className="flex items-center space-x-3 cursor-pointer group">
+                <label className={`flex items-center space-x-3 cursor-pointer group ${currentUser.role === UserRole.VIEWER ? 'pointer-events-none opacity-60' : ''}`}>
                   <div className={`w-10 h-6 rounded-full transition-all relative ${usePrefix ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
                     <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${usePrefix ? 'left-5' : 'left-1'}`} />
                   </div>
                   <input
                     type="checkbox"
                     checked={usePrefix}
+                    disabled={currentUser.role === UserRole.VIEWER}
                     onChange={(e) => setUsePrefix(e.target.checked)}
                     className="hidden"
                   />
@@ -472,9 +473,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     <input
                       type="text"
                       value={codePrefix}
+                      disabled={currentUser.role === UserRole.VIEWER}
                       onChange={(e) => setCodePrefix(e.target.value)}
                       placeholder="Ex: Estudo, Protótipo, Interno..."
-                      className="w-full px-5 py-3 bg-white dark:bg-slate-900 border border-indigo-500/30 dark:border-indigo-500/20 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold transition-all shadow-lg shadow-indigo-500/5"
+                      className="w-full px-5 py-3 bg-white dark:bg-slate-900 border border-indigo-500/30 dark:border-indigo-500/20 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold transition-all shadow-lg shadow-indigo-500/5 disabled:opacity-60"
                     />
                     <p className="text-[9px] font-bold text-indigo-500/60 uppercase tracking-wider mt-2 ml-1">O prefixo aparecerá antes do código do cliente</p>
                   </div>
@@ -535,8 +537,15 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                         <div className="relative w-full h-full">
                           <img src={photoUrl} className="absolute inset-0 w-full h-full object-cover" />
                           <div className="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-3 p-4">
-                            <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-indigo-700 transition">Alterar Foto</button>
-                            <button type="button" onClick={removePhoto} className="w-full py-2 bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-rose-700 transition">Remover Imagem</button>
+                            {currentUser.role !== UserRole.VIEWER && (
+                              <>
+                                <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-indigo-700 transition">Alterar Foto</button>
+                                <button type="button" onClick={removePhoto} className="w-full py-2 bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-rose-700 transition">Remover Imagem</button>
+                              </>
+                            )}
+                            {currentUser.role === UserRole.VIEWER && (
+                              <span className="text-[10px] font-black text-white uppercase tracking-widest">Somente Leitura</span>
+                            )}
                           </div>
                         </div>
                       ) : (
