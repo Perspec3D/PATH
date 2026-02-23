@@ -165,10 +165,15 @@ export const getNextClientCode = (clients: Client[]): string => {
 export const getNextGlobalProjectSeq = (projects: Project[]): number => {
   const seqs = projects.map(p => {
     const parts = p.code.split('-');
-    if (parts.length >= 2) return parseInt(parts[1]);
+    // A sequência é sempre a penúltima parte no padrão [PREFIX-]CLI-SEQ-YY
+    if (parts.length >= 3) {
+      const seqStr = parts[parts.length - 2];
+      const val = parseInt(seqStr);
+      return isNaN(val) ? 0 : val;
+    }
     const matches = p.code.match(/\d+/);
     return matches ? parseInt(matches[0]) : 0;
-  }).filter(n => !isNaN(n) && n > 0).sort((a, b) => a - b);
+  }).filter(n => n > 0).sort((a, b) => a - b);
 
   let next = 1;
   for (const seq of seqs) {

@@ -116,14 +116,25 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setSubtasks(project.subtasks || []);
     // Extrai a sequência central se seguir o padrão [PREFIXO-][CLI]-[SEQ]-[YY]
     const parts = project.code.split('-');
-    if (parts.length === 4) {
-      setUsePrefix(true);
-      setCodePrefix(parts[0]);
-      setCustomCode(parts[2]);
+    if (parts.length >= 3) {
+      // As últimas 3 partes são sempre CLI-SEQ-YY
+      const cliCode = parts[parts.length - 3];
+      const seq = parts[parts.length - 2];
+      const year = parts[parts.length - 1];
+
+      const prefixParts = parts.slice(0, parts.length - 3);
+      if (prefixParts.length > 0) {
+        setUsePrefix(true);
+        setCodePrefix(prefixParts.join('-'));
+      } else {
+        setUsePrefix(false);
+        setCodePrefix('');
+      }
+      setCustomCode(seq);
     } else {
       setUsePrefix(false);
       setCodePrefix('');
-      setCustomCode(parts.length >= 2 ? parts[1] : project.code);
+      setCustomCode(project.code);
     }
     setShowModal(true);
   };
