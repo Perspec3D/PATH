@@ -109,8 +109,8 @@ const UserDetailModal: React.FC<{
                       </div>
                     </div>
                     <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${p.status === ProjectStatus.IN_PROGRESS ? 'bg-indigo-500/10 text-indigo-500' :
-                        p.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
-                          'bg-purple-500/10 text-purple-500'
+                      p.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                        'bg-purple-500/10 text-purple-500'
                       }`}>
                       {p.status}
                     </span>
@@ -153,8 +153,8 @@ const UserDetailModal: React.FC<{
                       )}
                     </div>
                     <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${st.status === ProjectStatus.IN_PROGRESS ? 'bg-emerald-500/10 text-emerald-500' :
-                        st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
-                          'bg-purple-500/10 text-purple-500'
+                      st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                        'bg-purple-500/10 text-purple-500'
                       }`}>
                       {st.status}
                     </span>

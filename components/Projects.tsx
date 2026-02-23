@@ -32,6 +32,8 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [notes, setNotes] = useState('');
   const [customCode, setCustomCode] = useState('');
   const [subtasks, setSubtasks] = useState<ProjectSubTask[]>([]);
+  const [usePrefix, setUsePrefix] = useState(false);
+  const [codePrefix, setCodePrefix] = useState('');
 
   const resetForm = () => {
     setName('');
@@ -45,6 +47,8 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setNotes('');
     setCustomCode('');
     setSubtasks([]);
+    setUsePrefix(false);
+    setCodePrefix('');
     setEditingProject(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -110,9 +114,17 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setPhotoUrl(project.photoUrl || '');
     setNotes(project.notes || '');
     setSubtasks(project.subtasks || []);
-    // Extrai a sequência central se seguir o padrão [CLI]-[SEQ]-[YY]
-    const currentSeq = project.code.includes('-') ? project.code.split('-')[1] : project.code;
-    setCustomCode(currentSeq);
+    // Extrai a sequência central se seguir o padrão [PREFIXO-][CLI]-[SEQ]-[YY]
+    const parts = project.code.split('-');
+    if (parts.length === 4) {
+      setUsePrefix(true);
+      setCodePrefix(parts[0]);
+      setCustomCode(parts[2]);
+    } else {
+      setUsePrefix(false);
+      setCodePrefix('');
+      setCustomCode(parts.length >= 2 ? parts[1] : project.code);
+    }
     setShowModal(true);
   };
 
@@ -123,7 +135,8 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
 
     const yearYY = new Date().getFullYear().toString().slice(-2);
     const seq = (customCode || getNextGlobalProjectSeq(db.projects)).toString().padStart(6, '0');
-    const finalCode = `${client.code.padStart(3, '0')}-${seq}-${yearYY}`;
+    const baseCode = `${client.code.padStart(3, '0')}-${seq}-${yearYY}`;
+    const finalCode = usePrefix && codePrefix ? `${codePrefix}-${baseCode}` : baseCode;
 
     if (db.projects.some((p: Project) => p.code === finalCode && p.id !== editingProject?.id)) {
       alert("Este código de projeto já está em uso.");
@@ -236,7 +249,8 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     const baseSeq = customCode || getNextGlobalProjectSeq(db.projects);
     const seq = baseSeq.toString().padStart(6, '0');
     const yearYY = new Date().getFullYear().toString().slice(-2);
-    return `${client.code.padStart(3, '0')}-${seq}-${yearYY}`;
+    const baseCode = `${client.code.padStart(3, '0')}-${seq}-${yearYY}`;
+    return usePrefix && codePrefix ? `${codePrefix}-${baseCode}` : baseCode;
   };
 
   return (
@@ -427,6 +441,35 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     placeholder="Ex: 000042"
                   />
                 </div>
+              </div>
+
+              {/* PREFIX SETUP */}
+              <div className="bg-slate-50 dark:bg-slate-900/40 p-5 rounded-[24px] border border-slate-100 dark:border-white/5 space-y-4">
+                <label className="flex items-center space-x-3 cursor-pointer group">
+                  <div className={`w-10 h-6 rounded-full transition-all relative ${usePrefix ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${usePrefix ? 'left-5' : 'left-1'}`} />
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={usePrefix}
+                    onChange={(e) => setUsePrefix(e.target.checked)}
+                    className="hidden"
+                  />
+                  <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest group-hover:text-indigo-500 transition-colors">Adicionar Prefixo no Código</span>
+                </label>
+
+                {usePrefix && (
+                  <div className="animate-in slide-in-from-top-2 duration-300">
+                    <input
+                      type="text"
+                      value={codePrefix}
+                      onChange={(e) => setCodePrefix(e.target.value)}
+                      placeholder="Ex: Estudo, Protótipo, Interno..."
+                      className="w-full px-5 py-3 bg-white dark:bg-slate-900 border border-indigo-500/30 dark:border-indigo-500/20 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold transition-all shadow-lg shadow-indigo-500/5"
+                    />
+                    <p className="text-[9px] font-bold text-indigo-500/60 uppercase tracking-wider mt-2 ml-1">O prefixo aparecerá antes do código do cliente</p>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
