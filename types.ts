@@ -1,7 +1,8 @@
 
 export enum UserRole {
   ADMIN = 'ADMIN',
-  USER = 'USER'
+  USER = 'USER',
+  VIEWER = 'VIEWER'
 }
 
 export enum ProjectStatus {

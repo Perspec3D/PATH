@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { InternalUser } from '../types';
+import { InternalUser, UserRole } from '../types';
 
 interface InternalUserLoginProps {
   users: InternalUser[];
@@ -105,6 +105,28 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
               Confirmar Identidade
             </button>
           </form>
+
+          {/* VISUALIZER ACCESS */}
+          <div className="mt-8 flex flex-col items-center">
+            <div className="w-full h-px bg-slate-800 mb-6" />
+            <button
+              type="button"
+              onClick={() => onLogin({
+                id: 'viewer-guest',
+                workspaceId: activeUsers[0]?.workspaceId || '',
+                username: 'Visualizador',
+                passwordHash: '',
+                role: UserRole.VIEWER,
+                isActive: true
+              })}
+              className="group relative flex items-center justify-center space-x-3 px-8 py-3 bg-transparent border border-[#ccff00]/30 hover:border-[#ccff00] hover:bg-[#ccff00]/5 rounded-2xl transition-all duration-300 active:scale-95"
+            >
+              <div className="w-2 h-2 rounded-full bg-[#ccff00] animate-pulse" />
+              <span className="text-[10px] font-black text-[#ccff00]/80 group-hover:text-[#ccff00] uppercase tracking-[0.2em]">Acesso Visualizador</span>
+              <div className="absolute inset-0 rounded-2xl bg-[#ccff00]/20 blur-xl opacity-0 group-hover:opacity-40 transition-opacity" />
+            </button>
+            <p className="mt-3 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center opacity-60">Somente leitura • Sem senha necessária</p>
+          </div>
 
           {/* Dica de Primeiro Acesso - Mais Sutil */}
           {activeUsers.some(u => u.username === 'admin' && u.mustChangePassword) && (

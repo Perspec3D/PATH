@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Project, ProjectStatus, Client, InternalUser } from '../types';
+import { Project, ProjectStatus, Client, InternalUser, UserRole } from '../types';
 import { syncProject, AppDB } from '../storage';
 
 interface GanttProps {
@@ -600,7 +600,9 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
         editingProject && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[200] flex items-center justify-center p-4">
             <div className="bg-white dark:bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-2xl border border-slate-200 dark:border-slate-700 p-8 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar transition-colors">
-              <h3 className="text-slate-900 dark:text-white font-black uppercase mb-6 text-sm tracking-widest transition-colors">Consultar / Alterar Cadastro</h3>
+              <h3 className="text-slate-900 dark:text-white font-black uppercase mb-6 text-sm tracking-widest transition-colors">
+                {currentUser.role === UserRole.VIEWER ? 'Consultar Detalhes' : 'Consultar / Alterar Cadastro'}
+              </h3>
               <form onSubmit={handleSave} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="md:col-span-1">
@@ -611,29 +613,29 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                   </div>
                   <div className="md:col-span-2">
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Nome do Projeto</label>
-                    <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors" />
+                    <input type="text" required value={name} disabled={currentUser.role === UserRole.VIEWER} onChange={e => setName(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors disabled:opacity-60" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Início</label>
-                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors" />
+                    <input type="date" value={startDate} disabled={currentUser.role === UserRole.VIEWER} onChange={e => setStartDate(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors disabled:opacity-60" />
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Entrega</label>
-                    <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors" />
+                    <input type="date" value={deliveryDate} disabled={currentUser.role === UserRole.VIEWER} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors disabled:opacity-60" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Status</label>
-                    <select value={status} onChange={(e: any) => setStatus(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors">
+                    <select value={status} disabled={currentUser.role === UserRole.VIEWER} onChange={(e: any) => setStatus(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors disabled:opacity-60">
                       {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Revisão</label>
-                    <input type="text" value={revision} onChange={e => setRevision(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors" />
+                    <input type="text" value={revision} disabled={currentUser.role === UserRole.VIEWER} onChange={e => setRevision(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors disabled:opacity-60" />
                   </div>
                 </div>
 
@@ -650,12 +652,13 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                               <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest hidden md:block">Status Etapa</label>
                               <select
                                 value={st.status}
+                                disabled={currentUser.role === UserRole.VIEWER}
                                 onChange={e => {
                                   const newSts = [...subtasks];
                                   newSts[idx] = { ...st, status: e.target.value as ProjectStatus };
                                   setSubtasks(newSts);
                                 }}
-                                className={`px-2 py-1 rounded-[6px] text-[8px] font-black uppercase text-white outline-none cursor-pointer transition-all hover:brightness-110 shadow-sm ${getStatusColor(st.status)} border border-white/10`}
+                                className={`px-2 py-1 rounded-[6px] text-[8px] font-black uppercase text-white outline-none cursor-pointer transition-all hover:brightness-110 shadow-sm ${getStatusColor(st.status)} border border-white/10 disabled:opacity-60`}
                               >
                                 {Object.values(ProjectStatus).map(s => <option key={s} value={s} className="bg-slate-900 dark:bg-slate-900 border-none">{s}</option>)}
                               </select>
@@ -669,12 +672,13 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                 min={startDate}
                                 max={deliveryDate}
                                 value={st.startDate || ''}
+                                disabled={currentUser.role === UserRole.VIEWER}
                                 onChange={e => {
                                   const newSts = [...subtasks];
                                   newSts[idx] = { ...st, startDate: e.target.value };
                                   setSubtasks(newSts);
                                 }}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors disabled:opacity-60"
                               />
                             </div>
                             <div>
@@ -684,24 +688,26 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                 min={st.startDate || startDate}
                                 max={deliveryDate}
                                 value={st.deliveryDate || ''}
+                                disabled={currentUser.role === UserRole.VIEWER}
                                 onChange={e => {
                                   const newSts = [...subtasks];
                                   newSts[idx] = { ...st, deliveryDate: e.target.value };
                                   setSubtasks(newSts);
                                 }}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors disabled:opacity-60"
                               />
                             </div>
                             <div>
                               <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Responsável ST</label>
                               <select
                                 value={st.assigneeId || ''}
+                                disabled={currentUser.role === UserRole.VIEWER}
                                 onChange={e => {
                                   const newSts = [...subtasks];
                                   newSts[idx] = { ...st, assigneeId: e.target.value };
                                   setSubtasks(newSts);
                                 }}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors"
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors disabled:opacity-60"
                               >
                                 <option value="">Sem responsável</option>
                                 {allUsers.map(u => (
@@ -716,8 +722,12 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                   </div>
                 )}
                 <div className="flex space-x-3 pt-6 border-t border-slate-100 dark:border-slate-800 transition-colors">
-                  <button type="button" onClick={() => setEditingProject(null)} className="flex-1 bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">Cancelar</button>
-                  <button type="submit" className="flex-1 bg-indigo-600 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all">Salvar Projeto</button>
+                  <button type="button" onClick={() => setEditingProject(null)} className="flex-1 bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">
+                    {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
+                  </button>
+                  {currentUser.role !== UserRole.VIEWER && (
+                    <button type="submit" className="flex-1 bg-indigo-600 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all">Salvar Projeto</button>
+                  )}
                 </div>
               </form>
             </div>

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { Client, InternalUser, Project } from '../types';
+import { Client, InternalUser, Project, UserRole } from '../types';
 import { getNextClientCode, syncClient, AppDB } from '../storage';
 
 interface ClientsProps {
@@ -194,13 +194,15 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors">Base de Clientes</h1>
-        <button
-          onClick={() => { resetForm(); setShowModal(true); }}
-          className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition flex items-center"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-          Adicionar Cliente
-        </button>
+        {currentUser.role !== UserRole.VIEWER && (
+          <button
+            onClick={() => { resetForm(); setShowModal(true); }}
+            className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition flex items-center"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+            Adicionar Cliente
+          </button>
+        )}
       </div>
 
       <div className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-all duration-500">
@@ -279,7 +281,11 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       onClick={() => openEdit(client)}
                       className="p-2 text-slate-400 hover:text-indigo-600 dark:text-slate-500 dark:hover:text-white transition-colors bg-slate-100 dark:bg-slate-800/50 rounded-lg shadow-sm"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      {currentUser.role === UserRole.VIEWER ? (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      )}
                     </button>
                   </td>
                 </tr>
@@ -294,7 +300,9 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-4xl overflow-hidden border border-slate-200 dark:border-slate-700 transition-all duration-500">
             <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30 transition-colors">
-              <h3 className="font-black text-slate-900 dark:text-white text-sm uppercase tracking-widest">{editingClient ? 'Atualizar Cliente' : 'Novo Cadastro'}</h3>
+              <h3 className="font-black text-slate-900 dark:text-white text-sm uppercase tracking-widest">
+                {currentUser.role === UserRole.VIEWER ? 'Visualizar Cliente' : (editingClient ? 'Atualizar Cliente' : 'Novo Cadastro')}
+              </h3>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-white transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
@@ -348,9 +356,10 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       <input
                         type="text"
                         value={customCode}
+                        disabled={currentUser.role === UserRole.VIEWER}
                         onChange={(e) => setCustomCode(e.target.value.replace(/\D/g, ''))}
                         placeholder={getNextClientCode(db.clients)}
-                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-indigo-600 dark:text-indigo-400 font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                        className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-indigo-600 dark:text-indigo-400 font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
                       />
                     </div>
                     <div>
@@ -545,8 +554,14 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
               )}
 
               <div className="pt-6 flex space-x-3">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-200 dark:hover:text-white transition-all">Cancelar</button>
-                <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition active:scale-95">Confirmar Alterações</button>
+                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-200 dark:hover:text-white transition-all">
+                  {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
+                </button>
+                {currentUser.role !== UserRole.VIEWER && (
+                  <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition active:scale-95">
+                    Confirmar Alterações
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -588,16 +603,18 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
               </div>
 
               <div className="mt-auto w-full space-y-3">
-                <button
-                  onClick={() => {
-                    const c = viewingClient;
-                    setViewingClient(null);
-                    openEdit(c);
-                  }}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
-                >
-                  Editar Perfil
-                </button>
+                {currentUser.role !== UserRole.VIEWER && (
+                  <button
+                    onClick={() => {
+                      const c = viewingClient;
+                      setViewingClient(null);
+                      openEdit(c);
+                    }}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+                  >
+                    Editar Perfil
+                  </button>
+                )}
                 <button
                   onClick={() => setViewingClient(null)}
                   className="w-full py-4 bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] hover:bg-slate-300 dark:hover:text-white transition-all"
