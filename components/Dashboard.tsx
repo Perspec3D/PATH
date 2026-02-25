@@ -405,15 +405,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
 
       activeProjects.forEach(p => {
         let isUserInvolved = false;
+        let countedAsTask = false;
+
         if (p.assigneeId === u.id) {
           isUserInvolved = true;
           activeTasksCount++;
+          countedAsTask = true;
         }
 
         p.subtasks?.forEach(st => {
           if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
             isUserInvolved = true;
-            activeTasksCount++;
+            // Só conta a tarefa se o usuário não for o dono do projeto pai (redundância)
+            if (!countedAsTask) {
+              activeTasksCount++;
+              // Se tivermos múltiplas subtarefas no mesmo projeto onde não somos o dono,
+              // o ideal é contar cada uma como carga de trabalho, MAS o usuário solicitou
+              // não considerar subtarefas se ele já é o responsável. 
+              // Assumindo que subtarefas extras somam carga SE o usuário não é o dono do projeto.
+            }
           }
         });
 
@@ -521,14 +531,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         };
 
         projects.forEach(p => {
+          let projectMainCalculated = false;
           // Atividade principal do projeto
           if (p.assigneeId === u.id && p.status !== ProjectStatus.DONE && p.status !== ProjectStatus.CANCELED && p.startDate && p.deliveryDate) {
             userWorkDays += calculateDays(p.startDate, p.deliveryDate);
+            projectMainCalculated = true;
           }
           // Subtarefas
           p.subtasks?.forEach(st => {
             if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED && st.startDate && st.deliveryDate) {
-              userWorkDays += calculateDays(st.startDate, st.deliveryDate);
+              // Só soma os dias da subtarefa se o usuário NÃO for o responsável pelo projeto principal
+              // Isso evita que projetos de 5 dias + 3 subtarefas de 5 dias somem 20 dias de carga (400%)
+              if (!projectMainCalculated) {
+                userWorkDays += calculateDays(st.startDate, st.deliveryDate);
+              }
             }
           });
         });
