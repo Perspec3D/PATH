@@ -212,18 +212,58 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     return due >= now && due <= next7Days;
   });
 
-  // 3. Eficiência por Usuário (Concluídos)
+  // 3. Eficiência por Usuário (Acumulativa: Projetos + Sub-tarefas)
   const userEfficiencyData = useMemo(() => {
-    const data: Record<string, number> = {};
-    users.forEach(u => data[u.username] = 0);
-    projects.filter(p => p.status === ProjectStatus.DONE).forEach(p => {
-      if (p.assigneeId) {
-        const user = users.find(u => u.id === p.assigneeId);
-        if (user) data[user.username]++;
-      }
+    const data: Record<string, {
+      name: string;
+      projectsDone: number;
+      subtasksDone: number;
+      totalAssigned: number;
+      efficiency: number;
+    }> = {};
+
+    users.forEach(u => {
+      data[u.id] = {
+        name: u.username,
+        projectsDone: 0,
+        subtasksDone: 0,
+        totalAssigned: 0,
+        efficiency: 0
+      };
     });
-    return Object.entries(data).map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+
+    projects.forEach(p => {
+      // 1. Validar Projetos
+      if (p.assigneeId && data[p.assigneeId]) {
+        if (p.status !== ProjectStatus.CANCELED) {
+          data[p.assigneeId].totalAssigned++;
+          if (p.status === ProjectStatus.DONE) {
+            data[p.assigneeId].projectsDone++;
+          }
+        }
+      }
+
+      // 2. Validar Sub-tarefas
+      p.subtasks?.forEach(st => {
+        if (st.assigneeId && data[st.assigneeId]) {
+          if (st.status !== ProjectStatus.CANCELED) {
+            data[st.assigneeId].totalAssigned++;
+            if (st.status === ProjectStatus.DONE) {
+              data[st.assigneeId].subtasksDone++;
+            }
+          }
+        }
+      });
+    });
+
+    return Object.values(data).map(d => {
+      const totalDone = d.projectsDone + d.subtasksDone;
+      return {
+        ...d,
+        totalDone,
+        efficiency: d.totalAssigned > 0 ? Math.round((totalDone / d.totalAssigned) * 100) : 0
+      };
+    }).sort((a, b) => b.totalDone - a.totalDone);
   }, [projects, users]);
 
   // 4. Tendência Mensal (Criados vs Concluídos)
@@ -903,21 +943,48 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
               Eficiência Operacional
               <InfoTooltip
-                title="Entregas por Usuário"
-                content="Mede a capacidade de finalização de cada colaborador, focado exclusivamente em projetos com status CONCLUÍDO."
-                calculation="Soma(Projetos_Concluidos_por_Usuario)"
+                title="Sincronia de Entregas"
+                content="Mede a taxa de conclusão comparando tudo o que foi atribuído (Projetos + Subtarefas) com o que foi efetivamente entregue."
+                calculation="(Projetos_Done + Subtarefas_Done) / Total_Atribuído * 100"
               />
             </h3>
             <CheckCircle2 size={20} className="text-emerald-500" />
           </div>
           <div className="p-8 flex-1">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={userEfficiencyData} layout="vertical" margin={{ left: 20, right: 30 }}>
+              <BarChart data={userEfficiencyData} layout="vertical" margin={{ left: 40, right: 30 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2a374a' : '#e2e8f0'} horizontal={true} vertical={false} />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 10, fontWeight: 900 }} width={80} />
-                <RechartsTooltip cursor={{ fill: theme === 'dark' ? '#334155' : '#f1f5f9', opacity: 0.2 }} contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px', color: theme === 'dark' ? '#ffffff' : '#0f172a' }} />
-                <Bar dataKey="value" name="Concluídos" fill="#10b981" radius={[0, 10, 10, 0]} barSize={24} />
+                <XAxis type="number" hide domain={[0, 'dataMax + 2']} />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={(props) => {
+                    const { x, y, payload } = props;
+                    const userData = userEfficiencyData.find(d => d.name === payload.value);
+                    return (
+                      <g transform={`translate(${x},${y})`}>
+                        <text x={-10} y={0} dy={4} textAnchor="end" fill={theme === 'dark' ? '#94a3b8' : '#64748b'} fontSize={10} fontWeight={900}>
+                          {payload.value}
+                        </text>
+                        <text x={-10} y={12} dy={4} textAnchor="end" fill={theme === 'dark' ? '#6366f1' : '#4f46e5'} fontSize={9} fontWeight={900} opacity={0.6}>
+                          {userData?.efficiency}% EFF
+                        </text>
+                      </g>
+                    );
+                  }}
+                  width={100}
+                />
+                <RechartsTooltip
+                  cursor={{ fill: theme === 'dark' ? '#334155' : '#f1f5f9', opacity: 0.1 }}
+                  contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px' }}
+                  itemStyle={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}
+                  labelStyle={{ fontSize: '11px', fontWeight: 900, marginBottom: '8px', color: theme === 'dark' ? '#fff' : '#000' }}
+                />
+                <Bar dataKey="totalAssigned" name="Atribuído Total" fill={theme === 'dark' ? '#ffffff' : '#000000'} opacity={0.03} barSize={20} radius={[0, 10, 10, 0]} isAnimationActive={false} />
+                <Bar dataKey="projectsDone" name="Projetos" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={20} />
+                <Bar dataKey="subtasksDone" name="Subtarefas" stackId="a" fill="#10b981" opacity={0.4} radius={[0, 10, 10, 0]} barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </div>
