@@ -448,11 +448,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     users.forEach(u => {
       const uAssignments: any[] = [];
       projects.forEach(p => {
-        if (p.assigneeId === u.id && p.startDate && p.deliveryDate && p.status !== ProjectStatus.DONE) {
+        if (p.assigneeId === u.id && p.startDate && p.deliveryDate && p.status !== ProjectStatus.DONE && p.status !== ProjectStatus.CANCELED) {
           uAssignments.push({ id: p.id, start: new Date(p.startDate + 'T12:00:00'), end: new Date(p.deliveryDate + 'T12:00:00'), rootId: p.id });
         }
         p.subtasks?.forEach(st => {
-          if (st.assigneeId === u.id && st.startDate && st.deliveryDate && st.status !== ProjectStatus.DONE) {
+          if (st.assigneeId === u.id && st.startDate && st.deliveryDate && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
             uAssignments.push({ id: st.id, start: new Date(st.startDate + 'T12:00:00'), end: new Date(st.deliveryDate + 'T12:00:00'), rootId: p.id });
           }
         });

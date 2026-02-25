@@ -479,6 +479,9 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                     const distinctRootProjectIds = new Set();
 
                     allAssignments.forEach((t: any) => {
+                      // Ignorar projetos ou subtarefas que já foram concluídos ou cancelados
+                      if (t.status === ProjectStatus.DONE || t.status === ProjectStatus.CANCELED) return;
+
                       const s = new Date(t.startDate + 'T12:00:00');
                       const e = new Date(t.deliveryDate + 'T12:00:00');
                       if (date >= s && date <= e) {
