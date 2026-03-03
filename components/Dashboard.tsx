@@ -12,6 +12,83 @@ interface DashboardProps {
   theme?: 'dark' | 'light';
 }
 
+const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ value, theme = 'dark' }) => {
+  const radius = 80;
+  const strokeWidth = 14;
+  const normalizedValue = Math.max(0, Math.min(100, value));
+  const angle = (normalizedValue / 100) * 180 - 180; // Map 0-100 to -180 to 0 degrees for a 180deg arc
+
+  return (
+    <div className="relative flex flex-col items-center justify-center py-6 group/gauge">
+      <svg width="220" height="130" viewBox="0 0 200 110" className="drop-shadow-[0_10px_20px_rgba(0,0,0,0.3)]">
+        <defs>
+          <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#ef4444" /> {/* Red */}
+            <stop offset="25%" stopColor="#f97316" /> {/* Orange */}
+            <stop offset="50%" stopColor="#eab308" /> {/* Yellow */}
+            <stop offset="75%" stopColor="#84cc16" /> {/* Light Green */}
+            <stop offset="100%" stopColor="#10b981" /> {/* Green */}
+          </linearGradient>
+          <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+
+        {/* Background Track */}
+        <path
+          d="M 20 100 A 80 80 0 0 1 180 100"
+          fill="none"
+          stroke={theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+        />
+
+        {/* Gradient Track */}
+        <path
+          d="M 20 100 A 80 80 0 0 1 180 100"
+          fill="none"
+          stroke="url(#gaugeGradient)"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray="251.3"
+          strokeDashoffset="0"
+          className="opacity-40"
+        />
+
+        {/* Dynamic Pointer (Agulha) */}
+        <g
+          transform={`rotate(${angle}, 100, 100)`}
+          className="transition-transform duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+        >
+          {/* Neon Pointer Body */}
+          <line
+            x1="100" y1="100"
+            x2="35" y2="100"
+            stroke="#3B82F6"
+            strokeWidth="3"
+            strokeLinecap="round"
+            filter="url(#neonGlow)"
+            className="drop-shadow-[0_0_8px_rgba(59,130,246,0.8)]"
+          />
+          {/* Pointer Center Dot */}
+          <circle cx="100" cy="100" r="5" fill="#3B82F6" className="drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]" />
+        </g>
+      </svg>
+
+      {/* Value Indicator (Option B) */}
+      <div className="absolute bottom-6 flex flex-col items-center">
+        <span className="text-2xl font-black text-slate-800 dark:text-white tracking-tighter">
+          {normalizedValue}%
+        </span>
+        <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] -mt-1">
+          Operacional
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const InfoTooltip: React.FC<{ title: string; content: string; calculation?: string; position?: 'top' | 'bottom' }> = ({
   title, content, calculation, position = 'top'
 }) => {
@@ -605,6 +682,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     return 'text-rose-500';
   };
 
+  const getHealthStatus = (h: number) => {
+    if (h > 80) return 'EXCELENTE';
+    if (h > 60) return 'ESTÁVEL';
+    if (h > 40) return 'ATENÇÃO';
+    if (h > 20) return 'INSTÁVEL';
+    return 'CRÍTICO';
+  };
+
+  const statusConfigs = [
+    { label: 'CRÍTICO', range: [0, 20], color: 'rose' },
+    { label: 'INSTÁVEL', range: [21, 40], color: 'orange' },
+    { label: 'ATENÇÃO', range: [41, 60], color: 'amber' },
+    { label: 'ESTÁVEL', range: [61, 80], color: 'emerald' },
+    { label: 'EXCELENTE', range: [81, 100], color: 'emerald' }
+  ];
+
+  const currentStatus = getHealthStatus(health);
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-12 relative">
       {/* BACKGROUND DE ALTA TECNOLOGIA */}
@@ -617,15 +712,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       {/* SEÇÃO 1: SAÚDE DO ESCRITÓRIO */}
       <div className="bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl p-12 rounded-[56px] shadow-xl dark:shadow-[0_0_80px_rgba(0,0,0,0.4)] border border-slate-200 dark:border-white/5 relative group overflow-hidden transition-all duration-500">
         {/* AURA DE SAÚDE DINÂMICA */}
-        <div className={`absolute -top-24 -right-24 w-96 h-96 blur-[120px] opacity-10 dark:opacity-20 transition-all duration-1000 ${health > 80 ? 'bg-emerald-500' : health > 50 ? 'bg-amber-500' : 'bg-rose-500'}`}></div>
+        <div className={`absolute -top-24 -right-24 w-96 h-96 blur-[120px] opacity-10 dark:opacity-20 transition-all duration-1000 ${health > 80 ? 'bg-emerald-500' : health > 40 ? 'bg-amber-500' : 'bg-rose-500'}`}></div>
 
         <div className="absolute top-0 right-0 p-12 opacity-[0.03] dark:opacity-5 pointer-events-none transition-opacity group-hover:opacity-10 scale-150">
           <TrendingUp className="w-48 h-48 text-indigo-500" />
         </div>
 
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-12 relative z-10">
-          <div className="flex flex-col items-start">
-            <h3 className="text-[12px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] mb-4 px-2 flex items-center transition-colors">
+        <div className="flex flex-col items-center justify-center relative z-10 w-full mb-10">
+          <div className="w-full mb-4 flex justify-start">
+            <h3 className="text-[12px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] px-2 flex items-center transition-colors">
               Saúde Estratégica
               <InfoTooltip
                 title="Saúde da Operação"
@@ -634,27 +729,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 position="bottom"
               />
             </h3>
-            <span className={`text-[10rem] leading-none font-black tracking-tighter transition-all duration-1000 drop-shadow-2xl ${getHealthColor(health)}`}>
-              {health}%
-            </span>
           </div>
 
-          <div className="flex-1 lg:max-w-4xl w-full pt-10">
-            <div className="flex justify-between mb-6 px-4">
-              <span className="text-[11px] font-black text-rose-500 uppercase tracking-[0.2em]">Crítico</span>
-              <span className="text-[11px] font-black text-amber-500 uppercase tracking-[0.2em]">Estável</span>
-              <span className="text-[11px] font-black text-emerald-500 uppercase tracking-[0.2em]">Excelente</span>
-            </div>
+          <div className="w-full flex flex-col items-center">
+            {/* VELOCÍMETRO (HealthGauge) */}
+            <HealthGauge value={health} theme={theme} />
 
-            <div className="h-12 w-full bg-slate-100 dark:bg-slate-900/90 rounded-3xl overflow-hidden relative border-2 border-slate-200 dark:border-slate-700 shadow-inner dark:shadow-[inset_0_4px_12px_rgba(0,0,0,0.6)] p-1.5 transition-colors duration-500">
-              <div className="absolute inset-0 bg-gradient-to-r from-rose-900 via-amber-900 to-emerald-900 opacity-5 dark:opacity-20"></div>
-              <div
-                className={`h-full rounded-2xl transition-all duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)] relative shadow-lg dark:shadow-[0_0_30px_rgba(0,0,0,0.7)] ${health > 80 ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' : health > 50 ? 'bg-gradient-to-r from-amber-600 to-amber-400' : 'bg-gradient-to-r from-rose-700 to-rose-500'}`}
-                style={{ width: `${health}%` }}
-              >
-                <div className="absolute top-0 right-0 bottom-0 w-3 bg-white/30 blur-[2px] animate-pulse"></div>
-                <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent"></div>
-              </div>
+            {/* STATUS TEXTBAIS */}
+            <div className="flex items-center justify-between w-full max-w-lg mt-4 px-2">
+              {statusConfigs.map((status) => {
+                const isActive = currentStatus === status.label;
+                const colorClass = status.color === 'emerald' ? 'text-emerald-500' : status.color === 'amber' ? 'text-amber-500' : status.color === 'orange' ? 'text-orange-500' : 'text-rose-500';
+                const bgClass = status.color === 'emerald' ? 'bg-emerald-500/10' : status.color === 'amber' ? 'bg-amber-500/10' : status.color === 'orange' ? 'bg-orange-500/10' : 'bg-rose-500/10';
+                const ringClass = status.color === 'emerald' ? 'ring-emerald-500/30' : status.color === 'amber' ? 'ring-amber-500/30' : status.color === 'orange' ? 'ring-orange-500/30' : 'ring-rose-500/30';
+
+                return (
+                  <div
+                    key={status.label}
+                    className={`text-[9px] font-black tracking-widest px-3 py-1.5 rounded-full transition-all duration-500 ${isActive
+                      ? `${colorClass} ${bgClass} ring-1 ${ringClass} shadow-[0_0_15px_rgba(16,185,129,0.2)] scale-110 opacity-100`
+                      : 'text-slate-400 dark:text-slate-600 opacity-40 scale-90'
+                      }`}
+                  >
+                    {status.label}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
