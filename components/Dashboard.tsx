@@ -13,75 +13,92 @@ interface DashboardProps {
 }
 
 const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ value, theme = 'dark' }) => {
-  const radius = 80;
-  const strokeWidth = 14;
-  const normalizedValue = Math.max(0, Math.min(100, value));
-  const angle = (normalizedValue / 100) * 180 - 180; // Map 0-100 to -180 to 0 degrees for a 180deg arc
+  const [displayValue, setDisplayValue] = React.useState(0);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDisplayValue(value);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [value]);
+
+  const radius = 90;
+  const strokeWidth = 18;
+  const normalizedValue = Math.max(0, Math.min(100, displayValue));
+  const angle = (normalizedValue / 100) * 180 - 180;
+
+  // Ticks calculation
+  const ticks = [];
+  for (let i = 0; i <= 10; i++) {
+    const tickAngle = (i * 10 / 100) * 180 - 180;
+    const rad = (tickAngle * Math.PI) / 180;
+    const x1 = 100 + 85 * Math.cos(rad);
+    const y1 = 100 + 85 * Math.sin(rad);
+    const x2 = 100 + 95 * Math.cos(rad);
+    const y2 = 100 + 95 * Math.sin(rad);
+    ticks.push(<line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1" className="text-slate-300 dark:text-slate-800" />);
+  }
 
   return (
-    <div className="relative flex flex-col items-center justify-center py-6 group/gauge">
-      <svg width="220" height="130" viewBox="0 0 200 110" className="drop-shadow-[0_10px_20px_rgba(0,0,0,0.3)]">
+    <div className="relative flex flex-col items-center justify-center group/gauge w-full max-w-[400px]">
+      <svg viewBox="0 0 200 120" className="w-full drop-shadow-[0_20px_40px_rgba(0,0,0,0.3)]">
         <defs>
           <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#ef4444" /> {/* Red */}
-            <stop offset="25%" stopColor="#f97316" /> {/* Orange */}
-            <stop offset="50%" stopColor="#eab308" /> {/* Yellow */}
-            <stop offset="75%" stopColor="#84cc16" /> {/* Light Green */}
-            <stop offset="100%" stopColor="#10b981" /> {/* Green */}
+            <stop offset="0%" stopColor="#ef4444" />
+            <stop offset="25%" stopColor="#f97316" />
+            <stop offset="50%" stopColor="#eab308" />
+            <stop offset="75%" stopColor="#84cc16" />
+            <stop offset="100%" stopColor="#10b981" />
           </linearGradient>
           <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feGaussianBlur stdDeviation="3" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
         </defs>
 
-        {/* Background Track */}
+        {ticks}
+
         <path
-          d="M 20 100 A 80 80 0 0 1 180 100"
+          d="M 10 100 A 90 90 0 0 1 190 100"
           fill="none"
           stroke={theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
           strokeWidth={strokeWidth}
           strokeLinecap="round"
         />
 
-        {/* Gradient Track */}
         <path
-          d="M 20 100 A 80 80 0 0 1 180 100"
+          d="M 10 100 A 90 90 0 0 1 190 100"
           fill="none"
           stroke="url(#gaugeGradient)"
           strokeWidth={strokeWidth}
           strokeLinecap="round"
-          strokeDasharray="251.3"
+          strokeDasharray="282.7"
           strokeDashoffset="0"
           className="opacity-40"
         />
 
-        {/* Dynamic Pointer (Agulha) */}
         <g
           transform={`rotate(${angle}, 100, 100)`}
           className="transition-transform duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
         >
-          {/* Neon Pointer Body */}
           <line
             x1="100" y1="100"
-            x2="35" y2="100"
+            x2="25" y2="100"
             stroke="#3B82F6"
-            strokeWidth="3"
+            strokeWidth="4"
             strokeLinecap="round"
             filter="url(#neonGlow)"
-            className="drop-shadow-[0_0_8px_rgba(59,130,246,0.8)]"
+            className="drop-shadow-[0_0_12px_rgba(59,130,246,0.9)]"
           />
-          {/* Pointer Center Dot */}
-          <circle cx="100" cy="100" r="5" fill="#3B82F6" className="drop-shadow-[0_0_5px_rgba(59,130,246,0.5)]" />
+          <circle cx="100" cy="100" r="6" fill="#3B82F6" className="drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
         </g>
       </svg>
 
-      {/* Value Indicator (Option B) */}
-      <div className="absolute bottom-6 flex flex-col items-center">
-        <span className="text-2xl font-black text-slate-800 dark:text-white tracking-tighter">
-          {normalizedValue}%
+      <div className="absolute bottom-4 flex flex-col items-center">
+        <span className="text-3xl font-black text-slate-800 dark:text-white tracking-tighter">
+          Saúde: {Math.round(normalizedValue)}%
         </span>
-        <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] -mt-1">
+        <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] -mt-1">
           Operacional
         </span>
       </div>
@@ -718,25 +735,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           <TrendingUp className="w-48 h-48 text-indigo-500" />
         </div>
 
-        <div className="flex flex-col items-center justify-center relative z-10 w-full mb-10">
-          <div className="w-full mb-4 flex justify-start">
-            <h3 className="text-[12px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] px-2 flex items-center transition-colors">
-              Saúde Estratégica
-              <InfoTooltip
-                title="Saúde da Operação"
-                content="Métrica de integridade que reflete a pontualidade das entregas ativas. Quanto maior a porcentagem, menos atrasos críticos existem no sistema."
-                calculation="(Total_Ativos - Total_Atrasados) / Total_Ativos * 100"
-                position="bottom"
-              />
-            </h3>
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[1.8fr_1fr] gap-12 relative z-10 w-full items-center">
+          {/* COLUNA ESQUERDA: GAUGE E STATUS */}
+          <div className="flex flex-col items-center justify-center">
+            <div className="w-full mb-8 flex justify-start">
+              <h3 className="text-[12px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] px-2 flex items-center transition-colors">
+                Saúde Estratégica
+                <InfoTooltip
+                  title="Saúde da Operação"
+                  content="Métrica de integridade que reflete a pontualidade das entregas ativas. Quanto maior a porcentagem, menos atrasos críticos existem no sistema."
+                  calculation="(Total_Ativos - Total_Atrasados) / Total_Ativos * 100"
+                  position="bottom"
+                />
+              </h3>
+            </div>
 
-          <div className="w-full flex flex-col items-center">
-            {/* VELOCÍMETRO (HealthGauge) */}
             <HealthGauge value={health} theme={theme} />
 
             {/* STATUS TEXTBAIS */}
-            <div className="flex items-center justify-between w-full max-w-lg mt-4 px-2">
+            <div className="flex items-center justify-between w-full max-w-xl mt-8 px-4">
               {statusConfigs.map((status) => {
                 const isActive = currentStatus === status.label;
                 const colorClass = status.color === 'emerald' ? 'text-emerald-500' : status.color === 'amber' ? 'text-amber-500' : status.color === 'orange' ? 'text-orange-500' : 'text-rose-500';
@@ -746,9 +763,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 return (
                   <div
                     key={status.label}
-                    className={`text-[9px] font-black tracking-widest px-3 py-1.5 rounded-full transition-all duration-500 ${isActive
-                      ? `${colorClass} ${bgClass} ring-1 ${ringClass} shadow-[0_0_15px_rgba(16,185,129,0.2)] scale-110 opacity-100`
-                      : 'text-slate-400 dark:text-slate-600 opacity-40 scale-90'
+                    className={`text-[9px] font-black tracking-[0.2em] px-4 py-2 rounded-xl transition-all duration-700 ${isActive
+                      ? `${colorClass} ${bgClass} ring-1 ${ringClass} shadow-[0_0_20px_rgba(16,185,129,0.2)] scale-110 opacity-100`
+                      : 'text-slate-400 dark:text-slate-600 opacity-30 scale-90'
                       }`}
                   >
                     {status.label}
@@ -757,24 +774,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
               })}
             </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-10 pt-12 mt-12 border-t border-slate-200 dark:border-slate-800/80 relative z-10 transition-colors duration-500">
-          <div className="text-center group/card">
-            <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-600 dark:group-hover/card:text-indigo-400">Ciclo Médio</p>
-            <p className="text-4xl font-black text-slate-900 dark:text-white transition-colors">{avgExecutionTime} <span className="text-[14px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-tighter">dias</span></p>
-          </div>
-          <div className="text-center border-l border-slate-200 dark:border-slate-800/80 group/card transition-colors">
-            <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-rose-600 dark:group-hover/card:text-rose-400">Prazos Expirados</p>
-            <p className="text-4xl font-black text-rose-500">{overdueProjects.length}</p>
-          </div>
-          <div className="text-center border-l border-slate-200 dark:border-slate-800/80 group/card transition-colors">
-            <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-indigo-600 dark:group-hover/card:text-indigo-400">Em Aberto</p>
-            <p className="text-4xl font-black text-indigo-600 dark:text-indigo-400 transition-colors">{activeProjects.length}</p>
-          </div>
-          <div className="text-center border-l border-slate-200 dark:border-slate-800/80 group/card transition-colors">
-            <p className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase mb-3 tracking-[0.2em] transition-colors group-hover/card:text-emerald-600 dark:group-hover/card:text-emerald-400">Concluído</p>
-            <p className="text-4xl font-black text-emerald-500">{projects.filter((p: any) => p.status === ProjectStatus.DONE).length}</p>
+          {/* COLUNA DIREITA: KPIs EMPILHADOS */}
+          <div className="flex flex-col space-y-4 lg:border-l lg:border-slate-100 lg:dark:border-white/5 lg:pl-12 transition-colors">
+            {[
+              { label: 'Ciclo Médio', value: `${avgExecutionTime} dias`, color: 'indigo', icon: Clock },
+              { label: 'Prazos Expirados', value: `${overdueProjects.length}`, color: 'rose', icon: AlertTriangle },
+              { label: 'Em Aberto', value: `${activeProjects.length}`, color: 'amber', icon: Eye },
+              { label: 'Concluídos', value: `${projects.filter(p => p.status === ProjectStatus.DONE).length}`, color: 'emerald', icon: CheckCircle2 }
+            ].map((kpi, idx) => {
+              const Icon = kpi.icon;
+              return (
+                <div key={idx} className="group/kpi flex items-center justify-between p-5 rounded-3xl bg-slate-50/50 dark:bg-white/[0.02] border border-transparent hover:border-slate-200 dark:hover:border-white/10 transition-all">
+                  <div className="flex items-center space-x-4">
+                    <div className={`p-3 rounded-2xl bg-${kpi.color}-500/10 text-${kpi.color}-500 group-hover/kpi:scale-110 transition-transform`}>
+                      <Icon size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{kpi.label}</p>
+                      <p className="text-xl font-black text-slate-900 dark:text-white mt-0.5">{kpi.value}</p>
+                    </div>
+                  </div>
+                  <ArrowRight size={14} className="text-slate-300 dark:text-slate-700 opacity-0 group-hover/kpi:opacity-100 transition-all -translate-x-2 group-hover/kpi:translate-x-0" />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -1324,15 +1348,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           </div>
         </div>
       </div>
-      {viewingUser && (
-        <UserDetailModal
-          userId={viewingUser.id}
-          userName={viewingUser.name}
-          projects={projects}
-          clients={clients}
-          onClose={() => setViewingUser(null)}
-        />
-      )}
-    </div>
+      {
+        viewingUser && (
+          <UserDetailModal
+            userId={viewingUser.id}
+            userName={viewingUser.name}
+            projects={projects}
+            clients={clients}
+            onClose={() => setViewingUser(null)}
+          />
+        )
+      }
+    </div >
   );
 };
