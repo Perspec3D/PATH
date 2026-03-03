@@ -1594,6 +1594,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             userName={viewingUser.name}
             projects={projects}
             clients={clients}
+            onClose={() => setViewingUser(null)}
           />
         )
       }
