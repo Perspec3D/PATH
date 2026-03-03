@@ -25,6 +25,37 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
   const normalizedValue = Math.max(0, Math.min(100, displayValue));
   const angle = (normalizedValue / 100) * 180 - 180;
 
+  // Motor de Interpolação de Cores 5.0 (Smooth Transition & High Contrast)
+  const getInterpolatedColor = (pct: number) => {
+    // Escala Vibrante: Rose (0%) -> Amber (40%) -> Yellow (60%) -> Emerald (100%)
+    const colors = [
+      { p: 0, r: 255, g: 30, b: 86 },    // Hot Rose
+      { p: 40, r: 255, g: 172, b: 65 },  // Electric Orange
+      { p: 65, r: 255, g: 234, b: 0 },   // Cyber Yellow
+      { p: 100, r: 0, g: 255, b: 135 }   // Fluor Green
+    ];
+
+    let lower = colors[0];
+    let upper = colors[colors.length - 1];
+
+    for (let i = 0; i < colors.length - 1; i++) {
+      if (pct >= colors[i].p && pct <= colors[i + 1].p) {
+        lower = colors[i];
+        upper = colors[i + 1];
+        break;
+      }
+    }
+
+    const range = upper.p - lower.p;
+    const rangePct = range === 0 ? 0 : (pct - lower.p) / range;
+
+    const r = Math.round(lower.r + (upper.r - lower.r) * rangePct);
+    const g = Math.round(lower.g + (upper.g - lower.g) * rangePct);
+    const b = Math.round(lower.b + (upper.b - lower.b) * rangePct);
+
+    return `rgb(${r}, ${g}, ${b})`;
+  };
+
   // Gerador de segmentos do arco (blocos estilo Imagem 02)
   const segments = [];
   const numSegments = 40;
@@ -39,12 +70,9 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
     const x2 = 100 + 85 * Math.cos(radEnd);
     const y2 = 100 + 85 * Math.sin(radEnd);
 
-    // Cor baseada na posição do segmento
+    // Cor interpolada baseada na posição do segmento
     const segmentValue = (i / numSegments) * 100;
-    let color = "#10b981"; // Emerald
-    if (segmentValue < 25) color = "#f43f5e"; // Rose
-    else if (segmentValue < 50) color = "#f97316"; // Orange
-    else if (segmentValue < 75) color = "#eab308"; // Yellow
+    const color = getInterpolatedColor(segmentValue);
 
     segments.push(
       <path
@@ -54,8 +82,13 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
         stroke={color}
         strokeWidth="10"
         strokeLinecap="butt"
-        className={segmentValue > normalizedValue ? 'opacity-10 grayscale-[0.5]' : 'opacity-100 shadow-lg'}
-        style={{ filter: segmentValue <= normalizedValue ? 'drop-shadow(0 0 2px currentColor)' : 'none' }}
+        className={segmentValue > normalizedValue ? 'opacity-10 grayscale-[1]' : 'opacity-100'}
+        style={{
+          filter: segmentValue <= normalizedValue
+            ? `drop-shadow(0 0 6px ${color}) drop-shadow(0 0 2px white)`
+            : 'none',
+          transition: 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)'
+        }}
       />
     );
   }
@@ -142,10 +175,13 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
       </svg>
 
       <div className="mt-2 flex flex-col items-center">
-        <span className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter leading-none">
+        <span
+          className="text-4xl font-black tracking-tighter leading-none transition-colors duration-500"
+          style={{ color: getInterpolatedColor(normalizedValue) }}
+        >
           {Math.round(normalizedValue)}%
         </span>
-        <p className="text-[8px] font-black text-blue-500/60 uppercase tracking-[0.4em] mt-3">
+        <p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.4em] mt-3">
           INTEGRIDADE OPERACIONAL
         </p>
       </div>
