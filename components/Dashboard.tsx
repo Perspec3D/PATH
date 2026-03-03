@@ -25,14 +25,14 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
   const normalizedValue = Math.max(0, Math.min(100, displayValue));
   const angle = (normalizedValue / 100) * 180 - 180;
 
-  // Motor de Interpolação de Cores 5.0 (Smooth Transition & High Contrast)
+  // Motor de Interpolação de Cores 5.1 (Smooth Transition & Balanced Palette)
   const getInterpolatedColor = (pct: number) => {
-    // Escala Vibrante: Rose (0%) -> Amber (40%) -> Yellow (60%) -> Emerald (100%)
+    // Escala Original: Rose -> Orange -> Yellow -> Emerald
     const colors = [
-      { p: 0, r: 255, g: 30, b: 86 },    // Hot Rose
-      { p: 40, r: 255, g: 172, b: 65 },  // Electric Orange
-      { p: 65, r: 255, g: 234, b: 0 },   // Cyber Yellow
-      { p: 100, r: 0, g: 255, b: 135 }   // Fluor Green
+      { p: 0, r: 244, g: 63, b: 94 },    // Tailind Rose-500
+      { p: 40, r: 249, g: 115, b: 22 },  // Tailind Orange-500
+      { p: 65, r: 234, g: 179, b: 8 },   // Tailind Yellow-500
+      { p: 100, r: 16, g: 185, b: 129 }  // Tailind Emerald-500
     ];
 
     let lower = colors[0];
@@ -85,7 +85,7 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
         className={segmentValue > normalizedValue ? 'opacity-10 grayscale-[1]' : 'opacity-100'}
         style={{
           filter: segmentValue <= normalizedValue
-            ? `drop-shadow(0 0 6px ${color}) drop-shadow(0 0 2px white)`
+            ? `drop-shadow(0 0 3px ${color})`
             : 'none',
           transition: 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)'
         }}
