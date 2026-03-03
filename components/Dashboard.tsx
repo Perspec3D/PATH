@@ -141,17 +141,11 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
         </g>
       </svg>
 
-      {/* HUD de Valor (Reposicionado para não obstruir) */}
       <div className="mt-2 flex flex-col items-center">
-        <div className="flex items-baseline space-x-1">
-          <span className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter leading-none">
-            {Math.round(normalizedValue)}%
-          </span>
-          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-            Saúde
-          </span>
-        </div>
-        <p className="text-[8px] font-black text-blue-500/60 uppercase tracking-[0.4em] mt-2">
+        <span className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter leading-none">
+          {Math.round(normalizedValue)}%
+        </span>
+        <p className="text-[8px] font-black text-blue-500/60 uppercase tracking-[0.4em] mt-3">
           INTEGRIDADE OPERACIONAL
         </p>
       </div>
@@ -815,10 +809,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 return (
                   <div
                     key={status.label}
-                    className={`flex items-center space-x-1.5 transition-all duration-700 ${isActive ? 'opacity-100 scale-105' : 'opacity-20 grayscale scale-90'}`}
+                    className={`flex items-center space-x-1 transition-all duration-700 ${isActive ? 'opacity-100 scale-105' : 'opacity-15 grayscale scale-90'}`}
                   >
-                    <div className={`w-1 h-1 rounded-full ${isActive ? `${dotColor} shadow-[0_0_8px_rgba(16,185,129,0.8)]` : 'bg-slate-400'}`} />
-                    <span className={`text-[7px] font-black tracking-[0.2em] uppercase ${isActive ? colorClass : 'text-slate-400'}`}>
+                    <div className={`w-1 h-1 rounded-full ${isActive ? `${dotColor} shadow-[0_0_10px_rgba(16,185,129,0.5)]` : 'bg-slate-400'}`} />
+                    <span className={`text-[6.5px] font-black tracking-[0.2em] uppercase ${isActive ? colorClass : 'text-slate-400'}`}>
                       {status.label}
                     </span>
                   </div>
