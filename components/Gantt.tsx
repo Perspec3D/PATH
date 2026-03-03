@@ -270,19 +270,24 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
               <div className="flex border-b border-slate-100 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/50 flex-1 h-16 relative transition-colors">
                 {/* Hoje Highlight no Header */}
                 <div className="absolute inset-0 flex pointer-events-none z-10">
-                  {timelineDates.map((date, i) => (
-                    <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/10 border-x border-orange-500/40' : ''}`}></div>
-                  ))}
+                  {timelineDates.map((date, i) => {
+                    const isToday = date.toDateString() === todayStr;
+                    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                    return (
+                      <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full shrink-0 ${isToday ? 'bg-orange-500/10 border-x border-orange-500/40' : isWeekend ? 'bg-slate-100 dark:bg-slate-800/50' : ''}`}></div>
+                    );
+                  })}
                 </div>
                 <div className="flex items-stretch relative z-20">
                   {timelineDates.map((date, idx) => {
                     const isToday = date.toDateString() === todayStr;
+                    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                     return (
-                      <div key={idx} style={{ width: `${dayWidth}px` }} className={`shrink-0 flex flex-col items-center justify-center border-r border-slate-100 dark:border-slate-700/80 ${isToday ? 'bg-orange-500/20' : ''} transition-colors`}>
-                        <span className={`text-[10px] font-black ${isToday ? 'text-orange-600 dark:text-orange-400 scale-110' : 'text-slate-600 dark:text-slate-200'}`}>
+                      <div key={idx} style={{ width: `${dayWidth}px` }} className={`shrink-0 flex flex-col items-center justify-center border-r border-slate-100 dark:border-slate-700/80 ${isToday ? 'bg-orange-500/20' : isWeekend ? 'bg-slate-100 dark:bg-slate-800/50' : ''} transition-colors`}>
+                        <span className={`text-[10px] font-black ${isToday ? 'text-orange-600 dark:text-orange-400 scale-110' : isWeekend ? 'text-slate-400 dark:text-slate-400' : 'text-slate-600 dark:text-slate-200'}`}>
                           {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                         </span>
-                        <span className={`text-[8px] font-black uppercase tracking-tighter mt-1 ${isToday ? 'text-orange-600 dark:text-orange-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                        <span className={`text-[8px] font-black uppercase tracking-tighter mt-1 ${isToday ? 'text-orange-600 dark:text-orange-500' : isWeekend ? 'text-slate-400 dark:text-slate-500' : 'text-slate-400 dark:text-slate-500'}`}>
                           {date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}
                         </span>
                       </div>
@@ -340,9 +345,13 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                         {/* Timeline Row */}
                         <div className="flex-1 h-20 relative bg-slate-50/10 dark:bg-slate-900/10 overflow-visible transition-colors">
                           <div className="absolute inset-0 flex pointer-events-none z-10">
-                            {timelineDates.map((date, i) => (
-                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/10 border-x border-orange-500/30' : ''}`}></div>
-                            ))}
+                            {timelineDates.map((date, i) => {
+                              const isToday = date.toDateString() === todayStr;
+                              const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                              return (
+                                <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 ${isToday ? 'bg-orange-500/10 border-x border-orange-500/30' : isWeekend ? 'bg-slate-100/50 dark:bg-slate-800/50' : ''}`}></div>
+                              );
+                            })}
                           </div>
 
                           {width > 0 && (
@@ -395,9 +404,13 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                             {/* Timeline Sub-tarefa */}
                             <div className="flex-1 h-12 relative bg-slate-50/5 dark:bg-slate-900/5 overflow-visible transition-colors">
                               <div className="absolute inset-0 flex pointer-events-none z-10">
-                                {timelineDates.map((date, i) => (
-                                  <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/40 shrink-0 ${date.toDateString() === todayStr ? 'bg-orange-500/5 transition-colors' : ''}`}></div>
-                                ))}
+                                {timelineDates.map((date, i) => {
+                                  const isToday = date.toDateString() === todayStr;
+                                  const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                                  return (
+                                    <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/40 shrink-0 ${isToday ? 'bg-orange-500/5 transition-colors' : isWeekend ? 'bg-slate-200/30 dark:bg-slate-800/30' : ''}`}></div>
+                                  );
+                                })}
                               </div>
 
                               {stWidth > 0 && (
@@ -534,8 +547,9 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                           {timelineDates.map((date, i) => {
                             const isConflict = conflictMap.has(date.toDateString());
                             const isToday = date.toDateString() === todayStr;
+                            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                             return (
-                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 transition-colors duration-500 ${isConflict ? 'bg-red-500/10' : ''} ${isToday ? 'bg-orange-500/10 shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : ''}`}>
+                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 transition-colors duration-500 ${isConflict ? 'bg-red-500/10' : ''} ${isToday ? 'bg-orange-500/10 shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : isWeekend && !isConflict ? 'bg-slate-100/50 dark:bg-slate-800/50' : ''}`}>
                               </div>
                             );
                           })}
