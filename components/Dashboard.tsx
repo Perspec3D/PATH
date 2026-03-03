@@ -507,7 +507,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       endOfWeek.setDate(startOfWeek.getDate() + 4); // Sexta
       endOfWeek.setHours(23, 59, 59, 999);
 
-      const totalAvailableDays = activeUsers_Capacity.length * 5;
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+
+      const daysAvailablePerUser = (selectedWeekOffset === 0 && today >= startOfWeek && today <= endOfWeek)
+        ? Math.max(1, 5 - (today.getDay() - 1))
+        : 5;
+
+      const totalAvailableDays = activeUsers_Capacity.length * daysAvailablePerUser;
       let totalOccupiedDays = 0;
 
       const userDetails = activeUsers_Capacity.map(u => {
@@ -516,8 +523,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         const calculateDays = (startStr: string, endStr: string) => {
           const start = new Date(startStr + 'T00:00:00');
           const end = new Date(endStr + 'T23:59:59');
-          const overlapStart = new Date(Math.max(start.getTime(), startOfWeek.getTime()));
+
+          // Se for a semana atual, começamos a contar a partir de hoje (não retroativo)
+          const effectiveCountStart = (selectedWeekOffset === 0 && today > startOfWeek) ? today : startOfWeek;
+
+          const overlapStart = new Date(Math.max(start.getTime(), effectiveCountStart.getTime()));
           const overlapEnd = new Date(Math.min(end.getTime(), endOfWeek.getTime()));
+
+          // Caso especial: Projetos atrasados (fim < hoje) mas ainda ativos.
+          // Eles contam como carga para o dia de hoje enquanto não forem concluídos.
+          if (selectedWeekOffset === 0 && end < today && today <= endOfWeek) {
+            return 1; 
+          }
+
           let days = 0;
           if (overlapStart <= overlapEnd) {
             const current = new Date(overlapStart);
@@ -553,7 +571,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           id: u.id,
           name: u.username,
           occupied: userWorkDays,
-          percentage: Math.round((userWorkDays / 5) * 100)
+          percentage: Math.round((userWorkDays / daysAvailablePerUser) * 100)
         };
       });
 
