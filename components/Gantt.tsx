@@ -274,7 +274,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                     const isToday = date.toDateString() === todayStr;
                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                     return (
-                      <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full shrink-0 ${isToday ? 'bg-orange-500/10 border-x border-orange-500/40' : isWeekend ? 'bg-slate-100 dark:bg-slate-800/50' : ''}`}></div>
+                      <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full shrink-0 ${isToday ? 'bg-orange-500/10 border-x border-orange-500/40' : isWeekend ? 'bg-indigo-50/30 dark:bg-indigo-500/[0.05]' : ''}`}></div>
                     );
                   })}
                 </div>
@@ -283,7 +283,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                     const isToday = date.toDateString() === todayStr;
                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                     return (
-                      <div key={idx} style={{ width: `${dayWidth}px` }} className={`shrink-0 flex flex-col items-center justify-center border-r border-slate-100 dark:border-slate-700/80 ${isToday ? 'bg-orange-500/20' : isWeekend ? 'bg-slate-100 dark:bg-slate-800/50' : ''} transition-colors`}>
+                      <div key={idx} style={{ width: `${dayWidth}px` }} className={`shrink-0 flex flex-col items-center justify-center border-r border-slate-100 dark:border-slate-700/80 ${isToday ? 'bg-orange-500/20' : isWeekend ? 'bg-indigo-50/50 dark:bg-indigo-500/10' : ''} transition-colors`}>
                         <span className={`text-[10px] font-black ${isToday ? 'text-orange-600 dark:text-orange-400 scale-110' : isWeekend ? 'text-slate-400 dark:text-slate-400' : 'text-slate-600 dark:text-slate-200'}`}>
                           {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                         </span>
@@ -349,7 +349,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                               const isToday = date.toDateString() === todayStr;
                               const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                               return (
-                                <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 ${isToday ? 'bg-orange-500/10 border-x border-orange-500/30' : isWeekend ? 'bg-slate-100/50 dark:bg-slate-800/50' : ''}`}></div>
+                                <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 ${isToday ? 'bg-orange-500/10 border-x border-orange-500/30' : isWeekend ? 'bg-indigo-50/20 dark:bg-indigo-500/[0.02]' : ''}`}></div>
                               );
                             })}
                           </div>
@@ -408,7 +408,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                   const isToday = date.toDateString() === todayStr;
                                   const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                                   return (
-                                    <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/40 shrink-0 ${isToday ? 'bg-orange-500/5 transition-colors' : isWeekend ? 'bg-slate-200/30 dark:bg-slate-800/30' : ''}`}></div>
+                                    <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/40 shrink-0 ${isToday ? 'bg-orange-500/5 transition-colors' : isWeekend ? 'bg-indigo-50/10 dark:bg-indigo-500/[0.01]' : ''}`}></div>
                                   );
                                 })}
                               </div>
@@ -549,7 +549,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                             const isToday = date.toDateString() === todayStr;
                             const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                             return (
-                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 transition-colors duration-500 ${isConflict ? 'bg-red-500/10' : ''} ${isToday ? 'bg-orange-500/10 shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : isWeekend && !isConflict ? 'bg-slate-100/50 dark:bg-slate-800/50' : ''}`}>
+                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 transition-colors duration-500 ${isConflict ? 'bg-red-500/10' : ''} ${isToday ? 'bg-orange-500/10 shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : isWeekend && !isConflict ? 'bg-indigo-50/30 dark:bg-indigo-500/[0.03]' : ''}`}>
                               </div>
                             );
                           })}
