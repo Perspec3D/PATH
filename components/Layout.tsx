@@ -196,10 +196,10 @@ export const Layout: React.FC<LayoutProps> = ({
                     ? exportProjectsToExcel(db.projects, db.clients, db.users)
                     : exportClientsToExcel(db.clients)
                   }
-                  className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-lg shadow-emerald-500/20 flex items-center space-x-2 group active:scale-95"
+                  className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition border border-slate-200 dark:border-slate-700 flex items-center space-x-2 group active:scale-95 shadow-sm"
                   title={`Exportar ${currentPage === 'projects' ? 'Projetos' : 'Clientes'} para Excel (XLSX)`}
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
                     <line x1="16" y1="13" x2="8" y2="13"></line>
@@ -212,10 +212,10 @@ export const Layout: React.FC<LayoutProps> = ({
               {currentPage === 'dashboard' && (
                 <button
                   onClick={() => exportDashboardToPDF('dashboard-content')}
-                  className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition shadow-lg shadow-rose-500/20 flex items-center space-x-2 group active:scale-95"
+                  className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition border border-slate-200 dark:border-slate-700 flex items-center space-x-2 group active:scale-95 shadow-sm"
                   title="Exportar Dashboard para PDF"
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
                     <line x1="16" y1="13" x2="8" y2="13"></line>
