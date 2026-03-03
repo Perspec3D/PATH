@@ -28,6 +28,8 @@ export const Layout: React.FC<LayoutProps> = ({
   setTheme
 }) => {
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
+  const [legalView, setLegalView] = useState<'about' | 'terms' | 'privacy'>('about');
 
   useEffect(() => {
     const handleFsChange = () => {
@@ -123,6 +125,13 @@ export const Layout: React.FC<LayoutProps> = ({
           </div>
           <div className="space-y-1.5">
             <button
+              onClick={() => setShowAboutModal(true)}
+              className="w-full text-left text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 py-1.5 px-2 rounded-md transition hover:bg-slate-200/50 dark:hover:bg-slate-700/50 flex items-center mb-1 group"
+            >
+              <svg className="w-3.5 h-3.5 mr-2 text-slate-400 dark:text-slate-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              Sobre o Sistema
+            </button>
+            <button
               onClick={onSwitchUser}
               className="w-full text-left text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white py-1.5 px-2 rounded-md transition hover:bg-slate-200/50 dark:hover:bg-slate-700/50 flex items-center"
             >
@@ -196,6 +205,99 @@ export const Layout: React.FC<LayoutProps> = ({
           </div>
         </div>
       </main>
+
+      {/* About Modal */}
+      {showAboutModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-slate-700 relative max-h-[90vh] flex flex-col transition-colors">
+            <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none"></div>
+
+            <div className="p-8 text-center relative z-10 flex-shrink-0">
+              <div className="flex justify-between items-center mb-6">
+                {legalView !== 'about' && (
+                  <button onClick={() => setLegalView('about')} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                    <span>Voltar</span>
+                  </button>
+                )}
+                <div className="flex-1"></div>
+                <button onClick={() => { setShowAboutModal(false); setLegalView('about'); }} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              {legalView === 'about' && (
+                <>
+                  <img
+                    src="/PATH_logo.png"
+                    className="w-20 h-20 object-contain mx-auto mb-6 drop-shadow-[0_0_15px_rgba(204,255,0,0.1)]"
+                    alt="Logo PERSPEC PATH"
+                  />
+
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter mb-1 transition-colors">
+                    PERSPEC <span className="text-indigo-600 dark:text-[#ccff00]">PATH</span>
+                  </h3>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-8 transition-colors">Soluções em Engenharia & Gestão</p>
+
+                  <div className="space-y-4 text-left bg-slate-50 dark:bg-slate-900/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800/50 mb-6 transition-colors">
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800/50 transition-colors">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Suporte WhatsApp</span>
+                      <a href="https://wa.me/5514998892017" target="_blank" rel="noreferrer" className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:text-emerald-500 transition-colors">(14) 9 9889-2017</a>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800/50 transition-colors">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">E-mail</span>
+                      <a href="mailto:perspec03d@gmail.com" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors">perspec03d@gmail.com</a>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800/50 transition-colors">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Website</span>
+                      <a href="https://www.perspec3d.com" target="_blank" rel="noreferrer" className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors">www.perspec3d.com</a>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800/50 transition-colors">
+                      <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Versão</span>
+                      <span className="text-xs font-bold text-slate-700 dark:text-white transition-colors">v2.1.0</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Copyright</span>
+                      <span className="text-xs font-bold text-slate-400">© 2025 Perspec3D</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={() => setLegalView('terms')} className="py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[9px] font-black uppercase tracking-widest transition">Termos de Uso</button>
+                    <button onClick={() => setLegalView('privacy')} className="py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[9px] font-black uppercase tracking-widest transition">Privacidade</button>
+                  </div>
+                </>
+              )}
+
+              {legalView === 'terms' && (
+                <div className="text-left overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 max-h-[50vh] transition-colors">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-4 transition-colors">Termos de Uso</h3>
+                  <div className="text-xs text-slate-600 dark:text-slate-400 space-y-4 leading-relaxed font-medium transition-colors">
+                    <p>Ao utilizar o <span className="text-indigo-600 dark:text-indigo-400 font-bold transition-colors">PERSPEC PATH</span>, você concorda com:</p>
+                    <p><span className="text-white font-bold">1. Licenciamento:</span> O software é fornecido como serviço (SaaS). A licença é pessoal, intransferível e revogável em caso de violação técnica.</p>
+                    <p><span className="text-white font-bold">2. Responsabilidade:</span> O Usuário Administrador é o único responsável pela precisão e legalidade dos dados inseridos. O sistema é uma ferramenta de apoio à gestão.</p>
+                    <p><span className="text-white font-bold">3. Uso de Dados:</span> O PERSPEC PATH processa informações operacionais para gerar dashboards e cronogramas. Não garantimos resultados jurídicos baseados nessas automações.</p>
+                    <p><span className="text-white font-bold">4. Propriedade:</span> Todos os direitos de design, algoritmos e interface pertencem à Perspec3D Engenharia Ltda.</p>
+                  </div>
+                </div>
+              )}
+
+              {legalView === 'privacy' && (
+                <div className="text-left overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 max-h-[50vh] transition-colors">
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-4 transition-colors">Política de Privacidade</h3>
+                  <div className="text-xs text-slate-600 dark:text-slate-400 space-y-4 leading-relaxed font-medium transition-colors">
+                    <p>Em conformidade com a <span className="text-emerald-600 dark:text-emerald-400 font-bold transition-colors">LGPD (Lei 13.709/18)</span>:</p>
+                    <p><span className="text-slate-900 dark:text-white font-bold transition-colors">1. Coleta:</span> Coletamos apenas dados essenciais para o funcionamento do workspace (E-mail, Nome da Empresa e Dados de Projetos).</p>
+                    <p><span className="text-slate-900 dark:text-white font-bold transition-colors">2. Segurança:</span> Utilizamos infraestrutura de nuvem certificada com criptografia de ponta e isolamento de banco de dados (RLS).</p>
+                    <p><span className="text-slate-900 dark:text-white font-bold underline transition-colors">3. Compartilhamento:</span> Seus dados <span className="text-slate-900 dark:text-white font-bold underline transition-colors">nunca</span> são vendidos. O compartilhamento ocorre apenas com processadores de pagamento (Mercado Pago) para fins de faturamento.</p>
+                    <p><span className="text-slate-900 dark:text-white font-bold transition-colors">4. Direitos:</span> Você pode exportar ou solicitar a exclusão de todos os seus dados a qualquer momento através do suporte oficial.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
