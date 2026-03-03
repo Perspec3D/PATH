@@ -533,7 +533,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           // Caso especial: Projetos atrasados (fim < hoje) mas ainda ativos.
           // Eles contam como carga para o dia de hoje enquanto não forem concluídos.
           if (selectedWeekOffset === 0 && end < today && today <= endOfWeek) {
-            return 1; 
+            return 1;
           }
 
           let days = 0;
@@ -776,6 +776,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                     title="Saturação da Equipe"
                     content="Percentual de ocupação baseado em 5 dias úteis por usuário ativo. Soma o tempo de todos os projetos e subtarefas pendentes alocados na semana selecionada."
                     calculation="(Dias_Atribuídos_Semana / (Usuários_Ativos * 5)) * 100"
+                    position="bottom"
                   />
                 </h3>
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest px-2 transition-colors">Sincronizado com Ciclo Médio de {avgExecutionTime} dias</p>
