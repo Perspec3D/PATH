@@ -1,8 +1,9 @@
-
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Company, LicenseStatus, UserRole } from '../types';
 import { supabase } from '../lib/supabase';
 import { AppDB } from '../storage';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 interface CompanyLoginProps {
   db: AppDB;
@@ -11,6 +12,7 @@ interface CompanyLoginProps {
 }
 
 export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }) => {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -25,7 +27,7 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
 
     if (isSignup) {
       if (!email || !password || !companyName) {
-        setError('Preencha todos os campos');
+        setError(t('auth.fillFields'));
         return;
       }
 
@@ -79,7 +81,7 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
       });
 
       if (signInError) {
-        setError('E-mail ou senha incorretos ou erro de conexão');
+        setError(t('auth.invalidCredentials'));
         return;
       }
 
@@ -101,23 +103,27 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f172a] p-6">
+    <div className="min-h-screen flex items-center justify-center bg-[#0f172a] p-6 relative">
+      <div className="absolute top-8 right-8 z-50">
+        <LanguageSwitcher light />
+      </div>
+
       <div className="w-full max-w-md bg-[#1e293b] rounded-[32px] shadow-2xl overflow-hidden p-10 border border-slate-800">
         <div className="text-center mb-10">
           <img
             src="/PATH_logo.png"
             className="inline-block w-24 h-24 object-contain mb-6 drop-shadow-[0_0_15px_rgba(204,255,0,0.1)]"
-            alt="Logo PERSPEC PATH"
+            alt={t('common.logoAlt')}
           />
           <h1 className="text-3xl font-black tracking-tighter mb-2">
             {isSignup ? (
-              <span className="text-white">Comece no <span className="text-slate-300">PERSPEC</span> <span className="text-[#ccff00]">PATH</span></span>
+              <span className="text-white">{t('auth.start')} <span className="text-slate-300">PERSPEC</span> <span className="text-[#ccff00]">PATH</span></span>
             ) : (
-              <span className="text-white">Acessar Workspace</span>
+              <span className="text-white">{t('auth.accessWorkspace')}</span>
             )}
           </h1>
           <p className="text-slate-500 text-sm font-medium">
-            {isSignup ? 'O controle total dos seus projetos começa aqui.' : 'Entre com suas credenciais de empresa'}
+            {isSignup ? t('auth.controlStart') : t('auth.enterDetails')}
           </p>
         </div>
 
@@ -131,28 +137,28 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
         <form onSubmit={handleSubmit} className="space-y-5">
           {isSignup && (
             <div>
-              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Nome da Empresa</label>
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">{t('auth.companyName')}</label>
               <input
                 type="text"
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 className="w-full px-5 py-3.5 bg-slate-900 border border-slate-700 rounded-2xl focus:ring-2 focus:ring-[#ccff00]/50 focus:border-[#ccff00]/50 outline-none transition text-white text-sm"
-                placeholder="Ex: Studio PERSPEC PATH"
+                placeholder={t('auth.companyPlaceholder')}
               />
             </div>
           )}
           <div>
-            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">E-mail Corporativo</label>
+            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">{t('auth.corporateEmail')}</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-5 py-3.5 bg-slate-900 border border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition text-white text-sm"
-              placeholder="seu@workspace.com"
+              placeholder={t('auth.emailPlaceholder')}
             />
           </div>
           <div>
-            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Senha Master</label>
+            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">{t('auth.masterPassword')}</label>
             <div className="relative group/pass">
               <input
                 type={showPassword ? "text" : "password"}
@@ -184,7 +190,7 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
             type="submit"
             className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-500/20 transition-all active:scale-[0.98] mt-4"
           >
-            {isSignup ? 'Criar Workspace' : 'Entrar Agora'}
+            {isSignup ? t('auth.createWorkspace') : t('auth.enterNow')}
           </button>
         </form>
 
@@ -196,7 +202,7 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
             }}
             className="text-indigo-400 hover:text-indigo-300 text-xs font-bold transition-colors"
           >
-            {isSignup ? 'Já tem um Workspace? Faça login' : 'Não tem um Workspace? Criar novo'}
+            {isSignup ? t('auth.alreadyHasWorkspace') : t('auth.dontHaveWorkspace')}
           </button>
         </div>
 
@@ -204,17 +210,17 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
           <button
             type="button"
             onClick={() => {
-              if (confirm('Isso irá limpar os dados locais do aplicativo. Deseja continuar?')) {
+              if (confirm(t('auth.clearWarning'))) {
                 localStorage.clear();
                 window.location.reload();
               }
             }}
             className="text-[10px] text-slate-600 hover:text-rose-500 font-bold uppercase tracking-widest transition"
           >
-            Limpar tudo e recomeçar
+            {t('auth.clearAll')}
           </button>
           <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">
-            PERSPEC PATH &copy; 2024 &bull; Gestão Profissional
+            {t('common.copyright')}
           </p>
         </div>
       </div>

@@ -1,6 +1,6 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { Client, InternalUser, Project, UserRole } from '../types';
+import { useTranslation } from 'react-i18next';
 import { getNextClientCode, syncClient, AppDB } from '../storage';
 
 interface ClientsProps {
@@ -11,6 +11,7 @@ interface ClientsProps {
 }
 
 export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme }) => {
+  const { t } = useTranslation();
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState('');
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -61,7 +62,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 1 * 1024 * 1024) {
-        alert("Imagem muito grande! Máximo 1MB.");
+        alert(t('common.imageTooLarge'));
         return;
       }
       const reader = new FileReader();
@@ -73,7 +74,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
   const removePhoto = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (confirm("Deseja realmente remover a foto deste cliente?")) {
+    if (confirm(t('clients.confirmDeletePhoto'))) {
       setPhotoUrl('');
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -108,7 +109,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
     const finalCode = nextCode.padStart(3, '0');
 
     if (db.clients.some((c: Client) => c.code === finalCode && c.id !== editingClient?.id)) {
-      alert('Código já existe!');
+      alert(t('clients.duplicateCode'));
       return;
     }
 
@@ -147,7 +148,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
       setShowModal(false);
       resetForm();
     } catch (err: any) {
-      alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+      alert(t('projects.saveError') + " " + (err.message || t('common.unknownError')));
     }
   };
 
@@ -193,14 +194,14 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors">Base de Clientes</h1>
+        <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors">{t('clients.title')}</h1>
         {currentUser.role !== UserRole.VIEWER && (
           <button
             onClick={() => { resetForm(); setShowModal(true); }}
             className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition flex items-center"
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-            Adicionar Cliente
+            {t('clients.add')}
           </button>
         )}
       </div>
@@ -210,7 +211,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
           <div className="relative max-w-md">
             <input
               type="text"
-              placeholder="Pesquisar por nome ou código..."
+              placeholder={t('clients.search')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
@@ -222,12 +223,12 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800/30 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-colors">
-                <th className="px-8 py-4">Código</th>
-                <th className="px-8 py-4">Cliente</th>
-                <th className="px-8 py-4">Tipo</th>
-                <th className="px-8 py-4 text-center">Status</th>
-                <th className="px-8 py-4 text-center">Projetos</th>
-                <th className="px-8 py-4 text-right">Editar</th>
+                <th className="px-8 py-4">{t('clients.code')}</th>
+                <th className="px-8 py-4">{t('clients.name')}</th>
+                <th className="px-8 py-4">{t('clients.type')}</th>
+                <th className="px-8 py-4 text-center">{t('clients.status')}</th>
+                <th className="px-8 py-4 text-center">{t('clients.projects')}</th>
+                <th className="px-8 py-4 text-right">{t('clients.edit')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors">
@@ -268,7 +269,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
                       : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
                       }`}>
-                      {client.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                      {client.status === 'ACTIVE' ? t('clients.active') : t('clients.inactive')}
                     </span>
                   </td>
                   <td className="px-8 py-5 text-center">
@@ -292,7 +293,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
               ))}
             </tbody>
           </table>
-          {filteredClients.length === 0 && <div className="p-16 text-center text-slate-400 font-medium italic">Nenhum cliente registrado.</div>}
+          {filteredClients.length === 0 && <div className="p-16 text-center text-slate-400 font-medium italic">{t('clients.noClients')}</div>}
         </div>
       </div>
 
@@ -301,7 +302,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
           <div className="bg-white dark:bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-4xl overflow-hidden border border-slate-200 dark:border-slate-700 transition-all duration-500">
             <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30 transition-colors">
               <h3 className="font-black text-slate-900 dark:text-white text-sm uppercase tracking-widest">
-                {currentUser.role === UserRole.VIEWER ? 'Visualizar Cliente' : (editingClient ? 'Atualizar Cliente' : 'Novo Cadastro')}
+                {currentUser.role === UserRole.VIEWER ? t('clients.view') : (editingClient ? t('clients.update') : t('clients.new'))}
               </h3>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-white transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -323,26 +324,26 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                                 onClick={() => fileInputRef.current?.click()}
                                 className="w-full py-2 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-indigo-700 transition active:scale-95"
                               >
-                                Alterar Foto
+                                {t('projects.changePhoto')}
                               </button>
                               <button
                                 type="button"
                                 onClick={removePhoto}
                                 className="w-full py-2 bg-rose-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-rose-700 transition active:scale-95"
                               >
-                                Remover Imagem
+                                {t('projects.removeImage')}
                               </button>
                             </>
                           )}
                           {currentUser.role === UserRole.VIEWER && (
-                            <span className="text-[10px] font-black text-white uppercase tracking-widest">Somente Leitura</span>
+                            <span className="text-[10px] font-black text-white uppercase tracking-widest">{t('common.readOnly')}</span>
                           )}
                         </div>
                       </div>
                     ) : (
                       <div className="flex flex-col items-center text-slate-400 dark:text-slate-600 pointer-events-none">
                         <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                        <span className="text-[9px] font-black uppercase tracking-widest text-center px-4">Carregar Foto do Cliente</span>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-center px-4">{t('clients.photoLabel')}</span>
                       </div>
                     )}
                     <input
@@ -353,13 +354,13 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       className={`absolute inset-0 cursor-pointer ${photoUrl ? 'hidden' : 'opacity-0'}`}
                     />
                   </div>
-                  <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 text-center uppercase tracking-widest leading-relaxed">Formatos: JPG, PNG<br />Máximo 1MB</p>
+                  <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 text-center uppercase tracking-widest leading-relaxed">{t('clients.photoFormats')}</p>
                 </div>
 
                 <div className="md:col-span-2 space-y-6">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Identificador</label>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.id')}</label>
                       <input
                         type="text"
                         value={customCode}
@@ -370,21 +371,21 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Tipo de Pessoa *</label>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.personType')}</label>
                       <select
                         value={type}
                         disabled={currentUser.role === UserRole.VIEWER}
                         onChange={(e: any) => setType(e.target.value)}
                         className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none font-bold focus:ring-2 focus:ring-indigo-500 transition-all appearance-none disabled:opacity-60"
                       >
-                        <option value="PF">Pessoa Física (PF)</option>
-                        <option value="PJ">Pessoa Jurídica (PJ)</option>
+                        <option value="PF">{t('clients.pf')}</option>
+                        <option value="PJ">{t('clients.pj')}</option>
                       </select>
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Nome Completo / Razão Social *</label>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.fullName')}</label>
                     <input
                       type="text"
                       required
@@ -397,7 +398,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{type === 'PF' ? 'CPF' : 'CNPJ'}</label>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{type === 'PF' ? t('clients.cpf') : t('clients.cnpj')}</label>
                       <input
                         type="text"
                         value={cpfCnpj}
@@ -407,15 +408,15 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Situação</label>
+                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.status')}</label>
                       <select
                         value={status}
                         disabled={currentUser.role === UserRole.VIEWER}
                         onChange={(e: any) => setStatus(e.target.value)}
                         className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none font-bold focus:ring-2 focus:ring-indigo-500 transition-all appearance-none disabled:opacity-60"
                       >
-                        <option value="ACTIVE" className="text-emerald-500">Ativo</option>
-                        <option value="INACTIVE" className="text-amber-500">Inativo</option>
+                        <option value="ACTIVE" className="text-emerald-500">{t('clients.active')}</option>
+                        <option value="INACTIVE" className="text-amber-500">{t('clients.inactive')}</option>
                       </select>
                     </div>
                   </div>
@@ -425,48 +426,48 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
               <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800 transition-colors">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">E-mail de Contato</label>
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" placeholder="exemplo@email.com" />
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.email')}</label>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" placeholder={t('clients.emailPlaceholder')} />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Telefone / WhatsApp</label>
-                    <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" placeholder="(00) 00000-0000" />
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.phone')}</label>
+                    <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" placeholder={t('clients.phonePlaceholder')} />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">CEP</label>
-                    <input type="text" value={zipCode} onChange={(e) => setZipCode(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" placeholder="00000-000" />
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.zipCodeLabel')}</label>
+                    <input type="text" value={zipCode} onChange={(e) => setZipCode(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" placeholder={t('clients.zipCodePlaceholder')} />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Rua / Logradouro</label>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.address')}</label>
                     <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Nº</label>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.number')}</label>
                     <input type="text" value={number} onChange={(e) => setNumber(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Bairro</label>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.neighborhood')}</label>
                     <input type="text" value={neighborhood} onChange={(e) => setNeighborhood(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Cidade</label>
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.city')}</label>
                     <input type="text" value={city} onChange={(e) => setCity(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Estado</label>
-                    <input type="text" value={state} onChange={(e) => setState(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" placeholder="Ex: SP" />
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.state')}</label>
+                    <input type="text" value={state} onChange={(e) => setState(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" placeholder={t('clients.statePlaceholder')} />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Complemento</label>
-                  <input type="text" value={complement} onChange={(e) => setComplement(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" placeholder="Apto, Sala, Bloco..." />
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{t('clients.complement')}</label>
+                  <input type="text" value={complement} onChange={(e) => setComplement(e.target.value)} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all" placeholder={t('clients.complementPlaceholder')} />
                 </div>
               </div>
 
@@ -475,8 +476,8 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                 <div className="space-y-6 pt-6 border-t border-slate-100 dark:border-slate-800 transition-colors">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest transition-colors">Contatos da Empresa</h4>
-                      <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider mt-1 transition-colors">Gerencie múltiplos contatos por departamento</p>
+                      <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest transition-colors">{t('clients.corporateContacts')}</h4>
+                      <p className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider mt-1 transition-colors">{t('clients.corporateContactsSubtitle')}</p>
                     </div>
                     {currentUser.role !== UserRole.VIEWER && (
                       <button
@@ -485,7 +486,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                         className="px-4 py-2 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all flex items-center"
                       >
                         <svg className="w-3 h-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4" /></svg>
-                        Adicionar Contato
+                        {t('clients.addContact')}
                       </button>
                     )}
                   </div>
@@ -505,58 +506,58 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           <div className="lg:col-span-1">
-                            <label className="block text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Nome do Contato</label>
+                            <label className="block text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">{t('clients.contactName')}</label>
                             <input
                               type="text"
                               value={contact.name}
                               disabled={currentUser.role === UserRole.VIEWER}
                               onChange={(e) => handleUpdateContact(contact.id, 'name', e.target.value)}
                               className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
-                              placeholder="Nome Completo"
+                              placeholder={t('clients.fullNamePlaceholder')}
                             />
                           </div>
                           <div>
-                            <label className="block text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Cargo</label>
+                            <label className="block text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">{t('clients.position')}</label>
                             <input
                               type="text"
                               value={contact.position}
                               disabled={currentUser.role === UserRole.VIEWER}
                               onChange={(e) => handleUpdateContact(contact.id, 'position', e.target.value)}
                               className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
-                              placeholder="Ex: Gerente de Projetos"
+                              placeholder={t('clients.positionPlaceholder')}
                             />
                           </div>
                           <div>
-                            <label className="block text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Setor / Departamento</label>
+                            <label className="block text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">{t('clients.sector')}</label>
                             <input
                               type="text"
                               value={contact.department}
                               disabled={currentUser.role === UserRole.VIEWER}
                               onChange={(e) => handleUpdateContact(contact.id, 'department', e.target.value)}
                               className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
-                              placeholder="Ex: Engenharia"
+                              placeholder={t('clients.sectorPlaceholder')}
                             />
                           </div>
                           <div>
-                            <label className="block text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">E-mail</label>
+                            <label className="block text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">{t('clients.email')}</label>
                             <input
                               type="email"
                               value={contact.email}
                               disabled={currentUser.role === UserRole.VIEWER}
                               onChange={(e) => handleUpdateContact(contact.id, 'email', e.target.value)}
                               className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
-                              placeholder="contato@empresa.com"
+                              placeholder={t('clients.emailPlaceholder')}
                             />
                           </div>
                           <div>
-                            <label className="block text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Telefone</label>
+                            <label className="block text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 ml-1">{t('clients.phone')}</label>
                             <input
                               type="text"
                               value={contact.phone}
                               disabled={currentUser.role === UserRole.VIEWER}
                               onChange={(e) => handleUpdateContact(contact.id, 'phone', e.target.value)}
                               className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none transition-all disabled:opacity-60"
-                              placeholder="(00) 00000-0000"
+                              placeholder={t('clients.phonePlaceholder')}
                             />
                           </div>
                         </div>
@@ -566,7 +567,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                     {contacts.length === 0 && (
                       <div className="py-10 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 transition-colors">
                         <svg className="w-8 h-8 mb-2 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Nenhum contato corporativo adicionado</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">{t('clients.noCorporateContacts')}</p>
                       </div>
                     )}
                   </div>
@@ -575,11 +576,11 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
 
               <div className="pt-6 flex space-x-3">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-200 dark:hover:text-white transition-all">
-                  {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
+                  {currentUser.role === UserRole.VIEWER ? t('common.close') : t('common.cancel')}
                 </button>
                 {currentUser.role !== UserRole.VIEWER && (
                   <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition active:scale-95">
-                    Confirmar Alterações
+                    {t('common.confirmChanges')}
                   </button>
                 )}
               </div>
@@ -602,7 +603,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                   </div>
                 )}
                 <div className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-lg ${viewingClient.status === 'ACTIVE' ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-amber-500 text-white border-amber-400'}`}>
-                  {viewingClient.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                  {viewingClient.status === 'ACTIVE' ? t('clients.active') : t('clients.inactive')}
                 </div>
               </div>
 
@@ -611,12 +612,12 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
 
               <div className="w-full space-y-2">
                 <div className="p-4 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-white/5 transition-colors">
-                  <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Total de Projetos</span>
+                  <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{t('clients.totalProjects')}</span>
                   <span className="text-lg font-black text-slate-900 dark:text-white transition-colors">{clientProjectCounts[viewingClient.id] || 0}</span>
                 </div>
                 {viewingClient.cpfCnpj && (
                   <div className="p-4 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-white/5 transition-colors">
-                    <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{viewingClient.type === 'PF' ? 'CPF' : 'CNPJ'}</span>
+                    <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{viewingClient.type === 'PF' ? t('clients.cpf') : t('clients.cnpj')}</span>
                     <span className="text-sm font-mono font-bold text-slate-600 dark:text-slate-300 transition-colors">{viewingClient.cpfCnpj}</span>
                   </div>
                 )}
@@ -632,14 +633,14 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                     }}
                     className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
                   >
-                    Editar Perfil
+                    {t('clients.editProfile')}
                   </button>
                 )}
                 <button
                   onClick={() => setViewingClient(null)}
                   className="w-full py-4 bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] hover:bg-slate-300 dark:hover:text-white transition-all"
                 >
-                  Fechar Painel
+                  {t('common.closePanel')}
                 </button>
               </div>
             </div>
@@ -651,16 +652,16 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                 <section>
                   <div className="flex items-center space-x-4 mb-8">
                     <div className="w-12 h-1 bg-indigo-600 rounded-full"></div>
-                    <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] transition-colors">Informações de Contato & Endereço</h4>
+                    <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] transition-colors">{t('clients.contactInfo')}</h4>
                   </div>
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-8">
-                    <InfoField label="E-mail Principal" value={viewingClient.email || 'Não informado'} icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>} />
-                    <InfoField label="Telefone / WhatsApp" value={viewingClient.phone || 'Não informado'} icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>} />
-                    <InfoField label="Localização" value={`${viewingClient.city || 'Cidade'} - ${viewingClient.state || 'UF'}`} icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>} />
+                    <InfoField label={t('clients.primaryEmail')} value={viewingClient.email || t('common.notInformed')} icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>} />
+                    <InfoField label={t('clients.phone')} value={viewingClient.phone || t('common.notInformed')} icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>} />
+                    <InfoField label={t('clients.location')} value={`${viewingClient.city || t('clients.city')} - ${viewingClient.state || t('clients.stateAbbr')}`} icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>} />
                     <div className="col-span-full">
                       <InfoField
-                        label="Endereço Completo"
-                        value={`${viewingClient.address || ''}, ${viewingClient.number || ''} ${viewingClient.complement ? '- ' + viewingClient.complement : ''} - ${viewingClient.neighborhood || ''} - CEP: ${viewingClient.zipCode || ''}`}
+                        label={t('clients.fullAddress')}
+                        value={`${viewingClient.address || ''}, ${viewingClient.number || ''} ${viewingClient.complement ? '- ' + viewingClient.complement : ''} - ${viewingClient.neighborhood || ''} - ${t('clients.zipCodeLabel')}: ${viewingClient.zipCode || ''}`}
                         icon={<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-10V4m-2 4h.01M9 15h.01M9 19h.01M15 15h.01M15 19h.01" /></svg>}
                       />
                     </div>
@@ -672,7 +673,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                   <section>
                     <div className="flex items-center space-x-4 mb-8">
                       <div className="w-12 h-1 bg-indigo-600 rounded-full"></div>
-                      <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] transition-colors">Contatos Administrativos</h4>
+                      <h4 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] transition-colors">{t('clients.administrativeContacts')}</h4>
                     </div>
                     {viewingClient.contacts && viewingClient.contacts.length > 0 ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -702,7 +703,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                       </div>
                     ) : (
                       <div className="py-12 bg-slate-50 dark:bg-slate-900/20 border border-dashed border-slate-200 dark:border-white/5 rounded-[32px] flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 transition-colors">
-                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Nenhum contato registrado</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40">{t('clients.noContactsRegistered')}</p>
                       </div>
                     )}
                   </section>

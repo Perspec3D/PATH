@@ -1,5 +1,5 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Company, InternalUser, LicenseStatus, UserRole } from './types';
 import { AppDB, fetchAllData, syncUser } from './storage';
 import { supabase } from './lib/supabase';
@@ -15,6 +15,7 @@ import { InternalUserLogin } from './components/Who';
 type Page = 'dashboard' | 'clients' | 'projects' | 'timeline' | 'settings';
 
 const App: React.FC = () => {
+  const { t } = useTranslation();
   const [db, setDb] = useState<AppDB>({
     company: null,
     users: [],
@@ -175,8 +176,8 @@ const App: React.FC = () => {
     const hash = window.location.hash;
     if (hash.includes('error=')) {
       const params = new URLSearchParams(hash.replace('#', ''));
-      const errorMsg = params.get('error_description') || params.get('error') || 'Erro na autenticação';
-      alert(`Erro: ${errorMsg.replace(/\+/g, ' ')}`);
+      const errorMsg = params.get('error_description') || params.get('error') || t('common.authError');
+      alert(`${t('common.error')}: ${errorMsg.replace(/\+/g, ' ')}`);
       // Clear the hash to avoid repeat alerts
       window.history.replaceState(null, '', window.location.pathname);
     }
@@ -264,7 +265,7 @@ const App: React.FC = () => {
     localStorage.removeItem('PATH_USER_SESSION');
   };
 
-  if (isLoading) return <div className="h-screen flex items-center justify-center text-slate-500 font-black uppercase text-xs tracking-widest">Carregando PERSPEC PATH...</div>;
+  if (isLoading) return <div className="h-screen flex items-center justify-center text-slate-500 font-black uppercase text-xs tracking-widest">{t('app.loading')}</div>;
 
   if (!companySession) {
     return <CompanyLogin db={db} setDb={setDb} onLogin={handleCompanyLogin} />;
@@ -283,10 +284,10 @@ const App: React.FC = () => {
             </svg>
           </div>
 
-          <h2 className="text-2xl font-black uppercase mb-4 tracking-tighter">Confirme seu E-mail</h2>
+          <h2 className="text-2xl font-black uppercase mb-4 tracking-tighter">{t('app.confirmEmail')}</h2>
           <p className="text-slate-400 text-sm mb-8 leading-relaxed font-medium">
-            Enviamos um link de confirmação para <span className="text-white font-bold">{companySession.email}</span>.
-            Por favor, verifique sua caixa de entrada (e spam) para liberar o acesso ao seu Workspace.
+            {t('app.emailSentTo')} <span className="text-white font-bold">{companySession.email}</span>.
+            {t('app.checkInbox')}
           </p>
 
           <div className="space-y-4">
@@ -298,18 +299,18 @@ const App: React.FC = () => {
                 : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xl shadow-indigo-500/20'
                 }`}
             >
-              {isResending ? 'Enviando...' : (resendStatus === 'success' ? 'E-mail Enviado!' : 'Reenviar E-mail de Confirmação')}
+              {isResending ? t('app.resending') : (resendStatus === 'success' ? t('app.emailSent') : t('app.resendEmail'))}
             </button>
 
             {resendStatus === 'error' && (
-              <p className="text-[10px] text-rose-500 font-bold uppercase tracking-widest">Erro ao reenviar. Tente novamente em instantes.</p>
+              <p className="text-[10px] text-rose-500 font-bold uppercase tracking-widest">{t('app.resendError')}</p>
             )}
 
             <button
               onClick={handleLogout}
               className="w-full py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition"
             >
-              Sair e usar outro e-mail
+              {t('app.logoutAndOther')}
             </button>
           </div>
         </div>
@@ -367,12 +368,13 @@ const App: React.FC = () => {
             <div className="w-16 h-16 bg-amber-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-amber-500/20">
               <svg className="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             </div>
-            <h2 className="text-xl font-black uppercase mb-4 tracking-tight">Acesso Restrito</h2>
+            <h2 className="text-xl font-black uppercase mb-4 tracking-tight">{t('app.accessRestricted')}</h2>
             <p className="text-slate-400 text-sm mb-8 leading-relaxed">
-              Sua assinatura atual permite apenas o acesso do <span className="text-white font-bold">Administrador</span>.
-              Entre em contato com o gestor do seu workspace para expandir o plano.
+              {t('app.restrictedToAdmin')}
+              <br /><br />
+              {t('app.contactManager')}
             </p>
-            <button onClick={handleLogout} className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition">Sair</button>
+            <button onClick={handleLogout} className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition">{t('nav.logout')}</button>
           </div>
         </div>
       );
@@ -394,24 +396,24 @@ const App: React.FC = () => {
             </div>
 
             <h1 className="text-3xl font-black mb-4 tracking-tight uppercase">
-              {db.company?.licenseStatus === LicenseStatus.SUSPENDED ? 'Acesso Suspenso' :
-                (db.company?.licenseStatus === LicenseStatus.CANCELLED ? 'Assinatura Encerrada' : 'Licença Expirada')}
+              {db.company?.licenseStatus === LicenseStatus.SUSPENDED ? t('app.accessSuspended') :
+                (db.company?.licenseStatus === LicenseStatus.CANCELLED ? t('app.subscriptionEnded') : t('app.licenseExpired'))}
             </h1>
             <p className="text-slate-400 mb-10 max-w-md mx-auto text-sm leading-relaxed font-medium">
               {db.company?.licenseStatus === LicenseStatus.SUSPENDED
-                ? 'Identificamos uma pendência no seu pagamento. Regularize sua assinatura para retomar o acesso imediato.'
+                ? t('app.pendingPayment')
                 : (db.company?.licenseStatus === LicenseStatus.CANCELLED
-                  ? `Sua assinatura foi cancelada e seu período de acesso encerrou em ${db.company.subscriptionEnd ? new Date(db.company.subscriptionEnd).toLocaleDateString('pt-BR') : ''}.`
-                  : 'O seu período de teste do PERSPEC PATH chegou ao fim. Mantenha o controle total dos seus projetos e ative sua assinatura mensal agora mesmo.')}
+                  ? `${t('app.subscriptionEnded')} ${db.company.subscriptionEnd ? new Date(db.company.subscriptionEnd).toLocaleDateString() : ''}.`
+                  : t('app.trialEnded'))}
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
               <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 text-left hover:border-indigo-500/50 transition-colors group flex flex-col justify-between">
                 <div>
-                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 group-hover:text-indigo-400">Plano Profissional</h3>
+                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 group-hover:text-indigo-400">{t('app.professionalPlan')}</h3>
                   <div className="flex items-baseline space-x-1 mb-4">
-                    <span className="text-2xl font-black text-white">R$ {(selectedLicenseCount * 29.9).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    <span className="text-xs text-slate-500 font-bold">/mês ({selectedLicenseCount} {selectedLicenseCount === 1 ? 'user' : 'users'})</span>
+                    <span className="text-2xl font-black text-white">R$ {(selectedLicenseCount * 29.9).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className="text-xs text-slate-500 font-bold">/mês ({selectedLicenseCount} {selectedLicenseCount === 1 ? t('app.user') : t('app.users')})</span>
                   </div>
                 </div>
 
@@ -424,7 +426,7 @@ const App: React.FC = () => {
                   </button>
                   <div className="flex-1 text-center">
                     <span className="text-xl font-black text-white">{selectedLicenseCount}</span>
-                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Quantidade</p>
+                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">{t('app.quantity')}</p>
                   </div>
                   <button
                     onClick={() => setSelectedLicenseCount(prev => prev + 1)}
@@ -440,11 +442,11 @@ const App: React.FC = () => {
                 onClick={handleCheckoutOnExpired}
               >
                 <div className="flex-1 flex flex-col items-center justify-center text-white p-6">
-                  <span className="text-lg font-black uppercase tracking-tight">Ativar Agora</span>
-                  <span className="text-[10px] font-bold opacity-70">Checkout Mercado Pago</span>
+                  <span className="text-lg font-black uppercase tracking-tight">{t('app.activateNow')}</span>
+                  <span className="text-[10px] font-bold opacity-70">{t('app.mercadoPago')}</span>
                   <div className="mt-4 pt-4 border-t border-white/10 w-full text-center">
-                    <span className="text-md font-black">R$ {(selectedLicenseCount * 29.9).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    <p className="text-[8px] font-bold uppercase opacity-50 tracking-widest">Valor Final Mensal</p>
+                    <span className="text-md font-black">R$ {(selectedLicenseCount * 29.9).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <p className="text-[8px] font-bold uppercase opacity-50 tracking-widest">{t('app.finalValue')}</p>
                   </div>
                 </div>
               </div>
@@ -456,14 +458,14 @@ const App: React.FC = () => {
                 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition flex items-center justify-center space-x-2"
               >
                 <svg className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                <span>Já realizei o pagamento? Sincronizar Status</span>
+                <span>{t('app.alreadyPaid')}</span>
               </button>
 
               <button
                 onClick={handleLogout}
                 className="text-xs font-black text-slate-500 uppercase tracking-widest hover:text-white transition"
               >
-                Sair do Workspace
+                {t('app.logoutWorkspace')}
               </button>
             </div>
           </div>
@@ -480,13 +482,13 @@ const App: React.FC = () => {
           <div className="w-16 h-16 bg-rose-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-rose-500/20">
             <svg className="w-8 h-8 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
           </div>
-          <h2 className="text-xl font-black uppercase mb-4 tracking-tight text-rose-500">Limite Excedido</h2>
+          <h2 className="text-xl font-black uppercase mb-4 tracking-tight text-rose-500">{t('app.limitExceeded')}</h2>
           <p className="text-slate-400 text-sm mb-8 leading-relaxed">
-            O número de usuários ativos excede o limite do plano contratado ({db.company?.userLimit}).
+            {t('app.limitExceededDesc')} ({db.company?.userLimit}).
             <br /><br />
-            O acesso está temporariamente restrito ao Administrador para regularização.
+            {t('app.restrictedToAdmin')}
           </p>
-          <button onClick={handleLogout} className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition">Sair</button>
+          <button onClick={handleLogout} className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition">{t('nav.logout')}</button>
         </div>
       </div>
     );

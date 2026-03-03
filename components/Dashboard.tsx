@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ProjectStatus, Project, InternalUser, Client } from '../types';
 import { AppDB } from '../storage';
 import {
@@ -13,6 +14,7 @@ interface DashboardProps {
 }
 
 const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ value, theme = 'dark' }) => {
+  const { t } = useTranslation();
   const [displayValue, setDisplayValue] = React.useState(0);
 
   React.useEffect(() => {
@@ -182,7 +184,7 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
           {Math.round(normalizedValue)}%
         </span>
         <p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.4em] mt-3">
-          INTEGRIDADE OPERACIONAL
+          {t('dashboard.operationalIntegrity')}
         </p>
       </div>
     </div>
@@ -192,6 +194,7 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
 const InfoTooltip: React.FC<{ title: string; content: string; calculation?: string; position?: 'top' | 'bottom' }> = ({
   title, content, calculation, position = 'top'
 }) => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -210,7 +213,7 @@ const InfoTooltip: React.FC<{ title: string; content: string; calculation?: stri
           <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed mb-3">{content}</p>
           {calculation && (
             <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-              <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter mb-1">Base de Cálculo:</p>
+              <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter mb-1">{t('dashboard.calculationBase')}</p>
               <p className="text-[10px] text-indigo-600 dark:text-indigo-300/80 font-mono italic">{calculation}</p>
             </div>
           )}
@@ -233,6 +236,7 @@ const UserDetailModal: React.FC<{
   clients: Client[];
   onClose: () => void;
 }> = ({ userId, userName, projects, clients, onClose }) => {
+  const { t } = useTranslation();
   const titularProjects = projects.filter(p =>
     p.assigneeId === userId && [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status)
   );
@@ -244,7 +248,7 @@ const UserDetailModal: React.FC<{
   );
 
   const getClientName = (clientId: string) => {
-    return clients.find(c => c.id === clientId)?.name || 'Cliente não encontrado';
+    return clients.find(c => c.id === clientId)?.name || t('dashboard.clientNotFound');
   };
 
   return (
@@ -258,7 +262,7 @@ const UserDetailModal: React.FC<{
             </div>
             <div>
               <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">{userName}</h3>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-1">Detalhamento de Carga Ativa</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-1">{t('dashboard.activeLoadDetail')}</p>
             </div>
           </div>
           <button
@@ -273,7 +277,7 @@ const UserDetailModal: React.FC<{
         <div className="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-10">
           {/* Projetos Principais (Onde ele é o titular) */}
           <div className="space-y-4">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Responsável Principal ({titularProjects.length})</h4>
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">{t('dashboard.mainResponsible')} ({titularProjects.length})</h4>
             <div className="grid gap-3">
               {titularProjects.map(p => (
                 <div key={p.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[32px] flex flex-col group hover:border-indigo-500/30 transition-all">
@@ -289,7 +293,7 @@ const UserDetailModal: React.FC<{
                       p.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
                         'bg-purple-500/10 text-purple-500'
                       }`}>
-                      {p.status}
+                      {t('status.' + p.status.toLowerCase())}
                     </span>
                   </div>
 
@@ -301,21 +305,21 @@ const UserDetailModal: React.FC<{
                     {p.deliveryDate && (
                       <div className="flex items-center space-x-1.5 text-slate-500">
                         <Calendar size={10} className="text-indigo-500/60" />
-                        <span className="text-[9px] font-black uppercase tracking-tighter">{formatDate(p.deliveryDate)}</span>
+                        <span className="text-[9px] font-black uppercase tracking-tighter">{t('dashboard.delivery')} {formatDate(p.deliveryDate)}</span>
                       </div>
                     )}
                   </div>
                 </div>
               ))}
               {titularProjects.length === 0 && (
-                <div className="text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Nenhum projeto sob titularidade</div>
+                <div className="text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">{t('dashboard.noTitleProjects')}</div>
               )}
             </div>
           </div>
 
           {/* Subtarefas Designadas */}
           <div className="space-y-4">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Subtarefas em Execução ({userSubtasks.length})</h4>
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">{t('dashboard.subtasksInExecution')} ({userSubtasks.length})</h4>
             <div className="grid gap-3">
               {userSubtasks.map(st => (
                 <div key={st.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[32px] flex flex-col group hover:border-emerald-500/30 transition-all">
@@ -325,7 +329,7 @@ const UserDetailModal: React.FC<{
                       {st.deliveryDate && (
                         <div className="flex items-center space-x-1.5 text-emerald-600/60 dark:text-emerald-400/40 mt-1">
                           <Calendar size={10} />
-                          <span className="text-[9px] font-black uppercase tracking-tighter">Entrega: {formatDate(st.deliveryDate)}</span>
+                          <span className="text-[9px] font-black uppercase tracking-tighter">{t('dashboard.delivery')}: {formatDate(st.deliveryDate)}</span>
                         </div>
                       )}
                     </div>
@@ -333,18 +337,18 @@ const UserDetailModal: React.FC<{
                       st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
                         'bg-purple-500/10 text-purple-500'
                       }`}>
-                      {st.status}
+                      {t('status.' + st.status.toLowerCase())}
                     </span>
                   </div>
                   <div className="flex items-center space-x-2 bg-white/40 dark:bg-white/5 p-2 rounded-xl border border-slate-200/50 dark:border-white/5">
-                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Projeto:</span>
+                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{t('dashboard.project')}:</span>
                     <span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 uppercase truncate">{st.parentProjectName}</span>
                     <span className="text-[9px] font-mono font-black text-indigo-500/40 dark:text-indigo-400/30">({st.parentProjectCode})</span>
                   </div>
                 </div>
               ))}
               {userSubtasks.length === 0 && (
-                <div className="text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Nenhuma subtarefa designada</div>
+                <div className="text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">{t('dashboard.noSubtasks')}</div>
               )}
             </div>
           </div>
@@ -360,6 +364,7 @@ const RiskDetailModal: React.FC<{
   onClose: () => void;
   formatDate: (dateStr?: string) => string | null;
 }> = ({ type, data, onClose, formatDate }) => {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-300">
       <div className="bg-white dark:bg-[#0f172a] rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 dark:border-white/5 flex flex-col max-h-[85vh]">
@@ -371,9 +376,9 @@ const RiskDetailModal: React.FC<{
             </div>
             <div>
               <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">
-                {type === 'inertia' ? 'Rastreabilidade de Inércia' : 'Rastreabilidade de Escala'}
+                {type === 'inertia' ? t('dashboard.inertiaTraceability') : t('dashboard.scaleTraceability')}
               </h3>
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-1">Detalhamento Operacional Crítico</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-1">{t('dashboard.criticalDetail')}</p>
             </div>
           </div>
           <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-white/70 hover:text-slate-900 dark:hover:text-white transition-all active:scale-95">
@@ -385,16 +390,16 @@ const RiskDetailModal: React.FC<{
         <div className="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-8">
           {type === 'inertia' ? (
             <div className="space-y-4">
-              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-2">Projetos em Fila Crítica (&lt; 48h)</h4>
+              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-2">{t('dashboard.criticalQueue')}</h4>
               <div className="grid gap-3">
                 {data.inertiaDetails.map((p: any) => (
                   <div key={p.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[28px] flex items-center justify-between group transition-all">
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">{p.name}</span>
-                      <span className="text-[10px] font-black text-indigo-500/60 mt-1 uppercase tracking-tighter">Deadline: {formatDate(p.deliveryDate)}</span>
+                      <span className="text-[10px] font-black text-indigo-500/60 mt-1 uppercase tracking-tighter">{t('dashboard.deadline')}: {formatDate(p.deliveryDate)}</span>
                     </div>
                     <div className="flex flex-col items-end">
-                      <span className="text-[9px] font-black uppercase text-rose-500 bg-rose-500/10 px-3 py-1 rounded-full animate-pulse">Ação Requerida</span>
+                      <span className="text-[9px] font-black uppercase text-rose-500 bg-rose-500/10 px-3 py-1 rounded-full animate-pulse">{t('dashboard.actionRequired')}</span>
                       <span className="text-[8px] font-bold text-slate-400 mt-1">#{p.code}</span>
                     </div>
                   </div>
@@ -406,7 +411,7 @@ const RiskDetailModal: React.FC<{
               {/* Fragmentação */}
               {data.fragmentationDetails.length > 0 && (
                 <div className="space-y-4">
-                  <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest px-2">⚠️ Fragmentação (Filtro: &gt;= 4 Projetos Ativos)</h4>
+                  <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest px-2">⚠️ {t('dashboard.fragmentation')}</h4>
                   <div className="grid gap-3">
                     {data.fragmentationDetails.map((u: any) => (
                       <div key={u.userId} className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10">
@@ -425,12 +430,12 @@ const RiskDetailModal: React.FC<{
               {/* Sobrecarga */}
               {data.overloadedDetails.length > 0 && (
                 <div className="space-y-4">
-                  <h4 className="text-[10px] font-black text-orange-500 uppercase tracking-widest px-2">🔥 Sobrecarga (Carga: &gt;= 6 Tarefas Totais)</h4>
+                  <h4 className="text-[10px] font-black text-orange-500 uppercase tracking-widest px-2">🔥 {t('dashboard.overload')}</h4>
                   <div className="grid gap-3">
                     {data.overloadedDetails.map((u: any) => (
                       <div key={u.userId} className="p-4 rounded-2xl bg-orange-500/5 border border-orange-500/10 flex justify-between items-center">
                         <p className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase">{u.userName}</p>
-                        <span className="text-[10px] font-black text-orange-600 bg-orange-500/10 px-3 py-1 rounded-full">{u.tasksCount} tarefas ativas</span>
+                        <span className="text-[10px] font-black text-orange-600 bg-orange-500/10 px-3 py-1 rounded-full">{u.tasksCount} {t('dashboard.activeTasks')}</span>
                       </div>
                     ))}
                   </div>
@@ -440,7 +445,7 @@ const RiskDetailModal: React.FC<{
               {/* Conflitos */}
               {data.conflictDetails.length > 0 && (
                 <div className="space-y-4">
-                  <h4 className="text-[10px] font-black text-rose-500 uppercase tracking-widest px-2">⚡ Conflitos Temporais (Sobreposição Reais)</h4>
+                  <h4 className="text-[10px] font-black text-rose-500 uppercase tracking-widest px-2">⚡ {t('dashboard.conflicts')}</h4>
                   <div className="grid gap-3">
                     {data.conflictDetails.map((conf: any) => (
                       <div key={conf.userId} className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/10">
@@ -470,6 +475,7 @@ const RiskDetailModal: React.FC<{
 
 
 export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
+  const { t, i18n } = useTranslation();
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [viewingUser, setViewingUser] = useState<any>(null);
   const [viewingRisk, setViewingRisk] = useState<{ type: 'inertia' | 'scale', data: any } | null>(null);
@@ -567,7 +573,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const label = d.toLocaleDateString('pt-BR', { month: 'short' });
+      const label = d.toLocaleDateString(i18n.language, { month: 'short' });
       months[key] = { month: label, created: 0, done: 0 };
       last6Months.push(key);
     }
@@ -664,7 +670,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     const data: Record<string, number> = {};
     projects.forEach(p => {
       const client = clients.find(c => c.id === p.clientId);
-      const name = client ? client.name : 'Outros';
+      const name = client ? client.name : t('dashboard.others');
       data[name] = (data[name] || 0) + 1;
     });
     return Object.entries(data)
@@ -713,7 +719,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           isUserInvolved = true;
           activeTasksCount++;
           countedAsTask = true;
-          userTasks.push({ type: 'PROJETO', name: p.name, status: p.status, deadline: p.deliveryDate });
+          userTasks.push({ type: t('dashboard.project'), name: p.name, status: p.status, deadline: p.deliveryDate });
         }
 
         p.subtasks?.forEach(st => {
@@ -722,7 +728,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             if (!countedAsTask) {
               activeTasksCount++;
             }
-            userTasks.push({ type: 'SUB-TAREFA', name: st.name, status: st.status, deadline: st.deliveryDate, parentName: p.name });
+            userTasks.push({ type: t('dashboard.subtask'), name: st.name, status: st.status, deadline: st.deliveryDate, parentName: p.name });
           }
         });
 
@@ -883,8 +889,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         total: totalAvailableDays,
         userDetails,
         weekRange: {
-          start: startOfWeek.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-          end: endOfWeek.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+          start: startOfWeek.toLocaleDateString(i18n.language, { day: '2-digit', month: '2-digit' }),
+          end: endOfWeek.toLocaleDateString(i18n.language, { day: '2-digit', month: '2-digit' })
         }
       };
     }
@@ -912,19 +918,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   };
 
   const getHealthStatus = (h: number) => {
-    if (h > 80) return 'EXCELENTE';
-    if (h > 60) return 'ESTÁVEL';
-    if (h > 40) return 'ATENÇÃO';
-    if (h > 20) return 'INSTÁVEL';
-    return 'CRÍTICO';
+    if (h > 80) return t('dashboard.excellent');
+    if (h > 60) return t('dashboard.stable');
+    if (h > 40) return t('dashboard.attention');
+    if (h > 20) return t('dashboard.unstable');
+    return t('dashboard.critical');
   };
 
   const statusConfigs = [
-    { label: 'CRÍTICO', range: [0, 20], color: 'rose' },
-    { label: 'INSTÁVEL', range: [21, 40], color: 'orange' },
-    { label: 'ATENÇÃO', range: [41, 60], color: 'amber' },
-    { label: 'ESTÁVEL', range: [61, 80], color: 'emerald' },
-    { label: 'EXCELENTE', range: [81, 100], color: 'emerald' }
+    { label: t('dashboard.critical'), range: [0, 20], color: 'rose' },
+    { label: t('dashboard.unstable'), range: [21, 40], color: 'orange' },
+    { label: t('dashboard.attention'), range: [41, 60], color: 'amber' },
+    { label: t('dashboard.stable'), range: [61, 80], color: 'emerald' },
+    { label: t('dashboard.excellent'), range: [81, 100], color: 'emerald' }
   ];
 
   const currentStatus = getHealthStatus(health);
@@ -952,10 +958,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           <div className="flex flex-col items-center justify-center">
             <div className="w-full mb-8 flex justify-start">
               <h3 className="text-[12px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] px-2 flex items-center transition-colors">
-                Saúde Estratégica
+                {t('dashboard.strategicHealth')}
                 <InfoTooltip
-                  title="Saúde da Operação"
-                  content="Métrica de integridade que reflete a pontualidade das entregas ativas. Quanto maior a porcentagem, menos atrasos críticos existem no sistema."
+                  title={t('dashboard.operationHealth')}
+                  content={t('dashboard.operationHealthContent')}
                   calculation="(Total_Ativos - Total_Atrasados) / Total_Ativos * 100"
                   position="bottom"
                 />
@@ -989,10 +995,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           {/* COLUNA DIREITA: KPIs EMPILHADOS */}
           <div className="flex flex-col space-y-4 lg:border-l lg:border-slate-100 lg:dark:border-white/5 lg:pl-12 transition-colors">
             {[
-              { label: 'Ciclo Médio', value: `${avgExecutionTime} dias`, color: 'indigo', icon: Clock },
-              { label: 'Prazos Expirados', value: `${overdueProjects.length}`, color: 'rose', icon: AlertTriangle },
-              { label: 'Em Aberto', value: `${activeProjects.length}`, color: 'amber', icon: Eye },
-              { label: 'Concluídos', value: `${projects.filter(p => p.status === ProjectStatus.DONE).length}`, color: 'emerald', icon: CheckCircle2 }
+              { label: t('dashboard.averageCycle'), value: `${avgExecutionTime} ${t('dashboard.days')}`, color: 'indigo', icon: Clock },
+              { label: t('dashboard.overdueDeadlines'), value: `${overdueProjects.length}`, color: 'rose', icon: AlertTriangle },
+              { label: t('dashboard.open'), value: `${activeProjects.length}`, color: 'amber', icon: Eye },
+              { label: t('dashboard.completed'), value: `${projects.filter(p => p.status === ProjectStatus.DONE).length}`, color: 'emerald', icon: CheckCircle2 }
             ].map((kpi, idx) => {
               const Icon = kpi.icon;
               return (
@@ -1025,16 +1031,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           </div>
           <div className="relative z-10">
             <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center transition-colors">
-              Vazão Operacional
-              <InfoTooltip title="Efficiency Throughput" content="Saldo de projetos concluídos vs criados nos últimos 7 dias. Um saldo negativo indica que a carga de trabalho está crescendo mais rápido que as entregas." />
+              {t('dashboard.operationalThroughput')}
+              <InfoTooltip title={t('dashboard.efficiencyThroughput')} content={t('dashboard.efficiencyThroughputContent')} />
             </h4>
             <div className="flex items-end space-x-4">
               <span className={`text-5xl font-black transition-colors ${dashboard2Logics.throughput.factor >= 1 ? 'text-emerald-500' : 'text-amber-500'}`}>
                 {Math.round(dashboard2Logics.throughput.factor * 100)}%
               </span>
               <div className="flex flex-col pb-1">
-                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase transition-colors">{dashboard2Logics.throughput.done} entregas</span>
-                <span className="text-[10px] font-black text-slate-300 dark:text-slate-400 uppercase transition-colors">vs {dashboard2Logics.throughput.created} novos</span>
+                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase transition-colors">{dashboard2Logics.throughput.done} {t('dashboard.deliveries')}</span>
+                <span className="text-[10px] font-black text-slate-300 dark:text-slate-400 uppercase transition-colors">vs {dashboard2Logics.throughput.created} {t('dashboard.new')}</span>
               </div>
             </div>
           </div>
@@ -1050,15 +1056,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           <div className="relative z-10">
             <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center justify-between transition-colors">
               <span className="flex items-center">
-                Risco de Inércia
-                <InfoTooltip title="Inertia Alert" content="Projetos que têm entrega em menos de 48 horas e ainda permanecem no status 'Fila'. Exige mobilização imediata do time." />
+                {t('dashboard.inertiaRisk')}
+                <InfoTooltip title={t('dashboard.inertiaAlert')} content={t('dashboard.inertiaAlertContent')} />
               </span>
               <button
                 onClick={() => setViewingRisk({ type: 'inertia', data: dashboard2Logics })}
                 className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg text-slate-400 hover:text-indigo-500 transition-all flex items-center space-x-1 grayscale hover:grayscale-0"
               >
                 <Search size={12} />
-                <span className="text-[8px] font-black uppercase">Rastrear</span>
+                <span className="text-[8px] font-black uppercase">{t('dashboard.track')}</span>
               </button>
             </h4>
             <div className="flex flex-col lg:flex-row items-center space-y-4 lg:space-y-0 lg:space-x-6">
@@ -1066,7 +1072,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 {dashboard2Logics.inertia}
               </span>
               <p className="text-[11px] font-bold text-slate-400 dark:text-slate-400 uppercase leading-tight transition-colors">
-                {dashboard2Logics.inertia === 1 ? 'Projeto pendente' : 'Projetos pendentes'} <br />em fila crítica
+                {dashboard2Logics.inertia === 1 ? t('dashboard.pendingProject') : t('dashboard.pendingProjects')} <br />{t('dashboard.inCriticalQueue')}
               </p>
             </div>
           </div>
@@ -1082,15 +1088,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           <div className="relative z-10">
             <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center justify-between transition-colors">
               <span className="flex items-center">
-                Riscos de Escala
-                <InfoTooltip title="Análise de Carga" content="Fragmentação: Profissionais com >3 projetos (dispersão). Sobrecarga: Profissionais com >5 tarefas ativas (excesso de volume). Conflito: Sobreposição temporal real entre projetos." />
+                {t('dashboard.scaleRisks')}
+                <InfoTooltip title={t('dashboard.loadAnalysis')} content={t('dashboard.loadAnalysisContent')} />
               </span>
               <button
                 onClick={() => setViewingRisk({ type: 'scale', data: dashboard2Logics })}
                 className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg text-slate-400 hover:text-amber-500 transition-all flex items-center space-x-1 grayscale hover:grayscale-0"
               >
                 <Search size={12} />
-                <span className="text-[8px] font-black uppercase">Rastrear</span>
+                <span className="text-[8px] font-black uppercase">{t('dashboard.track')}</span>
               </button>
             </h4>
             <div className="flex items-center justify-between">
@@ -1098,19 +1104,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 <span className={`text-3xl font-black transition-colors ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-200 dark:text-slate-800'}`}>
                   {dashboard2Logics.fragmentation}
                 </span>
-                <p className="text-[7px] font-black text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest text-center transition-colors">Filtro</p>
+                <p className="text-[7px] font-black text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest text-center transition-colors">{t('dashboard.filter')}</p>
               </div>
               <div className="flex flex-col items-center">
                 <span className={`text-3xl font-black transition-colors ${dashboard2Logics.overloaded > 0 ? 'text-orange-500' : 'text-slate-200 dark:text-slate-800'}`}>
                   {dashboard2Logics.overloaded}
                 </span>
-                <p className="text-[7px] font-black text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest text-center transition-colors">Carga</p>
+                <p className="text-[7px] font-black text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest text-center transition-colors">{t('dashboard.load')}</p>
               </div>
               <div className="flex flex-col items-center">
                 <span className={`text-3xl font-black transition-colors ${dashboard2Logics.conflicts > 0 ? 'text-rose-500' : 'text-slate-200 dark:text-slate-800'}`}>
                   {dashboard2Logics.conflicts}
                 </span>
-                <p className="text-[7px] font-black text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest text-center transition-colors">Conflito</p>
+                <p className="text-[7px] font-black text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest text-center transition-colors">{t('dashboard.conflicts')}</p>
               </div>
             </div>
           </div>
@@ -1124,15 +1130,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
               <div>
                 <h3 className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.4em] mb-2 px-2 flex items-center transition-colors">
-                  Capacidade Operacional da Equipe
+                  {t('dashboard.teamOperationalCapacity')}
                   <InfoTooltip
-                    title="Saturação da Equipe"
-                    content="Percentual de ocupação baseado em 5 dias úteis por usuário ativo. Soma o tempo de todos os projetos e subtarefas pendentes alocados na semana selecionada."
+                    title={t('dashboard.teamSaturation')}
+                    content={t('dashboard.teamSaturationContent')}
                     calculation="(Dias_Atribuídos_Semana / (Usuários_Ativos * 5)) * 100"
                     position="bottom"
                   />
                 </h3>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest px-2 transition-colors">Sincronizado com Ciclo Médio de {avgExecutionTime} dias</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest px-2 transition-colors">{t('dashboard.synchronizedWithAverageCycle')} {avgExecutionTime} {t('dashboard.days')}</p>
               </div>
 
               {/* Seletor de Semanas */}
@@ -1146,7 +1152,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                       : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
                       }`}
                   >
-                    <span>{w === 0 ? 'Atual' : `Sêman. ${w}`}</span>
+                    <span>{w === 0 ? t('dashboard.current') : `${t('dashboard.week')}. ${w}`}</span>
                   </button>
                 ))}
               </div>
@@ -1172,28 +1178,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <span className="text-3xl font-black text-slate-900 dark:text-white transition-colors">{dashboard2Logics.teamCapacity.percentage}%</span>
-                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter transition-colors">Global</span>
+                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter transition-colors">{t('dashboard.global')}</span>
                   </div>
                 </div>
 
                 <div className="flex-1 space-y-4">
                   <div className="flex justify-between items-baseline">
-                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Ocupação</span>
-                    <span className="text-xl font-black text-slate-900 dark:text-white transition-colors">{dashboard2Logics.teamCapacity.occupied} <span className="text-[10px] text-slate-400 dark:text-slate-500">dias</span></span>
+                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">{t('dashboard.load')}</span>
+                    <span className="text-xl font-black text-slate-900 dark:text-white transition-colors">{dashboard2Logics.teamCapacity.occupied} <span className="text-[10px] text-slate-400 dark:text-slate-500">{t('dashboard.days')}</span></span>
                   </div>
                   <div className="flex justify-between items-baseline">
-                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Disponível</span>
-                    <span className="text-xl font-black text-slate-300 dark:text-slate-700 transition-colors">{dashboard2Logics.teamCapacity.total} <span className="text-[10px] opacity-40">dias</span></span>
+                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">{t('dashboard.available')}</span>
+                    <span className="text-xl font-black text-slate-300 dark:text-slate-700 transition-colors">{dashboard2Logics.teamCapacity.total} <span className="text-[10px] opacity-40">{t('dashboard.days')}</span></span>
                   </div>
                   <div className={`text-center py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm transition-all ${dashboard2Logics.teamCapacity.percentage > 100 ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' :
                     dashboard2Logics.teamCapacity.percentage > 95 ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
                       dashboard2Logics.teamCapacity.percentage > 80 ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
                         'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                     }`}>
-                    {dashboard2Logics.teamCapacity.percentage > 100 ? 'Sobrecarga Crítica' :
-                      dashboard2Logics.teamCapacity.percentage > 95 ? 'Limite de Segurança' :
-                        dashboard2Logics.teamCapacity.percentage > 80 ? 'Atenção Necessária' :
-                          'Fluxo Saudável'}
+                    {dashboard2Logics.teamCapacity.percentage > 100 ? t('dashboard.criticalOverload') :
+                      dashboard2Logics.teamCapacity.percentage > 95 ? t('dashboard.safetyLimit') :
+                        dashboard2Logics.teamCapacity.percentage > 80 ? t('dashboard.attentionRequired') :
+                          t('dashboard.healthyFlow')}
                   </div>
                 </div>
               </div>
@@ -1201,8 +1207,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
               {/* Detalhamento por Usuário */}
               <div className="lg:col-span-7">
                 <div className="flex items-center justify-between mb-6">
-                  <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Análise Individual ({dashboard2Logics.teamCapacity.weekRange.start} - {dashboard2Logics.teamCapacity.weekRange.end})</p>
-                  <p className="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest transition-colors">Capacidade / Semana</p>
+                  <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">{t('dashboard.individualAnalysis')} ({dashboard2Logics.teamCapacity.weekRange.start} - {dashboard2Logics.teamCapacity.weekRange.end})</p>
+                  <p className="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest transition-colors">{t('dashboard.capacityPerWeek')}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-x-12 gap-y-6">
                   {dashboard2Logics.teamCapacity.userDetails.map((u: any) => (
@@ -1224,7 +1230,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                     </div>
                   ))}
                   {dashboard2Logics.teamCapacity.userDetails.length === 0 && (
-                    <div className="col-span-2 text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Sem dados de alocação para este período</div>
+                    <div className="col-span-2 text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">{t('dashboard.noAllocationData')}</div>
                   )}
                 </div>
               </div>
@@ -1240,11 +1246,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         <div className="lg:col-span-2 bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col min-h-[400px] transition-all duration-500">
           <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
-              Tendência de Fluxo
+              {t('dashboard.flowTrend')}
               <InfoTooltip
-                title="Entradas vs Saídas"
-                content="Analisa o fluxo de trabalho comparando novos registros com projetos finalizados ao longo do semestre."
-                calculation="Projetos_Criados_Mes vs Projetos_Done_Mes"
+                title={t('dashboard.insVsOuts')}
+                content={t('dashboard.flowTrendContent')}
+                calculation={t('dashboard.flowTrendCalc')}
               />
             </h3>
             <TrendingUp size={20} className="text-indigo-600 dark:text-indigo-500" />
@@ -1266,8 +1272,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 900 }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 900 }} />
                 <RechartsTooltip contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px', color: theme === 'dark' ? '#ffffff' : '#0f172a' }} />
-                <Area type="monotone" dataKey="created" name="Criados" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorCreated)" />
-                <Area type="monotone" dataKey="done" name="Concluídos" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorDone)" />
+                <Area type="monotone" dataKey="created" name={t('dashboard.created')} stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorCreated)" />
+                <Area type="monotone" dataKey="done" name={t('dashboard.completed')} stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorDone)" />
                 <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px', fontSize: '10px', textTransform: 'uppercase', fontWeight: 900, color: theme === 'dark' ? '#64748b' : '#94a3b8' }} />
               </AreaChart>
             </ResponsiveContainer>
@@ -1278,11 +1284,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col min-h-[400px] transition-all duration-500">
           <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
-              Concentração
+              {t('dashboard.concentration')}
               <InfoTooltip
-                title="Volume por Cliente"
-                content="Identifica a pulverização ou dependência de clientes específicos dentro do portfólio."
-                calculation="Projetos_por_Cliente / Projetos_Totais * 100"
+                title={t('dashboard.clientVolume')}
+                content={t('dashboard.concentrationContent')}
+                calculation={t('dashboard.concentrationCalc')}
               />
             </h3>
             <PieChart size={20} className="text-indigo-600 dark:text-indigo-500" />
@@ -1329,11 +1335,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 min-h-[450px] flex flex-col transition-all duration-500">
           <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
-              Eficiência Operacional
+              {t('dashboard.efficiency')}
               <InfoTooltip
-                title="Sincronia de Entregas"
-                content="Mede a taxa de conclusão comparando tudo o que foi atribuído (Projetos + Subtarefas) com o que foi efetivamente entregue."
-                calculation="(Projetos_Done + Subtarefas_Done) / Total_Atribuído * 100"
+                title={t('dashboard.deliverySync')}
+                content={t('dashboard.deliverySyncContent')}
+                calculation={t('dashboard.deliverySyncCalc')}
               />
             </h3>
             <CheckCircle2 size={20} className="text-emerald-500" />
@@ -1370,9 +1376,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                   itemStyle={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}
                   labelStyle={{ fontSize: '11px', fontWeight: 900, marginBottom: '8px', color: theme === 'dark' ? '#fff' : '#000' }}
                 />
-                <Bar dataKey="totalAssigned" name="Atribuído Total" fill={theme === 'dark' ? '#ffffff' : '#000000'} opacity={0.03} barSize={20} radius={[0, 10, 10, 0]} isAnimationActive={false} />
-                <Bar dataKey="projectsDone" name="Projetos" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={20} />
-                <Bar dataKey="subtasksDone" name="Subtarefas" stackId="a" fill="#10b981" opacity={0.4} radius={[0, 10, 10, 0]} barSize={20} />
+                <Bar dataKey="totalAssigned" name={t('dashboard.assignedTotal')} fill={theme === 'dark' ? '#ffffff' : '#000000'} opacity={0.03} barSize={20} radius={[0, 10, 10, 0]} isAnimationActive={false} />
+                <Bar dataKey="projectsDone" name={t('nav.projects')} stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={20} />
+                <Bar dataKey="subtasksDone" name={t('dashboard.subtasks')} stackId="a" fill="#10b981" opacity={0.4} radius={[0, 10, 10, 0]} barSize={20} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -1382,11 +1388,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col transition-all duration-500">
           <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
-              Carga Ativa por Usuário
+              {t('dashboard.activeLoadPerUser')}
               <InfoTooltip
-                title="Distribuição de Status"
-                content="Visão em tempo real da alocação do time, separando o que está parado, o que está em produção e o que aguarda início."
-                calculation="Agrupamento(Status) por Usuário"
+                title={t('dashboard.statusDistribution')}
+                content={t('dashboard.statusDistributionContent')}
+                calculation={t('dashboard.statusDistributionCalc')}
               />
             </h3>
             <Users size={20} className="text-indigo-600 dark:text-indigo-500" />
@@ -1414,17 +1420,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                         <div className="flex items-center space-x-3 mt-3">
                           <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-100 dark:border-indigo-500/20">
                             <span className="text-[11px] font-black text-indigo-700 dark:text-indigo-300">{projectCount}</span>
-                            <span className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400/70 uppercase tracking-widest">{projectCount === 1 ? 'Projeto' : 'Projetos'}</span>
+                            <span className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400/70 uppercase tracking-widest">{projectCount === 1 ? t('dashboard.project') : t('projects.title')}</span>
                           </div>
                           <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg border border-emerald-100 dark:border-emerald-500/20">
                             <span className="text-[11px] font-black text-emerald-700 dark:text-emerald-300">{subtaskCount}</span>
-                            <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400/70 uppercase tracking-widest">{subtaskCount === 1 ? 'Subtarefa' : 'Subtarefas'}</span>
+                            <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400/70 uppercase tracking-widest">{subtaskCount === 1 ? t('dashboard.subtask') : t('dashboard.subtasks')}</span>
                           </div>
                         </div>
                       </div>
                       <div className="text-right flex flex-col items-end">
                         <span className="text-[14px] font-black text-slate-900 dark:text-white transition-colors leading-none">{totalItems}</span>
-                        <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">Total Ativo</span>
+                        <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">{t('dashboard.totalActive')}</span>
                       </div>
                     </div>
                     <div className="h-4 w-full flex rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800 shadow-inner dark:shadow-[inset_0_2px_4px_rgba(0,0,0,0.4)] bg-slate-50 dark:bg-slate-900/40 p-0.5 transition-colors duration-500">
@@ -1436,13 +1442,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 );
               })}
               {userStatusMatrix.length === 0 && (
-                <div className="h-64 flex flex-col items-center justify-center text-slate-400 font-black uppercase text-[12px] tracking-widest italic opacity-40">Sem colaboradores ativos</div>
+                <div className="h-64 flex flex-col items-center justify-center text-slate-400 font-black uppercase text-[12px] tracking-widest italic opacity-40">{t('dashboard.noActiveColleagues')}</div>
               )}
             </div>
             <div className="mt-12 flex justify-center space-x-8 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-3xl border border-slate-200 dark:border-slate-800/80 transition-colors duration-500">
-              <div className="flex items-center transition-colors"><div className="w-3 h-3 bg-slate-300 dark:bg-slate-700 rounded-full mr-3 border border-slate-200 dark:border-white/10"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Fila</span></div>
-              <div className="flex items-center"><div className="w-3 h-3 bg-indigo-600 rounded-full mr-3 shadow-[0_0_8px_rgba(79,70,229,0.4)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Andamento</span></div>
-              <div className="flex items-center"><div className="w-3 h-3 bg-purple-600 rounded-full mr-3 shadow-[0_0_8px_rgba(147,51,234,0.4)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Pausado</span></div>
+              <div className="flex items-center transition-colors"><div className="w-3 h-3 bg-slate-300 dark:bg-slate-700 rounded-full mr-3 border border-slate-200 dark:border-white/10"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">{t('dashboard.queueTooltip')}</span></div>
+              <div className="flex items-center"><div className="w-3 h-3 bg-indigo-600 rounded-full mr-3 shadow-[0_0_8px_rgba(79,70,229,0.4)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">{t('dashboard.inProgressTooltip')}</span></div>
+              <div className="flex items-center"><div className="w-3 h-3 bg-purple-600 rounded-full mr-3 shadow-[0_0_8px_rgba(147,51,234,0.4)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-wider">{t('dashboard.pausedTooltip')}</span></div>
             </div>
           </div>
         </div>
@@ -1454,18 +1460,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-rose-50 dark:bg-rose-500/10 rounded-t-[40px] transition-colors">
             <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-rose-600 dark:text-rose-500 flex items-center transition-colors">
               <AlertTriangle size={16} className="mr-4 text-rose-500 animate-pulse" />
-              Prazos Expirados
+              {t('dashboard.overdueDeadlines')}
               <InfoTooltip
-                title="Alertas de Atraso"
-                content="Identifica projetos ativos que já ultrapassaram a data de entrega pactuada, exigindo atenção imediata."
-                calculation="Filtro(Active_Projects onde Delivery_Date < Hoje)"
+                title={t('dashboard.delayAlerts')}
+                content={t('dashboard.delayAlertsContent')}
+                calculation={t('dashboard.delayAlertsCalc')}
               />
             </h3>
             <span className="text-sm font-black text-rose-600 dark:text-rose-500 bg-rose-100 dark:bg-rose-500/10 px-4 py-1.5 rounded-full ring-1 ring-rose-300 dark:ring-rose-500/30 transition-colors">{overdueProjects.length}</span>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800/50 max-h-[450px] overflow-y-auto custom-scrollbar transition-colors">
             {overdueProjects.length === 0 ? (
-              <div className="p-20 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">Operação em Dia</div>
+              <div className="p-20 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">{t('dashboard.onTimeOperation')}</div>
             ) : overdueProjects.map((p: Project) => (
               <div key={p.id} className="p-10 hover:bg-rose-50 dark:hover:bg-rose-500/[0.05] transition-colors group">
                 <div className="flex justify-between items-center">
@@ -1476,7 +1482,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                   <div className="text-right shrink-0 pl-6">
                     <span className="text-xl font-black text-rose-600 dark:text-rose-500 drop-shadow-[0_0_10px_rgba(244,63,94,0.3)] transition-colors">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
                     <div className="mt-2 text-right">
-                      <span className="inline-block text-[9px] text-rose-600 uppercase font-black tracking-widest bg-rose-100 dark:bg-rose-500/10 px-4 py-1.5 rounded-full ring-1 ring-rose-200 dark:ring-rose-500/20 transition-colors">ATRASO</span>
+                      <span className="inline-block text-[9px] text-rose-600 uppercase font-black tracking-widest bg-rose-100 dark:bg-rose-500/10 px-4 py-1.5 rounded-full ring-1 ring-rose-200 dark:ring-rose-500/20 transition-colors">{t('dashboard.delay')}</span>
                     </div>
                   </div>
                 </div>
@@ -1490,18 +1496,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-emerald-50 dark:bg-emerald-500/10 rounded-t-[40px] transition-colors">
             <h3 className="font-black text-[12px] uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400 flex items-center transition-colors">
               <Calendar size={16} className="mr-4 text-emerald-500" />
-              Próximos 7 Dias
+              {t('dashboard.next7Days')}
               <InfoTooltip
-                title="Planejamento Semanal"
-                content="Calendário de entregas previstas para a semana atual, para organização da carga de faturamento e revisão."
-                calculation="Filtro(Projetos onde Delivery_Date está entre Hoje e +7 dias)"
+                title={t('dashboard.weeklyPlanning')}
+                content={t('dashboard.weeklyPlanningContent')}
+                calculation={t('dashboard.weeklyPlanningCalc')}
               />
             </h3>
             <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/10 px-4 py-1.5 rounded-full ring-1 ring-emerald-300 dark:ring-emerald-500/30 transition-colors">{upcomingProjects.length}</span>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800/50 max-h-[450px] overflow-y-auto custom-scrollbar transition-colors">
             {upcomingProjects.length === 0 ? (
-              <div className="p-20 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">Sem Entregas Agendadas</div>
+              <div className="p-20 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40">{t('dashboard.noUpcomingDeliveries')}</div>
             ) : upcomingProjects.map((p: Project) => (
               <div key={p.id} className="p-10 hover:bg-emerald-50 dark:hover:bg-emerald-500/[0.05] transition-colors group">
                 <div className="flex justify-between items-center">
@@ -1512,7 +1518,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                   <div className="text-right shrink-0 pl-6">
                     <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.3)] transition-colors">{p.deliveryDate?.split('-').reverse().slice(0, 2).join('/')}</span>
                     <div className="mt-2 text-right">
-                      <span className="inline-block text-[9px] text-emerald-600 dark:text-emerald-500/70 uppercase font-black tracking-widest bg-emerald-100 dark:bg-emerald-500/10 px-4 py-1.5 rounded-full transition-colors">CHECK-OUT</span>
+                      <span className="inline-block text-[9px] text-emerald-600 dark:text-emerald-500/70 uppercase font-black tracking-widest bg-emerald-100 dark:bg-emerald-500/10 px-4 py-1.5 rounded-full transition-colors">{t('dashboard.checkout')}</span>
                     </div>
                   </div>
                 </div>
@@ -1526,11 +1532,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col transition-all duration-500">
         <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
           <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
-            Ranking Estratégico de Clientes
+            {t('dashboard.strategicClientRanking')}
             <InfoTooltip
-              title="Top Clientes"
-              content="Classificação dos 10 clientes com maior histórico de volume de projetos registrados no ecossistema."
-              calculation="Contagem total de registros agrupados por Cliente_ID"
+              title={t('dashboard.topClients')}
+              content={t('dashboard.topClientsContent')}
+              calculation={t('dashboard.topClientsCalc')}
             />
           </h3>
           <Trophy size={20} className="text-amber-500" />
@@ -1540,9 +1546,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 transition-colors">
-                  <th className="pb-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-4 transition-colors">Posição</th>
-                  <th className="pb-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Cliente</th>
-                  <th className="pb-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-right px-4 transition-colors">Total Projetos</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-4 transition-colors">{t('dashboard.position')}</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">{t('projects.client')}</th>
+                  <th className="pb-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-right px-4 transition-colors">{t('dashboard.totalProjects')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors">
@@ -1569,7 +1575,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 ))}
                 {rankingTopClients.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="py-20 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40 transition-colors">Sem dados de clientes registrados</td>
+                    <td colSpan={3} className="py-20 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[11px] italic opacity-40 transition-colors">{t('dashboard.noRegisteredClients')}</td>
                   </tr>
                 )}
               </tbody>
@@ -1584,6 +1590,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             userName={viewingUser.name}
             projects={projects}
             clients={clients}
+            onClose={() => setViewingUser(null)}
           />
         )
       }

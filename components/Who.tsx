@@ -1,6 +1,7 @@
-
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { InternalUser, UserRole } from '../types';
+import { LanguageSwitcher } from './LanguageSwitcher';
 
 interface InternalUserLoginProps {
   users: InternalUser[];
@@ -9,6 +10,7 @@ interface InternalUserLoginProps {
 }
 
 export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onLogin, onExit }) => {
+  const { t } = useTranslation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,7 +26,7 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
     if (user && user.passwordHash === password) {
       onLogin(user);
     } else {
-      setError('Usuário ou senha incorretos');
+      setError(t('who.invalidUserPass'));
     }
   };
 
@@ -35,11 +37,15 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f172a] p-6">
+    <div className="min-h-screen flex items-center justify-center bg-[#0f172a] p-6 relative">
+      <div className="absolute top-8 right-8 z-50">
+        <LanguageSwitcher light />
+      </div>
+
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-black text-white mb-2 tracking-tighter">Quem está acessando?</h1>
-          <p className="text-slate-500 font-medium">Escolha seu perfil ou digite as credenciais</p>
+          <h1 className="text-3xl font-black text-white mb-2 tracking-tighter">{t('who.title')}</h1>
+          <p className="text-slate-500 font-medium">{t('who.subtitle')}</p>
         </div>
 
         <div className="bg-[#1e293b] rounded-[32px] shadow-2xl overflow-hidden border border-slate-800 p-10">
@@ -73,19 +79,19 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Nome de Usuário</label>
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">{t('who.username')}</label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full px-5 py-3.5 bg-slate-900 border border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition text-slate-100 text-sm font-medium placeholder-slate-600"
-                placeholder="Ex: admin"
+                placeholder={t('who.usernamePlaceholder')}
                 autoComplete="username"
                 required
               />
             </div>
             <div>
-              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Senha Pessoal</label>
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">{t('who.personalPassword')}</label>
               <input
                 ref={passwordRef}
                 type="password"
@@ -102,7 +108,7 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
               type="submit"
               className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-500/20 transition-all transform active:scale-[0.98] mt-4"
             >
-              Confirmar Identidade
+              {t('who.confirmIdentity')}
             </button>
           </form>
 
@@ -114,7 +120,7 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
               onClick={() => onLogin({
                 id: 'viewer-guest',
                 workspaceId: activeUsers[0]?.workspaceId || '',
-                username: 'Visualizador',
+                username: t('common.viewer'),
                 passwordHash: '',
                 role: UserRole.VIEWER,
                 isActive: true
@@ -122,18 +128,18 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
               className="group relative flex items-center justify-center space-x-3 px-8 py-3 bg-transparent border border-[#ccff00]/30 hover:border-[#ccff00] hover:bg-[#ccff00]/5 rounded-2xl transition-all duration-300 active:scale-95"
             >
               <div className="w-2 h-2 rounded-full bg-[#ccff00] animate-pulse" />
-              <span className="text-[10px] font-black text-[#ccff00]/80 group-hover:text-[#ccff00] uppercase tracking-[0.2em]">Acesso Visualizador</span>
+              <span className="text-[10px] font-black text-[#ccff00]/80 group-hover:text-[#ccff00] uppercase tracking-[0.2em]">{t('who.viewerAccess')}</span>
               <div className="absolute inset-0 rounded-2xl bg-[#ccff00]/20 blur-xl opacity-0 group-hover:opacity-40 transition-opacity" />
             </button>
-            <p className="mt-3 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center opacity-60">Somente leitura • Sem senha necessária</p>
+            <p className="mt-3 text-[9px] font-bold text-slate-500 uppercase tracking-widest text-center opacity-60">{t('who.readOnly')}</p>
           </div>
 
           {/* Dica de Primeiro Acesso - Mais Sutil */}
           {activeUsers.some(u => u.username === 'admin' && u.mustChangePassword) && (
             <p className="mt-6 text-[10px] text-slate-500 font-medium leading-relaxed text-center px-4">
-              Primeiro acesso como administrador? Utilize as credenciais padrão <span className="text-indigo-400 font-bold lowercase">admin</span> / <span className="text-indigo-400 font-bold lowercase">admin</span>.
+              {t('who.firstAccessTip')}
               <br />
-              <span className="opacity-70 italic">Altere sua senha em Configurações &gt; Usuários para sua segurança.</span>
+              <span className="opacity-70 italic">{t('who.changePasswordTip')}</span>
             </p>
           )}
 
@@ -143,7 +149,7 @@ export const InternalUserLogin: React.FC<InternalUserLoginProps> = ({ users, onL
             className="w-full mt-8 py-3 px-6 border border-slate-700 hover:border-rose-500/50 hover:bg-rose-500/10 text-slate-500 hover:text-rose-500 text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl transition-all flex items-center justify-center"
           >
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-            Sair do Workspace
+            {t('who.exitWorkspace')}
           </button>
         </div>
       </div>
