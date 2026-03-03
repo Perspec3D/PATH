@@ -511,6 +511,7 @@ const App: React.FC = () => {
       onLogout={handleLogout}
       onSwitchUser={switchUser}
       companyName={db.company?.name || 'PERSPEC PATH'}
+      logoUrl={db.company?.logoUrl}
       theme={theme}
       setTheme={setTheme}
     >

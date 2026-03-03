@@ -10,6 +10,7 @@ interface LayoutProps {
   onLogout: () => void;
   onSwitchUser: () => void;
   companyName: string;
+  logoUrl?: string;
   theme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light') => void;
 }
@@ -22,6 +23,7 @@ export const Layout: React.FC<LayoutProps> = ({
   onLogout,
   onSwitchUser,
   companyName,
+  logoUrl,
   theme,
   setTheme
 }) => {
@@ -175,6 +177,17 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="h-4 w-px bg-slate-200 dark:bg-slate-700"></div>
             <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{currentPage}</span>
           </div>
+
+          {/* Logo do Cliente / Workspace */}
+          {logoUrl && (
+            <div className="flex items-center">
+              <img
+                src={logoUrl}
+                alt="Logo da Empresa"
+                className="max-h-10 max-w-[150px] object-contain"
+              />
+            </div>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto p-8">

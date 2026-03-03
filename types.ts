@@ -31,6 +31,7 @@ export interface Company {
   userLimit: number;
   subscriptionId?: string;
   subscriptionEnd?: number;
+  logoUrl?: string;
 }
 
 export interface InternalUser {

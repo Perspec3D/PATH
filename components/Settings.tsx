@@ -24,6 +24,8 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
   const [targetSeatCount, setTargetSeatCount] = useState(db.company?.userLimit || 1);
   const [isSyncing, setIsSyncing] = useState(false);
   const [returnStatus, setReturnStatus] = useState<'success' | 'pending' | 'failure' | null>(null);
+  const [logoUrl, setLogoUrl] = useState(db.company?.logoUrl || '');
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   // Check for payment return parameters
   React.useEffect(() => {
@@ -67,9 +69,11 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
             userLimit: data.user_limit,
             subscriptionId: data.subscription_id,
             subscriptionEnd: data.subscription_end ? new Date(data.subscription_end).getTime() : undefined,
-            trialStart: data.trial_start ? new Date(data.trial_start).getTime() : Date.now()
+            trialStart: data.trial_start ? new Date(data.trial_start).getTime() : Date.now(),
+            logoUrl: data.logo_url
           }
         });
+        setLogoUrl(data.logo_url || '');
       }
     } catch (err: any) {
       console.error("Erro ao sincronizar:", err);
@@ -88,13 +92,59 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
 
   const handleSaveCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newCompany = { ...db.company, name: companyName };
+    const newCompany = { ...db.company, name: companyName, logoUrl };
+    if (!newCompany.id) return;
+
     try {
-      await syncCompany(newCompany);
-      setDb({ ...db, company: newCompany });
+      await syncCompany(newCompany as any);
+      setDb({ ...db, company: newCompany as any });
       alert('Configurações da empresa salvas!');
     } catch (err: any) {
       alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !db.company?.id) return;
+
+    // Limite de 2MB
+    if (file.size > 2 * 1024 * 1024) {
+      alert('O arquivo deve ter no máximo 2MB.');
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${db.company.id}/logo-${Date.now()}.${fileExt}`;
+
+      // Upload para o bucket 'logos'
+      const { data, error: uploadError } = await supabase.storage
+        .from('logos')
+        .upload(fileName, file, {
+          upsert: true,
+          contentType: file.type
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Pegar URL pública
+      const { data: { publicUrl } } = supabase.storage
+        .from('logos')
+        .getPublicUrl(fileName);
+
+      setLogoUrl(publicUrl);
+
+      // Auto-salvamento da URL no perfil
+      const updatedCompany = { ...db.company, logoUrl: publicUrl };
+      await syncCompany(updatedCompany as any);
+      setDb({ ...db, company: updatedCompany as any });
+
+    } catch (err: any) {
+      alert("Erro ao enviar logotipo: " + (err.message || "Erro desconhecido"));
+    } finally {
+      setIsUploadingLogo(false);
     }
   };
 
@@ -248,30 +298,80 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
         <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 transition-colors">
           <h2 className="font-black text-xs text-slate-400 dark:text-slate-400 uppercase tracking-widest">Workspace / Empresa</h2>
         </div>
-        <form onSubmit={handleSaveCompany} className="p-8 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div>
-              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Nome Fantasia</label>
-              <input
-                type="text"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
-                autoComplete="organization"
-              />
-            </div>
-            <div>
-              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Licença Atual</label>
-              <div className="flex items-center space-x-3 px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-indigo-600 dark:text-indigo-400 font-bold transition-colors">
-                <div className={`w-2 h-2 rounded-full ${db.company.licenseStatus === LicenseStatus.ACTIVE ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`}></div>
-                <span className="uppercase tracking-widest">{db.company.licenseStatus}</span>
+        <div className="p-8 space-y-8">
+          {/* Logo Upload Section */}
+          <div className="flex items-start space-x-8 pb-8 border-b border-slate-100 dark:border-slate-800 transition-colors">
+            <div className="relative group">
+              <div className="w-24 h-24 rounded-3xl bg-slate-100 dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden transition-all group-hover:border-indigo-500/50">
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Logo Preview" className="w-full h-full object-contain p-2" />
+                ) : (
+                  <svg className="w-8 h-8 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                )}
+                {isUploadingLogo && (
+                  <div className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 flex items-center justify-center">
+                    <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
               </div>
+              <label
+                htmlFor="logo-upload"
+                className="absolute -bottom-2 -right-2 w-8 h-8 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl flex items-center justify-center cursor-pointer shadow-lg shadow-indigo-500/20 transition-all active:scale-90"
+                title="Carregar Logotipo"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                <input
+                  id="logo-upload"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleLogoUpload}
+                  disabled={isUploadingLogo}
+                />
+              </label>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight mb-1">Logotipo da Empresa</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-500 leading-relaxed mb-4">
+                Carregue o logotipo oficial para personalização da interface.
+                Recomendado: PNG ou SVG com fundo transparente. Máx 2MB.
+              </p>
+              {logoUrl && (
+                <button
+                  onClick={() => { setLogoUrl(''); handleSaveCompany({ preventDefault: () => { } } as any); }}
+                  className="text-[10px] font-black uppercase text-rose-500 hover:text-rose-400 transition"
+                >
+                  Remover Logotipo
+                </button>
+              )}
             </div>
           </div>
-          <button type="submit" className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 active:scale-95">
-            Salvar Alterações
-          </button>
-        </form>
+
+          <form onSubmit={handleSaveCompany} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Nome Fantasia</label>
+                <input
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
+                  autoComplete="organization"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Licença Atual</label>
+                <div className="flex items-center space-x-3 px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-indigo-600 dark:text-indigo-400 font-bold transition-colors">
+                  <div className={`w-2 h-2 rounded-full ${db.company.licenseStatus === LicenseStatus.ACTIVE ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`}></div>
+                  <span className="uppercase tracking-widest">{db.company.licenseStatus}</span>
+                </div>
+              </div>
+            </div>
+            <button type="submit" className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 active:scale-95">
+              Salvar Alterações
+            </button>
+          </form>
+        </div>
       </section>
 
       {/* Billing Section */}

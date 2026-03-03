@@ -80,7 +80,8 @@ export const fetchAllData = async (companyId?: string): Promise<Partial<AppDB>> 
       trialStart: new Date(profile.trial_start).getTime(),
       userLimit: profile.user_limit || 1,
       subscriptionId: profile.subscription_id,
-      subscriptionEnd: profile.subscription_end ? new Date(profile.subscription_end).getTime() : undefined
+      subscriptionEnd: profile.subscription_end ? new Date(profile.subscription_end).getTime() : undefined,
+      logoUrl: profile.logo_url
     } : null
   };
 };
@@ -146,7 +147,8 @@ export const syncUser = async (user: InternalUser) => {
 export const syncCompany = async (company: Company) => {
   const { error } = await supabase.from('profiles').update({
     name: company.name,
-    email: company.email
+    email: company.email,
+    logo_url: company.logoUrl
   }).eq('id', company.id);
   if (error) throw error;
 };
