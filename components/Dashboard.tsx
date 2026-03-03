@@ -23,136 +23,135 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
   }, [value]);
 
   const normalizedValue = Math.max(0, Math.min(100, displayValue));
-  // 0% -> -180deg (Left), 100% -> 0deg (Right)
   const angle = (normalizedValue / 100) * 180 - 180;
+
+  // Gerador de segmentos do arco (blocos estilo Imagem 02)
+  const segments = [];
+  const numSegments = 40;
+  for (let i = 0; i < numSegments; i++) {
+    const startAngle = (i / numSegments) * 180 - 180;
+    const endAngle = ((i + 0.7) / numSegments) * 180 - 180;
+    const radStart = (startAngle * Math.PI) / 180;
+    const radEnd = (endAngle * Math.PI) / 180;
+
+    const x1 = 100 + 85 * Math.cos(radStart);
+    const y1 = 100 + 85 * Math.sin(radStart);
+    const x2 = 100 + 85 * Math.cos(radEnd);
+    const y2 = 100 + 85 * Math.sin(radEnd);
+
+    // Cor baseada na posição do segmento
+    const segmentValue = (i / numSegments) * 100;
+    let color = "#10b981"; // Emerald
+    if (segmentValue < 25) color = "#f43f5e"; // Rose
+    else if (segmentValue < 50) color = "#f97316"; // Orange
+    else if (segmentValue < 75) color = "#eab308"; // Yellow
+
+    segments.push(
+      <path
+        key={i}
+        d={`M ${x1} ${y1} A 85 85 0 0 1 ${x2} ${y2}`}
+        fill="none"
+        stroke={color}
+        strokeWidth="10"
+        strokeLinecap="butt"
+        className={segmentValue > normalizedValue ? 'opacity-10 grayscale-[0.5]' : 'opacity-100 shadow-lg'}
+        style={{ filter: segmentValue <= normalizedValue ? 'drop-shadow(0 0 2px currentColor)' : 'none' }}
+      />
+    );
+  }
+
+  // Gerador de Ticks e Números
+  const scaleItems = [];
+  for (let i = 0; i <= 10; i++) {
+    const tickAngle = (i * i * 10 / 100) * 180 / 10 - 180; // Isso estava errado, vamos simplificar:
+    const simpleAngle = (i * 10 / 100) * 180 - 180;
+    const rad = (simpleAngle * Math.PI) / 180;
+
+    // Ticks maiores para dezenas (0, 10, 20...)
+    const x1 = 100 + 72 * Math.cos(rad);
+    const y1 = 100 + 72 * Math.sin(rad);
+    const x2 = 100 + 78 * Math.cos(rad);
+    const y2 = 100 + 78 * Math.sin(rad);
+
+    scaleItems.push(
+      <line key={`tick-${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1.5" className="text-slate-400 opacity-30" />
+    );
+
+    // Números (0, 20, 40, 60, 80, 100)
+    if (i % 2 === 0) {
+      const tx = 100 + 60 * Math.cos(rad);
+      const ty = 100 + 60 * Math.sin(rad);
+      scaleItems.push(
+        <text
+          key={`text-${i}`}
+          x={tx}
+          y={ty}
+          fontSize="7"
+          fontWeight="900"
+          textAnchor="middle"
+          alignmentBaseline="middle"
+          fill="currentColor"
+          className="text-slate-500 opacity-60 font-black tracking-tighter"
+        >
+          {i * 10}
+        </text>
+      );
+    }
+  }
 
   return (
     <div className="relative flex flex-col items-center justify-center group/gauge w-full max-w-[420px]">
-      <svg viewBox="0 0 200 140" className="w-full drop-shadow-[0_25px_50px_rgba(0,0,0,0.4)]">
+      <svg viewBox="0 0 200 130" className="w-full drop-shadow-[0_20px_40px_rgba(0,0,0,0.3)]">
         <defs>
-          <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#f43f5e" /> {/* Rose-500 */}
-            <stop offset="30%" stopColor="#f97316" /> {/* Orange-500 */}
-            <stop offset="60%" stopColor="#eab308" /> {/* Yellow-500 */}
-            <stop offset="100%" stopColor="#10b981" /> {/* Emerald-500 */}
-          </linearGradient>
-
-          <linearGradient id="needleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="transparent" />
-            <stop offset="50%" stopColor="#3b82f6" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#60a5fa" />
-          </linearGradient>
-
-          <filter id="hyperGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="4" result="blur" />
+          <filter id="needleGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-
-          <filter id="glassShine">
-            <feGaussianBlur stdDeviation="1" result="blur" />
-            <feSpecularLighting surfaceScale="5" specularConstant="0.8" specularExponent="20" lightingColor="#ffffff" in="blur" result="light">
-              <fePointLight x="100" y="50" z="100" />
-            </feSpecularLighting>
-            <feComposite in="light" in2="SourceGraphic" operator="in" />
           </filter>
         </defs>
 
-        {/* Marcadores de Escala (Ticks) Tecnológicos */}
-        {[...Array(11)].map((_, i) => {
-          const tickAngle = (i * 10 / 100) * 180 - 180;
-          const rad = (tickAngle * Math.PI) / 180;
-          return (
-            <circle
-              key={i}
-              cx={100 + 82 * Math.cos(rad)}
-              cy={100 + 82 * Math.sin(rad)}
-              r="1"
-              fill="currentColor"
-              className="text-slate-500/30 dark:text-slate-600/40"
-            />
-          );
-        })}
-
-        {/* Arco de Fundo (Track Profundo) */}
+        {/* Arco de Fundo Discreto */}
         <path
           d="M 15 100 A 85 85 0 0 1 185 100"
           fill="none"
           stroke={theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)'}
-          strokeWidth="20"
-          strokeLinecap="round"
-        />
-
-        {/* Arco de Brilho Interno (Glassmorphism Effect) */}
-        <path
-          d="M 15 100 A 85 85 0 0 1 185 100"
-          fill="none"
-          stroke={theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)'}
-          strokeWidth="14"
-          strokeLinecap="round"
-          filter="url(#glassShine)"
-        />
-
-        {/* Arco de Cor Principal (Gradiente Sutil) */}
-        <path
-          d="M 15 100 A 85 85 0 0 1 185 100"
-          fill="none"
-          stroke="url(#gaugeGradient)"
           strokeWidth="12"
           strokeLinecap="round"
-          className="opacity-60"
         />
 
-        {/* Arco de Progresso Ativo (Glow no valor atual) */}
-        {normalizedValue > 0 && (
-          <path
-            d={`M 15 100 A 85 85 0 0 1 ${100 + 85 * Math.cos((normalizedValue * 1.8 - 180) * Math.PI / 180)} ${100 + 85 * Math.sin((normalizedValue * 1.8 - 180) * Math.PI / 180)}`}
-            fill="none"
-            stroke="url(#gaugeGradient)"
-            strokeWidth="3"
-            strokeLinecap="round"
-            className="drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]"
-          />
-        )}
+        {segments}
+        {scaleItems}
 
-        {/* Ponteiro Laser Futurista */}
+        {/* Ponteiro Sólido de Alta Performance */}
         <g
           transform={`rotate(${angle}, 100, 100)`}
           className="transition-transform duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
         >
-          {/* Rastro do Laser */}
+          {/* Base do ponteiro */}
+          <circle cx="100" cy="100" r="10" fill={theme === 'dark' ? '#0f172a' : '#ffffff'} stroke="#3b82f6" strokeWidth="1" />
+
+          {/* Agulha Triangular Sólida */}
           <path
-            d="M 100 100 L 180 100"
-            stroke="url(#needleGradient)"
-            strokeWidth="3"
-            strokeLinecap="round"
-            className="opacity-80"
+            d="M 100 96 L 195 100 L 100 104 Z"
+            fill="#f43f5e"
+            className="drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]"
+            filter="url(#needleGlow)"
           />
-          {/* Agulha Laser Sólida */}
-          <line
-            x1="160" y1="100"
-            x2="185" y2="100"
-            stroke="#60a5fa"
-            strokeWidth="2"
-            strokeLinecap="round"
-            filter="url(#hyperGlow)"
-          />
-          {/* Centro do HUD */}
-          <circle cx="100" cy="100" r="8" fill={theme === 'dark' ? '#0f172a' : '#ffffff'} stroke="#3b82f6" strokeWidth="2" className="shadow-lg" />
-          <circle cx="100" cy="100" r="3" fill="#3b82f6" filter="url(#hyperGlow)" />
+
+          <circle cx="100" cy="100" r="3" fill="#3b82f6" />
         </g>
       </svg>
 
-      {/* HUD de Valor Reposicionado (Sem obstrução) */}
-      <div className="absolute -bottom-2 flex flex-col items-center bg-slate-50/50 dark:bg-white/[0.03] px-6 py-2 rounded-2xl backdrop-blur-md border border-slate-200/50 dark:border-white/5 shadow-sm">
+      {/* HUD de Valor (Reposicionado para não obstruir) */}
+      <div className="mt-2 flex flex-col items-center">
         <div className="flex items-baseline space-x-1">
-          <span className="text-3xl font-black text-slate-800 dark:text-white tracking-tighter leading-none">
+          <span className="text-4xl font-black text-slate-800 dark:text-white tracking-tighter leading-none">
             {Math.round(normalizedValue)}%
           </span>
           <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
             Saúde
           </span>
         </div>
-        <p className="text-[8px] font-black text-blue-500/80 uppercase tracking-[0.4em] mt-1 pr-[-0.4em]">
+        <p className="text-[8px] font-black text-blue-500/60 uppercase tracking-[0.4em] mt-2">
           INTEGRIDADE OPERACIONAL
         </p>
       </div>
