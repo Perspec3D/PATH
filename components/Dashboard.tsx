@@ -22,85 +22,139 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
     return () => clearTimeout(timer);
   }, [value]);
 
-  const radius = 90;
-  const strokeWidth = 18;
   const normalizedValue = Math.max(0, Math.min(100, displayValue));
+  // 0% -> -180deg (Left), 100% -> 0deg (Right)
   const angle = (normalizedValue / 100) * 180 - 180;
 
-  // Ticks calculation
-  const ticks = [];
-  for (let i = 0; i <= 10; i++) {
-    const tickAngle = (i * 10 / 100) * 180 - 180;
-    const rad = (tickAngle * Math.PI) / 180;
-    const x1 = 100 + 85 * Math.cos(rad);
-    const y1 = 100 + 85 * Math.sin(rad);
-    const x2 = 100 + 95 * Math.cos(rad);
-    const y2 = 100 + 95 * Math.sin(rad);
-    ticks.push(<line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="currentColor" strokeWidth="1" className="text-slate-300 dark:text-slate-800" />);
-  }
-
   return (
-    <div className="relative flex flex-col items-center justify-center group/gauge w-full max-w-[400px]">
-      <svg viewBox="0 0 200 120" className="w-full drop-shadow-[0_20px_40px_rgba(0,0,0,0.3)]">
+    <div className="relative flex flex-col items-center justify-center group/gauge w-full max-w-[420px]">
+      <svg viewBox="0 0 200 140" className="w-full drop-shadow-[0_25px_50px_rgba(0,0,0,0.4)]">
         <defs>
           <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#ef4444" />
-            <stop offset="25%" stopColor="#f97316" />
-            <stop offset="50%" stopColor="#eab308" />
-            <stop offset="75%" stopColor="#84cc16" />
-            <stop offset="100%" stopColor="#10b981" />
+            <stop offset="0%" stopColor="#f43f5e" /> {/* Rose-500 */}
+            <stop offset="30%" stopColor="#f97316" /> {/* Orange-500 */}
+            <stop offset="60%" stopColor="#eab308" /> {/* Yellow-500 */}
+            <stop offset="100%" stopColor="#10b981" /> {/* Emerald-500 */}
           </linearGradient>
-          <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
+
+          <linearGradient id="needleGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="transparent" />
+            <stop offset="50%" stopColor="#3b82f6" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#60a5fa" />
+          </linearGradient>
+
+          <filter id="hyperGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+
+          <filter id="glassShine">
+            <feGaussianBlur stdDeviation="1" result="blur" />
+            <feSpecularLighting surfaceScale="5" specularConstant="0.8" specularExponent="20" lightingColor="#ffffff" in="blur" result="light">
+              <fePointLight x="100" y="50" z="100" />
+            </feSpecularLighting>
+            <feComposite in="light" in2="SourceGraphic" operator="in" />
           </filter>
         </defs>
 
-        {ticks}
+        {/* Marcadores de Escala (Ticks) Tecnológicos */}
+        {[...Array(11)].map((_, i) => {
+          const tickAngle = (i * 10 / 100) * 180 - 180;
+          const rad = (tickAngle * Math.PI) / 180;
+          return (
+            <circle
+              key={i}
+              cx={100 + 82 * Math.cos(rad)}
+              cy={100 + 82 * Math.sin(rad)}
+              r="1"
+              fill="currentColor"
+              className="text-slate-500/30 dark:text-slate-600/40"
+            />
+          );
+        })}
 
+        {/* Arco de Fundo (Track Profundo) */}
         <path
-          d="M 10 100 A 90 90 0 0 1 190 100"
+          d="M 15 100 A 85 85 0 0 1 185 100"
           fill="none"
-          stroke={theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
-          strokeWidth={strokeWidth}
+          stroke={theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)'}
+          strokeWidth="20"
           strokeLinecap="round"
         />
 
+        {/* Arco de Brilho Interno (Glassmorphism Effect) */}
         <path
-          d="M 10 100 A 90 90 0 0 1 190 100"
+          d="M 15 100 A 85 85 0 0 1 185 100"
+          fill="none"
+          stroke={theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)'}
+          strokeWidth="14"
+          strokeLinecap="round"
+          filter="url(#glassShine)"
+        />
+
+        {/* Arco de Cor Principal (Gradiente Sutil) */}
+        <path
+          d="M 15 100 A 85 85 0 0 1 185 100"
           fill="none"
           stroke="url(#gaugeGradient)"
-          strokeWidth={strokeWidth}
+          strokeWidth="12"
           strokeLinecap="round"
-          strokeDasharray="282.7"
-          strokeDashoffset="0"
-          className="opacity-40"
+          className="opacity-60"
         />
 
+        {/* Arco de Progresso Ativo (Glow no valor atual) */}
+        {normalizedValue > 0 && (
+          <path
+            d={`M 15 100 A 85 85 0 0 1 ${100 + 85 * Math.cos((normalizedValue * 1.8 - 180) * Math.PI / 180)} ${100 + 85 * Math.sin((normalizedValue * 1.8 - 180) * Math.PI / 180)}`}
+            fill="none"
+            stroke="url(#gaugeGradient)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            className="drop-shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+          />
+        )}
+
+        {/* Ponteiro Laser Futurista */}
         <g
           transform={`rotate(${angle}, 100, 100)`}
           className="transition-transform duration-1000 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
         >
-          <line
-            x1="100" y1="100"
-            x2="25" y2="100"
-            stroke="#3B82F6"
-            strokeWidth="4"
+          {/* Rastro do Laser */}
+          <path
+            d="M 100 100 L 180 100"
+            stroke="url(#needleGradient)"
+            strokeWidth="3"
             strokeLinecap="round"
-            filter="url(#neonGlow)"
-            className="drop-shadow-[0_0_12px_rgba(59,130,246,0.9)]"
+            className="opacity-80"
           />
-          <circle cx="100" cy="100" r="6" fill="#3B82F6" className="drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+          {/* Agulha Laser Sólida */}
+          <line
+            x1="160" y1="100"
+            x2="185" y2="100"
+            stroke="#60a5fa"
+            strokeWidth="2"
+            strokeLinecap="round"
+            filter="url(#hyperGlow)"
+          />
+          {/* Centro do HUD */}
+          <circle cx="100" cy="100" r="8" fill={theme === 'dark' ? '#0f172a' : '#ffffff'} stroke="#3b82f6" strokeWidth="2" className="shadow-lg" />
+          <circle cx="100" cy="100" r="3" fill="#3b82f6" filter="url(#hyperGlow)" />
         </g>
       </svg>
 
-      <div className="absolute bottom-4 flex flex-col items-center">
-        <span className="text-3xl font-black text-slate-800 dark:text-white tracking-tighter">
-          Saúde: {Math.round(normalizedValue)}%
-        </span>
-        <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] -mt-1">
-          Operacional
-        </span>
+      {/* HUD de Valor Reposicionado (Sem obstrução) */}
+      <div className="absolute -bottom-2 flex flex-col items-center bg-slate-50/50 dark:bg-white/[0.03] px-6 py-2 rounded-2xl backdrop-blur-md border border-slate-200/50 dark:border-white/5 shadow-sm">
+        <div className="flex items-baseline space-x-1">
+          <span className="text-3xl font-black text-slate-800 dark:text-white tracking-tighter leading-none">
+            {Math.round(normalizedValue)}%
+          </span>
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+            Saúde
+          </span>
+        </div>
+        <p className="text-[8px] font-black text-blue-500/80 uppercase tracking-[0.4em] mt-1 pr-[-0.4em]">
+          INTEGRIDADE OPERACIONAL
+        </p>
       </div>
     </div>
   );
@@ -752,23 +806,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
 
             <HealthGauge value={health} theme={theme} />
 
-            {/* STATUS TEXTBAIS */}
-            <div className="flex items-center justify-between w-full max-w-xl mt-8 px-4">
+            {/* STATUS HUD DISCRETO */}
+            <div className="flex items-center justify-center space-x-3 w-full mt-10">
               {statusConfigs.map((status) => {
                 const isActive = currentStatus === status.label;
-                const colorClass = status.color === 'emerald' ? 'text-emerald-500' : status.color === 'amber' ? 'text-amber-500' : status.color === 'orange' ? 'text-orange-500' : 'text-rose-500';
-                const bgClass = status.color === 'emerald' ? 'bg-emerald-500/10' : status.color === 'amber' ? 'bg-amber-500/10' : status.color === 'orange' ? 'bg-orange-500/10' : 'bg-rose-500/10';
-                const ringClass = status.color === 'emerald' ? 'ring-emerald-500/30' : status.color === 'amber' ? 'ring-amber-500/30' : status.color === 'orange' ? 'ring-orange-500/30' : 'ring-rose-500/30';
+                const colorClass = status.color === 'emerald' ? 'text-emerald-500/80' : status.color === 'amber' ? 'text-amber-500/80' : status.color === 'orange' ? 'text-orange-500/80' : 'text-rose-500/80';
+                const dotColor = status.color === 'emerald' ? 'bg-emerald-500' : status.color === 'amber' ? 'bg-amber-500' : status.color === 'orange' ? 'bg-orange-500' : 'bg-rose-500';
 
                 return (
                   <div
                     key={status.label}
-                    className={`text-[9px] font-black tracking-[0.2em] px-4 py-2 rounded-xl transition-all duration-700 ${isActive
-                      ? `${colorClass} ${bgClass} ring-1 ${ringClass} shadow-[0_0_20px_rgba(16,185,129,0.2)] scale-110 opacity-100`
-                      : 'text-slate-400 dark:text-slate-600 opacity-30 scale-90'
-                      }`}
+                    className={`flex items-center space-x-1.5 transition-all duration-700 ${isActive ? 'opacity-100 scale-105' : 'opacity-20 grayscale scale-90'}`}
                   >
-                    {status.label}
+                    <div className={`w-1 h-1 rounded-full ${isActive ? `${dotColor} shadow-[0_0_8px_rgba(16,185,129,0.8)]` : 'bg-slate-400'}`} />
+                    <span className={`text-[7px] font-black tracking-[0.2em] uppercase ${isActive ? colorClass : 'text-slate-400'}`}>
+                      {status.label}
+                    </span>
                   </div>
                 );
               })}
