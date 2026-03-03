@@ -930,7 +930,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   const currentStatus = getHealthStatus(health);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700 pb-12 relative">
+    <div id="dashboard-content" className="space-y-8 animate-in fade-in duration-700 pb-12 relative">
       {/* BACKGROUND DE ALTA TECNOLOGIA */}
       <div className="fixed inset-0 pointer-events-none opacity-20 dark:opacity-20 overflow-hidden z-[-1]">
         <div className="absolute inset-0 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px]"></div>

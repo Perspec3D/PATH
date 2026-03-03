@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { InternalUser, UserRole } from '../types';
+import { AppDB } from '../storage';
+import { exportProjectsToExcel, exportClientsToExcel, exportDashboardToPDF } from '../utils/exportUtils';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,6 +15,7 @@ interface LayoutProps {
   logoUrl?: string;
   theme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light') => void;
+  db: AppDB;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
@@ -25,7 +28,8 @@ export const Layout: React.FC<LayoutProps> = ({
   companyName,
   logoUrl,
   theme,
-  setTheme
+  setTheme,
+  db
 }) => {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
@@ -185,6 +189,43 @@ export const Layout: React.FC<LayoutProps> = ({
             </button>
             <div className="h-4 w-px bg-slate-200 dark:bg-slate-700"></div>
             <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{currentPage}</span>
+            <div className="flex items-center space-x-2 ml-4">
+              {(currentPage === 'projects' || currentPage === 'clients') && (
+                <button
+                  onClick={() => currentPage === 'projects'
+                    ? exportProjectsToExcel(db.projects, db.clients, db.users)
+                    : exportClientsToExcel(db.clients)
+                  }
+                  className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-lg shadow-emerald-500/20 flex items-center space-x-2 group active:scale-95"
+                  title={`Exportar ${currentPage === 'projects' ? 'Projetos' : 'Clientes'} para Excel (XLSX)`}
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                  <span className="text-[10px] font-black uppercase tracking-widest">Excel</span>
+                </button>
+              )}
+              {currentPage === 'dashboard' && (
+                <button
+                  onClick={() => exportDashboardToPDF('dashboard-content')}
+                  className="p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition shadow-lg shadow-rose-500/20 flex items-center space-x-2 group active:scale-95"
+                  title="Exportar Dashboard para PDF"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <line x1="10" y1="9" x2="8" y2="9"></line>
+                  </svg>
+                  <span className="text-[10px] font-black uppercase tracking-widest">PDF</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Logo do Cliente / Workspace */}

@@ -514,6 +514,7 @@ const App: React.FC = () => {
       logoUrl={db.company?.logoUrl}
       theme={theme}
       setTheme={setTheme}
+      db={db}
     >
       {currentPage === 'dashboard' && <Dashboard db={db} theme={theme} />}
       {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
