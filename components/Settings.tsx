@@ -581,7 +581,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
                     </div>
                     <div className="flex justify-between items-center py-2 border-b border-slate-100 dark:border-slate-800/50 transition-colors">
                       <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Versão</span>
-                      <span className="text-xs font-bold text-slate-700 dark:text-white transition-colors">v1.2.6 (Beta)</span>
+                      <span className="text-xs font-bold text-slate-700 dark:text-white transition-colors">v2.1.0</span>
                     </div>
                     <div className="flex justify-between items-center py-2">
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Copyright</span>
