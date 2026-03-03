@@ -632,16 +632,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     return Object.entries(matrix).filter(([_, data]) => data.mainProjects > 0 || data.subtasks > 0);
   }, [activeProjects, users]);
 
-  // 6. Média de Tempo de Execução (Dias)
+  // 6. Média de Tempo de Execução (Dias Úteis)
   const avgExecutionTime = useMemo(() => {
     const completed = projects.filter((p: Project) => p.status === ProjectStatus.DONE && p.startDate && p.deliveryDate);
     if (completed.length === 0) return 0;
-    const totalDays = completed.reduce((acc: number, p: Project) => {
-      const start = new Date(p.startDate!);
-      const end = new Date(p.deliveryDate!);
-      return acc + (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+
+    const totalBusinessDays = completed.reduce((acc: number, p: Project) => {
+      const start = new Date(p.startDate! + 'T12:00:00');
+      const end = new Date(p.deliveryDate! + 'T12:00:00');
+
+      let count = 0;
+      const current = new Date(start);
+      while (current <= end) {
+        const dow = current.getDay();
+        if (dow !== 0 && dow !== 6) count++; // Ignora Sáb (6) e Dom (0)
+        current.setDate(current.getDate() + 1);
+      }
+      return acc + count;
     }, 0);
-    return Math.round(totalDays / completed.length);
+
+    return Math.round(totalBusinessDays / completed.length);
   }, [projects]);
 
   // 7. Ranking Top 10 Clientes (Completo para Tabela)
