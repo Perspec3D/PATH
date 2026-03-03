@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Info, CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar, Trophy, Medal, Eye, ArrowRight } from 'lucide-react';
+import { Info, CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar, Trophy, Medal, Eye, ArrowRight, Search } from 'lucide-react';
 
 interface DashboardProps {
   db: AppDB;
@@ -184,6 +184,12 @@ const InfoTooltip: React.FC<{ title: string; content: string; calculation?: stri
     </div>
   );
 };
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-');
+  return `${d}/${m}/${y.slice(-2)}`;
+};
+
 const UserDetailModal: React.FC<{
   userId: string;
   userName: string;
@@ -203,12 +209,6 @@ const UserDetailModal: React.FC<{
 
   const getClientName = (clientId: string) => {
     return clients.find(c => c.id === clientId)?.name || 'Cliente não encontrado';
-  };
-
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return null;
-    const [y, m, d] = dateStr.split('-');
-    return `${d}/${m}/${y.slice(-2)}`;
   };
 
   return (
@@ -318,9 +318,125 @@ const UserDetailModal: React.FC<{
   );
 };
 
+const RiskDetailModal: React.FC<{
+  type: 'inertia' | 'scale';
+  data: any;
+  onClose: () => void;
+  formatDate: (dateStr?: string) => string | null;
+}> = ({ type, data, onClose, formatDate }) => {
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-300">
+      <div className="bg-white dark:bg-[#0f172a] rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 dark:border-white/5 flex flex-col max-h-[85vh]">
+        {/* Header */}
+        <div className="px-8 py-6 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className={`p-2.5 rounded-xl ${type === 'inertia' ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-600' : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600'}`}>
+              {type === 'inertia' ? <Clock size={20} /> : <AlertTriangle size={20} />}
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                {type === 'inertia' ? 'Rastreabilidade de Inércia' : 'Rastreabilidade de Escala'}
+              </h3>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-1">Detalhamento Operacional Crítico</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-white/70 hover:text-slate-900 dark:hover:text-white transition-all active:scale-95">
+            <ArrowRight size={20} className="rotate-180" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-8">
+          {type === 'inertia' ? (
+            <div className="space-y-4">
+              <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest px-2">Projetos em Fila Crítica (&lt; 48h)</h4>
+              <div className="grid gap-3">
+                {data.inertiaDetails.map((p: any) => (
+                  <div key={p.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[28px] flex items-center justify-between group transition-all">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight">{p.name}</span>
+                      <span className="text-[10px] font-black text-indigo-500/60 mt-1 uppercase tracking-tighter">Deadline: {formatDate(p.deliveryDate)}</span>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className="text-[9px] font-black uppercase text-rose-500 bg-rose-500/10 px-3 py-1 rounded-full animate-pulse">Ação Requerida</span>
+                      <span className="text-[8px] font-bold text-slate-400 mt-1">#{p.code}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Fragmentação */}
+              {data.fragmentationDetails.length > 0 && (
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest px-2">⚠️ Fragmentação (Filtro: &gt;= 4 Projetos Ativos)</h4>
+                  <div className="grid gap-3">
+                    {data.fragmentationDetails.map((u: any) => (
+                      <div key={u.userId} className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10">
+                        <p className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase mb-2">{u.userName}</p>
+                        <div className="flex flex-wrap gap-2">
+                          {u.projects.map((p: any) => (
+                            <span key={p.id} className="text-[8px] font-bold bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/5 px-2 py-1 rounded-lg text-slate-500 dark:text-slate-400 uppercase">{p.name}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sobrecarga */}
+              {data.overloadedDetails.length > 0 && (
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-orange-500 uppercase tracking-widest px-2">🔥 Sobrecarga (Carga: &gt;= 6 Tarefas Totais)</h4>
+                  <div className="grid gap-3">
+                    {data.overloadedDetails.map((u: any) => (
+                      <div key={u.userId} className="p-4 rounded-2xl bg-orange-500/5 border border-orange-500/10 flex justify-between items-center">
+                        <p className="text-[11px] font-black text-slate-800 dark:text-slate-200 uppercase">{u.userName}</p>
+                        <span className="text-[10px] font-black text-orange-600 bg-orange-500/10 px-3 py-1 rounded-full">{u.tasksCount} tarefas ativas</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Conflitos */}
+              {data.conflictDetails.length > 0 && (
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black text-rose-500 uppercase tracking-widest px-2">⚡ Conflitos Temporais (Sobreposição Reais)</h4>
+                  <div className="grid gap-3">
+                    {data.conflictDetails.map((conf: any) => (
+                      <div key={conf.userId} className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/10">
+                        <p className="text-[11px] font-black text-rose-600 uppercase mb-2">{conf.userName}</p>
+                        <div className="space-y-2">
+                          {conf.conflicts.map((c: any, idx: number) => (
+                            <div key={idx} className="flex items-center space-x-2 text-[8px] text-slate-500 dark:text-slate-400 font-bold uppercase">
+                              <span className="truncate max-w-[120px] text-slate-800 dark:text-slate-200">{c.a.name}</span>
+                              <ArrowRight size={8} />
+                              <span className="truncate max-w-[120px] text-slate-800 dark:text-slate-200">{c.b.name}</span>
+                              <span className="text-rose-400">({formatDate(c.a.deadline || c.a.end.toISOString().split('T')[0])})</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [viewingUser, setViewingUser] = useState<any>(null);
+  const [viewingRisk, setViewingRisk] = useState<{ type: 'inertia' | 'scale', data: any } | null>(null);
   const projects = db.projects || [];
   const users = db.users || [];
   const clients = db.clients || [];
@@ -526,6 +642,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(now.getDate() - 7);
 
+    // Listas para Rastreabilidade
+    const inertiaRiskProjects: Project[] = [];
+    const fragmentedUsers: any[] = [];
+    const overloadedUsers: any[] = [];
+    const conflictUsers: any[] = [];
+
     // Vazão (Throughput)
     const createdLast7 = projects.filter(p => new Date(p.createdAt || Date.now()) >= sevenDaysAgo).length;
     const doneLast7 = projects.filter(p => p.status === ProjectStatus.DONE && new Date(p.deliveryDate || Date.now()) >= sevenDaysAgo).length;
@@ -534,14 +656,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     // Risco de Inércia (Entrega em < 48h e ainda na Fila)
     const fortyEightHours = new Date();
     fortyEightHours.setHours(now.getHours() + 48);
-    const inertiaRiskCount = activeProjects.filter(p => {
-      if (p.status !== ProjectStatus.QUEUE || !p.deliveryDate) return false;
-      return new Date(p.deliveryDate) <= fortyEightHours;
-    }).length;
+    activeProjects.forEach(p => {
+      if (p.status === ProjectStatus.QUEUE && p.deliveryDate && new Date(p.deliveryDate) <= fortyEightHours) {
+        inertiaRiskProjects.push(p);
+      }
+    });
 
     // 4. Métrica de Carga Unificada (Projetos + Sub-tarefas)
     const userWorkloadSummary = users.map(u => {
       const projectsOnRadar = new Set<string>();
+      const userProjects: Project[] = [];
+      const userTasks: any[] = [];
       let activeTasksCount = 0;
 
       activeProjects.forEach(p => {
@@ -552,69 +677,69 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           isUserInvolved = true;
           activeTasksCount++;
           countedAsTask = true;
+          userTasks.push({ type: 'PROJETO', name: p.name, status: p.status, deadline: p.deliveryDate });
         }
 
         p.subtasks?.forEach(st => {
           if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
             isUserInvolved = true;
-            // Só conta a tarefa se o usuário não for o dono do projeto pai (redundância)
             if (!countedAsTask) {
               activeTasksCount++;
-              // Se tivermos múltiplas subtarefas no mesmo projeto onde não somos o dono,
-              // o ideal é contar cada uma como carga de trabalho, MAS o usuário solicitou
-              // não considerar subtarefas se ele já é o responsável. 
-              // Assumindo que subtarefas extras somam carga SE o usuário não é o dono do projeto.
             }
+            userTasks.push({ type: 'SUB-TAREFA', name: st.name, status: st.status, deadline: st.deliveryDate, parentName: p.name });
           }
         });
 
         if (isUserInvolved) {
           projectsOnRadar.add(p.id);
+          userProjects.push(p);
         }
       });
 
-      return {
+      const summary = {
         userId: u.id,
+        userName: u.username,
         projectsCount: projectsOnRadar.size,
-        tasksCount: activeTasksCount
+        tasksCount: activeTasksCount,
+        projects: userProjects,
+        tasks: userTasks
       };
+
+      if (summary.projectsCount >= 4) fragmentedUsers.push(summary);
+      if (summary.tasksCount >= 6) overloadedUsers.push(summary);
+
+      return summary;
     });
 
-    // Filtros de Risco Reais
-    const fragmentedUsersCount = userWorkloadSummary.filter(w => w.projectsCount >= 4).length; // Muita troca de projeto
-    const overloadedUsersCount = userWorkloadSummary.filter(w => w.tasksCount >= 6).length; // Muita tarefa total (Projetos + ST)
-
     // Conflitos de Escala (Sobreposição temporal de projetos diferentes para o mesmo usuário)
-    let scaleConflictsCount = 0;
     users.forEach(u => {
       const uAssignments: any[] = [];
       projects.forEach(p => {
         if (p.assigneeId === u.id && p.startDate && p.deliveryDate && p.status !== ProjectStatus.DONE && p.status !== ProjectStatus.CANCELED) {
-          uAssignments.push({ id: p.id, start: new Date(p.startDate + 'T12:00:00'), end: new Date(p.deliveryDate + 'T12:00:00'), rootId: p.id });
+          uAssignments.push({ id: p.id, name: p.name, start: new Date(p.startDate + 'T12:00:00'), end: new Date(p.deliveryDate + 'T12:00:00'), rootId: p.id });
         }
         p.subtasks?.forEach(st => {
           if (st.assigneeId === u.id && st.startDate && st.deliveryDate && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
-            uAssignments.push({ id: st.id, start: new Date(st.startDate + 'T12:00:00'), end: new Date(st.deliveryDate + 'T12:00:00'), rootId: p.id });
+            uAssignments.push({ id: st.id, name: st.name, start: new Date(st.startDate + 'T12:00:00'), end: new Date(st.deliveryDate + 'T12:00:00'), rootId: p.id, parentName: p.name });
           }
         });
       });
 
-      // Checar sobreposições entre PROJETOS DIFERENTES
-      let hasConflict = false;
+      const conflicts: any[] = [];
       for (let i = 0; i < uAssignments.length; i++) {
         for (let j = i + 1; j < uAssignments.length; j++) {
           const a = uAssignments[i];
           const b = uAssignments[j];
-          if (a.rootId !== b.rootId) { // Só conflita se forem de projetos pais diferentes
+          if (a.rootId !== b.rootId) {
             if (a.start <= b.end && b.start <= a.end) {
-              hasConflict = true;
-              break;
+              conflicts.push({ a, b });
             }
           }
         }
-        if (hasConflict) break;
       }
-      if (hasConflict) scaleConflictsCount++;
+      if (conflicts.length > 0) {
+        conflictUsers.push({ userId: u.id, userName: u.username, conflicts });
+      }
     });
 
     // 10. Capacidade Operacional da Equipe (Semanal com Previsibilidade)
@@ -729,11 +854,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     }
 
     return {
-      throughput: { created: createdLast7, done: doneLast7, factor: throughputFactor },
-      inertia: inertiaRiskCount,
-      fragmentation: fragmentedUsersCount,
-      overloaded: overloadedUsersCount,
-      conflicts: scaleConflictsCount,
+      inertia: inertiaRiskProjects.length,
+      inertiaDetails: inertiaRiskProjects,
+      fragmentation: fragmentedUsers.length,
+      fragmentationDetails: fragmentedUsers,
+      overloaded: overloadedUsers.length,
+      overloadedDetails: overloadedUsers,
+      conflicts: conflictUsers.length,
+      conflictDetails: conflictUsers,
+      throughput: { factor: throughputFactor, created: createdLast7, done: doneLast7 },
       teamCapacity
     };
   }, [projects, activeProjects, users, selectedWeekOffset]);
@@ -883,9 +1012,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             </div>
           </div>
           <div className="relative z-10">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center justify-center lg:justify-start transition-colors">
-              Risco de Inércia
-              <InfoTooltip title="Inertia Alert" content="Projetos que têm entrega em menos de 48 horas e ainda permanecem no status 'Fila'. Exige mobilização imediata do time." />
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center justify-between transition-colors">
+              <span className="flex items-center">
+                Risco de Inércia
+                <InfoTooltip title="Inertia Alert" content="Projetos que têm entrega em menos de 48 horas e ainda permanecem no status 'Fila'. Exige mobilização imediata do time." />
+              </span>
+              <button
+                onClick={() => setViewingRisk({ type: 'inertia', data: dashboard2Logics })}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg text-slate-400 hover:text-indigo-500 transition-all flex items-center space-x-1 grayscale hover:grayscale-0"
+              >
+                <Search size={12} />
+                <span className="text-[8px] font-black uppercase">Rastrear</span>
+              </button>
             </h4>
             <div className="flex flex-col lg:flex-row items-center space-y-4 lg:space-y-0 lg:space-x-6">
               <span className={`text-5xl font-black transition-colors ${dashboard2Logics.inertia > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-200 dark:text-slate-700'}`}>
@@ -906,9 +1044,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             </div>
           </div>
           <div className="relative z-10">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center transition-colors">
-              Riscos de Escala
-              <InfoTooltip title="Análise de Carga" content="Fragmentação: Profissionais com >3 projetos (dispersão). Sobrecarga: Profissionais com >5 tarefas ativas (excesso de volume). Conflito: Sobreposição temporal real entre projetos." />
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center justify-between transition-colors">
+              <span className="flex items-center">
+                Riscos de Escala
+                <InfoTooltip title="Análise de Carga" content="Fragmentação: Profissionais com >3 projetos (dispersão). Sobrecarga: Profissionais com >5 tarefas ativas (excesso de volume). Conflito: Sobreposição temporal real entre projetos." />
+              </span>
+              <button
+                onClick={() => setViewingRisk({ type: 'scale', data: dashboard2Logics })}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg text-slate-400 hover:text-amber-500 transition-all flex items-center space-x-1 grayscale hover:grayscale-0"
+              >
+                <Search size={12} />
+                <span className="text-[8px] font-black uppercase">Rastrear</span>
+              </button>
             </h4>
             <div className="flex items-center justify-between">
               <div className="flex flex-col items-center">
@@ -1401,7 +1548,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             userName={viewingUser.name}
             projects={projects}
             clients={clients}
-            onClose={() => setViewingUser(null)}
+          />
+        )
+      }
+      {
+        viewingRisk && (
+          <RiskDetailModal
+            type={viewingRisk.type}
+            data={viewingRisk.data}
+            onClose={() => setViewingRisk(null)}
+            formatDate={formatDate}
           />
         )
       }
