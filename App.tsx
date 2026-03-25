@@ -97,7 +97,7 @@ const App: React.FC = () => {
       };
       loadData();
     }
-  }, [companySession]);
+  }, [companySession?.id]);
 
   useEffect(() => {
     // 1. Listen for auth changes
@@ -327,7 +327,7 @@ const App: React.FC = () => {
             body: { companyId: db.company.id, subscriptionId: db.company.subscriptionId }
           });
         }
-        const data = await fetchAllData(db.company.id);
+        const data = await fetchAllData(db.company.id, true);
         setDb(prev => ({ ...prev, ...data }));
         if (data.company) setCompanySession(data.company);
       } catch (e) {

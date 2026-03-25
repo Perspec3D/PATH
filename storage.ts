@@ -12,19 +12,37 @@ export { supabase };
 
 // --- Supabase Sync Functions ---
 
-export const fetchAllData = async (companyId?: string): Promise<Partial<AppDB>> => {
-  const { data: clients } = await supabase.from('clients').select('*');
-  const { data: projects } = await supabase.from('projects').select('*');
-  const { data: users } = await supabase.from('internal_users').select('*');
+let memoryCache: { timestamp: number, data: Partial<AppDB> | null, companyId: string } = { timestamp: 0, data: null, companyId: '' };
+const CACHE_TTL = 1000 * 60 * 5; // 5 minutes
+
+export const fetchAllData = async (companyId?: string, forceRefresh = false): Promise<Partial<AppDB>> => {
+  if (companyId && !forceRefresh && memoryCache.companyId === companyId && memoryCache.data && (Date.now() - memoryCache.timestamp < CACHE_TTL)) {
+    return memoryCache.data;
+  }
+
+  // Optimize Egress by requesting explicit columns and adding the explicit workspace_id filter
+  const { data: clients } = await supabase.from('clients')
+    .select('id, workspace_id, code, name, type, status, photo_url, cpf_cnpj, email, phone, zip_code, address, number, neighborhood, city, state, complement, contacts')
+    .eq('workspace_id', companyId);
+
+  const { data: projects } = await supabase.from('projects')
+    .select('id, workspace_id, client_id, assignee_id, code, name, photo_url, revision, status, start_date, delivery_date, due_date, notes, subtasks, created_at')
+    .eq('workspace_id', companyId);
+
+  const { data: users } = await supabase.from('internal_users')
+    .select('id, workspace_id, username, password_hash, role, is_active, must_change_password')
+    .eq('workspace_id', companyId);
 
   let profile = null;
   if (companyId) {
-    const { data } = await supabase.from('profiles').select('*').eq('id', companyId).maybeSingle();
+    const { data } = await supabase.from('profiles')
+      .select('id, name, email, license_status, trial_start, user_limit, subscription_id, subscription_end, logo_url')
+      .eq('id', companyId).maybeSingle();
     profile = data;
   }
 
   // Map snake_case from DB to camelCase in types
-  return {
+  const result = {
     clients: (clients || []).map((c: any) => ({
       id: c.id,
       workspaceId: c.workspace_id,
@@ -84,6 +102,15 @@ export const fetchAllData = async (companyId?: string): Promise<Partial<AppDB>> 
       logoUrl: profile.logo_url
     } : null
   };
+
+  memoryCache = {
+    timestamp: Date.now(),
+    data: result,
+    companyId: companyId || ''
+  };
+
+  return result;
+
 };
 
 export const syncClient = async (client: Client) => {
