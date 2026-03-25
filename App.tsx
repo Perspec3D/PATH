@@ -9,10 +9,11 @@ import { Clients } from './components/Clients';
 import { Projects } from './components/Projects';
 import { Gantt } from './components/Gantt';
 import { Settings } from './components/Settings';
+import { Team } from './components/Team';
 import { CompanyLogin } from './components/Auth';
 import { InternalUserLogin } from './components/Who';
 
-type Page = 'dashboard' | 'clients' | 'projects' | 'timeline' | 'settings';
+type Page = 'dashboard' | 'clients' | 'projects' | 'timeline' | 'team' | 'settings';
 
 const App: React.FC = () => {
   const [db, setDb] = useState<AppDB>({
@@ -520,6 +521,7 @@ const App: React.FC = () => {
       {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
       {currentPage === 'projects' && <Projects db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
       {currentPage === 'timeline' && <Gantt db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+      {currentPage === 'team' && userSession.role === UserRole.ADMIN && <Team db={db} theme={theme} />}
       {currentPage === 'settings' && userSession.role === UserRole.ADMIN && (
         <Settings db={db} setDb={setDb} currentUser={userSession} theme={theme} />
       )}
