@@ -17,6 +17,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [clientFilter, setClientFilter] = useState<string>('ALL');
+  const [assigneeFilter, setAssigneeFilter] = useState<string>('ALL');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -239,9 +240,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.code.includes(search);
       const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter;
       const matchesClient = clientFilter === 'ALL' || p.clientId === clientFilter;
-      return matchesSearch && matchesStatus && matchesClient;
+      const matchesAssignee = assigneeFilter === 'ALL' || p.assigneeId === assigneeFilter;
+      return matchesSearch && matchesStatus && matchesClient && matchesAssignee;
     }).sort((a: Project, b: Project) => b.createdAt - a.createdAt);
-  }, [db.projects, search, statusFilter, clientFilter]);
+  }, [db.projects, search, statusFilter, clientFilter, assigneeFilter]);
 
   const getStatusColor = (s: ProjectStatus) => {
     switch (s) {
@@ -307,6 +309,16 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
           {[...db.clients]
             .sort((a, b) => parseInt(a.code) - parseInt(b.code))
             .map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
+        </select>
+        <select
+          className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer transition-colors"
+          value={assigneeFilter}
+          onChange={(e) => setAssigneeFilter(e.target.value)}
+        >
+          <option value="ALL">Responsável: Todos</option>
+          {db.users.filter(u => u.isActive).map(u => (
+            <option key={u.id} value={u.id}>{u.username.split(' ')[0]}</option>
+          ))}
         </select>
       </div>
 
