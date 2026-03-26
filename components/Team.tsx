@@ -459,11 +459,11 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
           </h3>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={historyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <LineChart data={historyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} vertical={false} />
                 <XAxis dataKey="name" stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={10} tickLine={false} axisLine={false} />
                 <YAxis stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip content={<CustomHistoryTooltip />} cursor={{ fill: theme === 'dark' ? '#334155' : '#f1f5f9' }} />
+                <Tooltip content={<CustomHistoryTooltip />} />
                 
                 {/* Custom Legend to not clutter the view with 2x items per user */}
                 <Legend 
@@ -491,12 +491,29 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
                   const color = userColors[i % userColors.length];
                   return (
                     <React.Fragment key={name}>
-                      <Bar dataKey={`${name}_Proj`} name={`${name} (Projetos)`} stackId={name} fill={color} />
-                      <Bar dataKey={`${name}_Sub`} name={`${name} (Tarefas)`} stackId={name} fill={color} fillOpacity={0.4} radius={[4, 4, 0, 0]} />
+                      <Line 
+                        dataKey={`${name}_Proj`} 
+                        name={`${name} (Projetos)`} 
+                        type="monotone" 
+                        stroke={color} 
+                        strokeWidth={3} 
+                        dot={{ r: 4 }} 
+                        activeDot={{ r: 6 }} 
+                      />
+                      <Line 
+                        dataKey={`${name}_Sub`} 
+                        name={`${name} (Tarefas)`} 
+                        type="monotone" 
+                        stroke={color} 
+                        strokeOpacity={0.4} 
+                        strokeWidth={2} 
+                        dot={{ r: 3, fillOpacity: 0.4 }} 
+                        activeDot={{ r: 5 }} 
+                      />
                     </React.Fragment>
                   );
                 })}
-              </BarChart>
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
