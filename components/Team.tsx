@@ -40,6 +40,25 @@ type ModalData = {
 
 export const Team: React.FC<TeamProps> = ({ db, theme }) => {
   const [modalData, setModalData] = useState<ModalData | null>(null);
+  const [detailedModalData, setDetailedModalData] = useState<{
+    user: any;
+    items: Array<any>;
+  } | null>(null);
+
+  const currentMonthWorkingDays = useMemo(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    let workingDays = 0;
+    for (let day = 1; day <= lastDay; day++) {
+      const d = new Date(year, month, day);
+      if (d.getDay() !== 0 && d.getDay() !== 6) {
+        workingDays++;
+      }
+    }
+    return workingDays;
+  }, []);
 
   const teamMetrics = useMemo(() => {
     const users = db.users.filter(u => u.isActive);
@@ -91,23 +110,36 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
       let totalDays = 0;
       let validCycleItems = 0;
 
+      let totalProjDays = 0;
+      let validProjCycleItems = 0;
+
+      let totalSubDays = 0;
+      let validSubCycleItems = 0;
+
       completedProjects.forEach(p => {
         const eDate = p.actualEndDate || p.deliveryDate;
         if (p.startDate && eDate) {
-          totalDays += calcWorkingDays(p.startDate, eDate);
+          const wDays = calcWorkingDays(p.startDate, eDate);
+          totalDays += wDays;
           validCycleItems++;
+          totalProjDays += wDays;
+          validProjCycleItems++;
         }
       });
       completedSubtasks.forEach(st => {
-        // subtasks custom legacy types usually won't have actualEndDate natively mapped unless added by new routine, fallback deliveryDate
         const eDate = (st as any).actualEndDate || st.deliveryDate;
         if (st.startDate && eDate) {
-          totalDays += calcWorkingDays(st.startDate, eDate);
+          const wDays = calcWorkingDays(st.startDate, eDate);
+          totalDays += wDays;
           validCycleItems++;
+          totalSubDays += wDays;
+          validSubCycleItems++;
         }
       });
 
       const avgCycleTime = validCycleItems > 0 ? Math.round(totalDays / validCycleItems) : 0;
+      const avgProjCycleTime = validProjCycleItems > 0 ? Math.round(totalProjDays / validProjCycleItems) : 0;
+      const avgSubCycleTime = validSubCycleItems > 0 ? Math.round(totalSubDays / validSubCycleItems) : 0;
 
       return {
         id: user.id,
@@ -124,6 +156,14 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
         completedProjects,
         completedSubtasks,
         avgCycleTime,
+        avgProjCycleTime,
+        avgSubCycleTime,
+        assignedProjCount: userProjects.length,
+        assignedSubCount: userSubtasks.length,
+        activeProjCount: activeProjects.length,
+        activeSubCount: activeSubtasks.length,
+        completedProjCount: completedProjects.length,
+        completedSubCount: completedSubtasks.length,
       }
     }).sort((a, b) => b.completionRate - a.completionRate);
   }, [db.users, db.projects]);
@@ -375,6 +415,137 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
               <span className="text-slate-500">•</span>
               <span>{teamMetrics.reduce((a,c) => a+c.activeSubtasks.length, 0)} Tarefas</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* NOVO QUADRO COMPLEMENTAR: Composição da Carga e Capacidade Operacional */}
+      <div className="bg-white dark:bg-[#1e293b] rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden mb-6">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center">
+            Composição da Carga e Capacidade Operacional
+            <InfoIcon tooltip="Visão analítica desmembrada por colaborador focada na distribuição de tipo, ciclos médios individuais divididos e a estimativa estrita de vazão mensal cruzada com dias úteis." />
+          </h2>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-800/50">
+                <th className="p-4 text-[10px] font-black tracking-wider text-slate-400 uppercase w-48">Colaborador</th>
+                <th className="p-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">Total Atribuído</th>
+                <th className="p-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">Carga Atual (Aberta)</th>
+                <th className="p-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">Volume Concluído</th>
+                <th className="p-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">Capacidade Estimada C/ Base Mês de {currentMonthWorkingDays} Dias Úteis</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {teamMetrics.map((user) => {
+                const totalAssigned = user.assignedProjCount + user.assignedSubCount;
+                const pctProj = totalAssigned > 0 ? Math.round((user.assignedProjCount / totalAssigned) * 100) : 0;
+                const pctSub = totalAssigned > 0 ? Math.round((user.assignedSubCount / totalAssigned) * 100) : 0;
+
+                const estCapProj = user.avgProjCycleTime > 0 ? Math.round(currentMonthWorkingDays / user.avgProjCycleTime) : null;
+                const estCapSub = user.avgSubCycleTime > 0 ? Math.round(currentMonthWorkingDays / user.avgSubCycleTime) : null;
+
+                const handleDeepDrill = () => {
+                  const items = [
+                    ...user.activeProjects.map(p => ({ ...p, _type: 'Projeto', _isCompleted: false })),
+                    ...user.activeSubtasks.map(st => ({ ...st, _type: 'Sub-tarefa', _isCompleted: false })),
+                    ...user.completedProjects.map(p => ({ ...p, _type: 'Projeto', _isCompleted: true })),
+                    ...user.completedSubtasks.map(st => ({ ...st, _type: 'Sub-tarefa', _isCompleted: true }))
+                  ];
+                  setDetailedModalData({ user, items });
+                };
+
+                return (
+                  <tr 
+                    key={user.id} 
+                    className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group cursor-pointer"
+                    onClick={handleDeepDrill}
+                  >
+                    <td className="p-4 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs shadow-inner">
+                          {user.firstName.charAt(0)}
+                        </div>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm">{user.firstName}</span>
+                      </div>
+                    </td>
+                    <td className="p-4 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{totalAssigned} Registros Totais</span>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full bg-sky-500"></div>
+                            {user.assignedProjCount} Proj ({pctProj}%)
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full bg-indigo-400 opacity-60"></div>
+                            {user.assignedSubCount} Subs ({pctSub}%)
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-orange-500">{user.openCount} Itens Pendentes</span>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                          <span>{user.activeProjCount} Projetos</span>
+                          <span>{user.activeSubCount} Sub-tarefas</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-emerald-500">{user.completedCount} Itens Concluídos</span>
+                        <div className="flex flex-col gap-1 mt-1 text-[10px] text-slate-500 font-medium">
+                          <span className="flex justify-between w-32">
+                            <span>{user.completedProjCount} Projetos</span>
+                            <span className={user.avgProjCycleTime > 0 ? "text-slate-400" : "text-amber-500"}>
+                              {user.avgProjCycleTime > 0 ? `(~${user.avgProjCycleTime}d ciclo)` : '(sem hist.)'}
+                            </span>
+                          </span>
+                          <span className="flex justify-between w-32">
+                            <span>{user.completedSubCount} Sub-tarefas</span>
+                            <span className={user.avgSubCycleTime > 0 ? "text-slate-400" : "text-amber-500"}>
+                              {user.avgSubCycleTime > 0 ? `(~${user.avgSubCycleTime}d ciclo)` : '(sem hist.)'}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex flex-col gap-2">
+                        {estCapProj !== null || estCapSub !== null ? (
+                          <>
+                            {estCapProj !== null && (
+                              <div className="flex items-center justify-between text-xs font-semibold bg-sky-500/10 text-sky-600 dark:text-sky-400 px-3 py-1.5 rounded-lg w-full max-w-[200px]">
+                                <span>Estimativa Projetos</span>
+                                <span>~{estCapProj}/mês</span>
+                              </div>
+                            )}
+                            {estCapSub !== null && (
+                              <div className="flex items-center justify-between text-xs font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg w-full max-w-[200px]">
+                                <span>Estimativa Sub-tarefas</span>
+                                <span>~{estCapSub}/mês</span>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-xs text-amber-500 font-medium bg-amber-500/10 px-3 py-1.5 rounded-lg max-w-[200px] flex items-center">
+                            Histórico insuficiente
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="p-4 text-[10px] text-slate-400 text-center bg-slate-50 dark:bg-slate-800/30">
+            * Predição é calculada puramente sob performance cronológica histórica contendo (data_inicio, data_conclusao). Pode apresentar variações de acordo com a assimetria corporativa e complexidade flutuante dos próximos meses.
           </div>
         </div>
       </div>
@@ -677,6 +848,106 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
               >
                 Concluir Auditoria
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NOVO MODAL: Deep Drill de Alocações por Responsável */}
+      {detailedModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setDetailedModalData(null)}
+          ></div>
+          <div className="relative w-full max-w-6xl bg-white dark:bg-[#0f172a] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-700 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50 backdrop-blur-md">
+              <div>
+                <h3 className="text-sm font-black text-slate-700 dark:text-slate-200 uppercase tracking-widest flex items-center">
+                  <div className="w-8 h-8 rounded-full bg-indigo-500 text-white flex items-center justify-center mr-3 font-bold">
+                    {detailedModalData.user.firstName.charAt(0)}
+                  </div>
+                  Expansão de Fila e Auditoria Estrutural: {detailedModalData.user.name}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 uppercase font-medium ml-11">
+                  Listagem completa de atribuições abertas e concluídas extraídas da memória
+                </p>
+              </div>
+              <button 
+                onClick={() => setDetailedModalData(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-200/50 hover:bg-slate-300 dark:bg-slate-700 hover:dark:bg-slate-600 text-slate-500 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            
+            <div className="p-0 overflow-y-auto flex-1">
+              <table className="w-full text-left border-collapse">
+                <thead className="sticky top-0 bg-white dark:bg-[#0f172a] shadow-sm z-10">
+                  <tr className="border-b border-slate-100 dark:border-slate-800">
+                    <th className="px-6 py-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">TIPO / STATUS</th>
+                    <th className="px-6 py-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">REF / PROT.</th>
+                    <th className="px-6 py-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">INFORMAÇÕES</th>
+                    <th className="px-6 py-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">LINHA DO TEMPO</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {detailedModalData.items.map((item, idx) => {
+                    const client = db.clients.find(c => c.id === item.clientId);
+                    return (
+                      <tr key={item.id + idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-2">
+                            <span className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold tracking-wider max-w-max ${
+                              item._type === 'Projeto' ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20' : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20'
+                            }`}>
+                              {item._type}
+                            </span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold max-w-max ${
+                              item.status === ProjectStatus.DONE ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
+                              item.status === ProjectStatus.QUEUE ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400' :
+                              item.status === ProjectStatus.IN_PROGRESS ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
+                              item.status === ProjectStatus.PAUSED ? 'bg-slate-500/10 text-slate-600 dark:text-slate-400' :
+                              'bg-red-500/10 text-red-600 dark:text-red-400'
+                            }`}>
+                              STATUS: {item.status.replace('_', ' ')}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="font-mono text-xs text-slate-500 dark:text-slate-400 font-semibold">{item.projectNumber || 'N/A'}</span>
+                            {item._type === 'Sub-tarefa' && (
+                              <span className="text-[10px] text-slate-400 mt-1">Origem: <br/>{item.parentProjectName?.substring(0, 20)}...</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-700 dark:text-slate-200 text-sm">{item.name || item.title}</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{client?.name || 'Cliente Indefinido'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1 text-xs text-slate-600 dark:text-slate-400">
+                            <div><span className="font-semibold text-slate-500">Início:</span> {item.startDate ? new Date(item.startDate).toLocaleDateString() : '--'}</div>
+                            <div>
+                              <span className="font-semibold text-slate-500">
+                                {item.status === ProjectStatus.DONE ? 'Conclusão:' : 'Previsão:'}
+                              </span> 
+                              {' '}
+                              {(item.actualEndDate || item.deliveryDate) ? new Date(item.actualEndDate || item.deliveryDate).toLocaleDateString() : '--'}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="bg-slate-50 text-slate-500 text-[10px] text-center p-3 border-t border-slate-200 dark:bg-slate-800/80 dark:border-slate-700">
+              Total de Atribuições Exibido: {detailedModalData.items.length} itens originários e imutáveis extraídos do BD local.
             </div>
           </div>
         </div>
