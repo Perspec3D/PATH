@@ -82,6 +82,13 @@ export interface ProjectSubTask {
   startDate?: string;
   deliveryDate?: string;
   notes?: string;
+  // Historical Tracking
+  actualStartDate?: string;
+  plannedEndDate?: string;
+  actualEndDate?: string;
+  conclusionResponsibleId?: string;
+  deadlineChangesCount?: number;
+  deadlineAtConclusion?: string;
 }
 
 export interface Project {
@@ -100,4 +107,11 @@ export interface Project {
   notes?: string;
   subtasks?: ProjectSubTask[];
   createdAt: number;
+  // Historical Tracking
+  actualStartDate?: string;
+  plannedEndDate?: string;
+  actualEndDate?: string;
+  conclusionResponsibleId?: string;
+  deadlineChangesCount?: number;
+  deadlineAtConclusion?: string;
 }

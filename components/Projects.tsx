@@ -156,6 +156,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     }
 
     const projectData: Project = {
+      ...(editingProject || {}),
       id: editingProject?.id || crypto.randomUUID(),
       workspaceId: currentUser.workspaceId,
       clientId,
@@ -165,13 +166,24 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       status,
       revision,
       startDate,
-      dueDate: deliveryDate,
+      dueDate: deliveryDate, // keeping legacy structure mapping
       deliveryDate,
       photoUrl,
       notes,
       subtasks,
       createdAt: editingProject?.createdAt || Date.now(),
     };
+
+    // Data Warehouse Historical Tracking for the Main Project
+    if (editingProject && editingProject.status !== ProjectStatus.DONE && status === ProjectStatus.DONE) {
+       projectData.actualEndDate = new Date().toISOString().split('T')[0];
+       projectData.conclusionResponsibleId = currentUser.id;
+       projectData.deadlineAtConclusion = projectData.deliveryDate || projectData.dueDate;
+    }
+    if (editingProject && editingProject.status === ProjectStatus.QUEUE && status !== ProjectStatus.QUEUE) {
+       projectData.actualStartDate = new Date().toISOString().split('T')[0];
+    }
+
 
     try {
       await syncProject(projectData);
@@ -226,6 +238,16 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       if (field === 'startDate' && startDate && value < startDate) updated.startDate = startDate;
       if (field === 'deliveryDate' && deliveryDate && value > deliveryDate) updated.deliveryDate = deliveryDate;
       if (field === 'startDate' && updated.deliveryDate && value > updated.deliveryDate) updated.startDate = updated.deliveryDate;
+
+      // Data Warehouse Tracking for Subtasks
+      if (field === 'status' && st.status !== ProjectStatus.DONE && value === ProjectStatus.DONE) {
+         updated.actualEndDate = new Date().toISOString().split('T')[0];
+         updated.conclusionResponsibleId = currentUser.id;
+         updated.deadlineAtConclusion = updated.deliveryDate;
+      }
+      if (field === 'status' && st.status === ProjectStatus.QUEUE && value !== ProjectStatus.QUEUE) {
+         updated.actualStartDate = new Date().toISOString().split('T')[0];
+      }
 
       return updated;
     }));
