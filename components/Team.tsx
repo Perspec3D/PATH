@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { AppDB, UserRole, ProjectStatus, Project, Subtask } from '../types';
+import { UserRole, ProjectStatus, Project } from '../types';
+import { AppDB } from '../storage';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, AreaChart, Area, Legend } from 'recharts';
 
 interface TeamProps {
@@ -160,13 +161,21 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
       const userProjects = db.projects.filter(p => p.assigneeId === u.id && p.status === ProjectStatus.DONE && p.deliveryDate);
       const userSubtasks = db.projects.flatMap(p => p.subtasks || []).filter(st => st.assigneeId === u.id && st.status === ProjectStatus.DONE && st.deliveryDate);
       
-      const allCompleted = [...userProjects, ...userSubtasks];
-      allCompleted.forEach(item => {
+      userProjects.forEach(item => {
         if (!item.deliveryDate) return;
         const d = new Date(item.deliveryDate);
         const mStr = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase();
         if (dataMap[mStr]) {
-          dataMap[mStr][firstName] = (dataMap[mStr][firstName] || 0) + 1;
+          dataMap[mStr][`${firstName}_Proj`] = (dataMap[mStr][`${firstName}_Proj`] || 0) + 1;
+        }
+      });
+
+      userSubtasks.forEach(item => {
+        if (!item.deliveryDate) return;
+        const d = new Date(item.deliveryDate);
+        const mStr = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase();
+        if (dataMap[mStr]) {
+          dataMap[mStr][`${firstName}_Sub`] = (dataMap[mStr][`${firstName}_Sub`] || 0) + 1;
         }
       });
     });
@@ -203,6 +212,48 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
               <span className="text-white">{entry.value}</span>
             </div>
           ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const CustomHistoryTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const userMap: Record<string, { proj: number, sub: number, color: string }> = {};
+      payload.forEach((entry: any) => {
+         const parts = entry.dataKey.split('_');
+         if (parts.length !== 2) return;
+         const [uName, type] = parts;
+         if (!userMap[uName]) userMap[uName] = { proj: 0, sub: 0, color: entry.color };
+         if (type === 'Proj') userMap[uName].proj = entry.value;
+         if (type === 'Sub') userMap[uName].sub = entry.value;
+      });
+
+      return (
+        <div className="bg-[#1e293b]/95 backdrop-blur-md p-4 border border-slate-700 rounded-xl shadow-2xl z-50 min-w-[200px]">
+          <p className="text-white font-black mb-3 uppercase tracking-wide border-b border-slate-700 pb-2">{label}</p>
+          <div className="space-y-3">
+            {Object.keys(userMap).map(uName => {
+               const data = userMap[uName];
+               const total = data.proj + data.sub;
+               if (total === 0) return null;
+               return (
+                 <div key={uName} className="flex flex-col">
+                   <div className="flex items-center space-x-2 text-sm font-bold mb-1">
+                     <span className="w-3 h-3 rounded-full" style={{ backgroundColor: data.color }}></span>
+                     <span className="text-slate-300">{uName}:</span>
+                     <span className="text-white">{total} Entregas totais</span>
+                   </div>
+                   <div className="flex space-x-3 text-[10px] font-bold text-slate-500 ml-5 uppercase">
+                     <span className="text-sky-400">{data.proj} Projetos</span>
+                     <span>•</span>
+                     <span className="text-indigo-400">{data.sub} Sub-tarefas</span>
+                   </div>
+                 </div>
+               )
+            })}
+          </div>
         </div>
       );
     }
@@ -404,20 +455,48 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
         <div className="bg-white dark:bg-[#1e293b] p-6 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 lg:col-span-2">
           <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center">
             Lineage e Histórico de Conclusões Semestral
-            <InfoIcon tooltip="Linhas cronológicas. Baseado nos itens consolidados (Projetos e Sub-tarefas status = DONE) mês a mês, provando a tração entregue por cada Dev/Account." />
+            <InfoIcon tooltip="Barras empilhadas. Baseado nos itens (Projetos e Sub-tarefas DONE) mês a mês, separando o peso Macro e Micro de cada colaborador." />
           </h3>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={historyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <BarChart data={historyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} vertical={false} />
                 <XAxis dataKey="name" stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={10} tickLine={false} axisLine={false} />
                 <YAxis stroke={theme === 'dark' ? '#64748b' : '#94a3b8'} fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
-                {activeUserNames.map((name, i) => (
-                  <Line key={name} type="monotone" dataKey={name} stroke={userColors[i % userColors.length]} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                ))}
-              </LineChart>
+                <Tooltip content={<CustomHistoryTooltip />} cursor={{ fill: theme === 'dark' ? '#334155' : '#f1f5f9' }} />
+                
+                {/* Custom Legend to not clutter the view with 2x items per user */}
+                <Legend 
+                  content={(props) => {
+                     const { payload } = props;
+                     // Extract unique users from payload (removing the _Proj or _Sub suffix)
+                     const userEntries = payload?.filter(p => p.dataKey?.toString().endsWith('_Proj')) || [];
+                     return (
+                       <div className="flex flex-wrap justify-center gap-4 mt-2">
+                         {userEntries.map((entry: any, index: number) => {
+                           const userName = entry.dataKey.replace('_Proj', '');
+                           return (
+                             <div key={`legend-${userName}`} className="flex items-center text-[10px] font-bold text-slate-500">
+                               <span className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: entry.color }}></span>
+                               <span className="uppercase">{userName} <span className="text-sky-500">(Proj)</span> / <span className="text-indigo-400 opacity-60">(Sub)</span></span>
+                             </div>
+                           );
+                         })}
+                       </div>
+                     );
+                  }}
+                />
+
+                {activeUserNames.map((name, i) => {
+                  const color = userColors[i % userColors.length];
+                  return (
+                    <React.Fragment key={name}>
+                      <Bar dataKey={`${name}_Proj`} name={`${name} (Projetos)`} stackId={name} fill={color} />
+                      <Bar dataKey={`${name}_Sub`} name={`${name} (Tarefas)`} stackId={name} fill={color} fillOpacity={0.4} radius={[4, 4, 0, 0]} />
+                    </React.Fragment>
+                  );
+                })}
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
