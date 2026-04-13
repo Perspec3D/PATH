@@ -88,3 +88,40 @@ export const exportDashboardToPDF = async (elementId: string) => {
         console.error('Erro ao gerar PDF:', err);
     }
 };
+
+export const exportReportToPDF = async (elementId: string, companyName: string, fileName: string = 'Relatorio_PATH') => {
+    const element = document.getElementById(elementId);
+    if (!element) {
+        console.error('Área de impressão do relatório não encontrada:', elementId);
+        return;
+    }
+
+    try {
+        const canvas = await html2canvas(element, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            backgroundColor: window.getComputedStyle(element).backgroundColor
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4'); // 'p' for Portrait, often better for detailed reports
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+
+        const imgProps = pdf.getImageProperties(imgData);
+        // We want to fit horizontally and possibly stretch vertically across pages if needed, 
+        // but for now, we'll maintain the aspect ratio and fit to width.
+        const width = pdfWidth - 20; // 10mm margins
+        const height = (imgProps.height * width) / imgProps.width;
+
+        pdf.addImage(imgData, 'PNG', 10, 10, width, height);
+        
+        const timestamp = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR');
+        const cleanName = companyName.replace(/\s+/g, '_').toUpperCase();
+        
+        pdf.save(`${fileName}_${cleanName}_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+        console.error('Erro ao gerar PDF do Relatório:', err);
+    }
+};
