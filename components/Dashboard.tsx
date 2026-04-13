@@ -860,21 +860,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         };
 
         projects.forEach(p => {
-          const daysForThisProject = new Set<string>();
+          const userSubtaskDays = new Set<string>();
+          let hasSubtasks = false;
 
-          // Atividade principal do projeto 
-          if (p.assigneeId === u.id && p.status !== ProjectStatus.DONE && p.status !== ProjectStatus.CANCELED && p.startDate && p.deliveryDate) {
-            getProjectDays(p.startDate, p.deliveryDate).forEach(d => daysForThisProject.add(d));
-          }
-
-          // Subtarefas
+          // 1. Coletar dias de execução (subtarefas) do usuário neste projeto
           p.subtasks?.forEach(st => {
             if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED && st.startDate && st.deliveryDate) {
-              getProjectDays(st.startDate, st.deliveryDate).forEach(d => daysForThisProject.add(d));
+              hasSubtasks = true;
+              getProjectDays(st.startDate, st.deliveryDate).forEach(d => userSubtaskDays.add(d));
             }
           });
 
-          userWorkDays += daysForThisProject.size;
+          if (hasSubtasks) {
+            // Se ele tem subtarefas, a carga é definida pelo esforço real (deduplicado)
+            userWorkDays += userSubtaskDays.size;
+          } else if (p.assigneeId === u.id && p.status !== ProjectStatus.DONE && p.status !== ProjectStatus.CANCELED && p.startDate && p.deliveryDate) {
+            // Se ele é o dono mas NÃO tem subtarefas atribuídas, a carga é o período total (Gestão/Liderança)
+            userWorkDays += getProjectDays(p.startDate, p.deliveryDate).size;
+          }
         });
         totalOccupiedDays += userWorkDays;
         return {
