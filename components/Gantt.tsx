@@ -526,7 +526,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                         <div className="flex-1 min-w-0">
                           <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors uppercase tracking-tight">{user.username}</h4>
                           <div className="flex flex-col mt-1 space-y-0.5">
-                            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{allAssignments.length} Tarefa(s) ativa(s)</p>
+                            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{distinctProjectsCount} Tarefa(s) ativa(s)</p>
                             <p className="text-[9px] text-emerald-500/60 font-black uppercase tracking-widest flex items-center">
                               <span className="w-1 h-1 rounded-full bg-emerald-500 mr-1.5" />
                               {distinctProjectsCount} {distinctProjectsCount === 1 ? 'Projeto' : 'Projetos'}

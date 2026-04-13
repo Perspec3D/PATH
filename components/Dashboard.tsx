@@ -526,24 +526,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     });
 
     projects.forEach(p => {
-      // 1. Validar Projetos
-      if (p.assigneeId && data[p.assigneeId]) {
-        if (p.status !== ProjectStatus.CANCELED) {
-          data[p.assigneeId].totalAssigned++;
-          if (p.status === ProjectStatus.DONE) {
-            data[p.assigneeId].projectsDone++;
-          }
-        }
-      }
+      if (p.status === ProjectStatus.CANCELED) return;
 
-      // 2. Validar Sub-tarefas
+      const projectUsers = new Set<string>();
+      if (p.assigneeId) projectUsers.add(p.assigneeId);
       p.subtasks?.forEach(st => {
-        if (st.assigneeId && data[st.assigneeId]) {
-          if (st.status !== ProjectStatus.CANCELED) {
-            data[st.assigneeId].totalAssigned++;
-            if (st.status === ProjectStatus.DONE) {
-              data[st.assigneeId].subtasksDone++;
-            }
+        if (st.assigneeId && st.status !== ProjectStatus.CANCELED) {
+          projectUsers.add(st.assigneeId);
+        }
+      });
+
+      projectUsers.forEach(userId => {
+        if (data[userId]) {
+          data[userId].totalAssigned++;
+          // Consideramos "concluído" para o usuário se o projeto pai está concluído
+          // OU se todas as subtarefas dele naquele projeto estão concluídas (lógica simplificada: projeto pai DONE)
+          if (p.status === ProjectStatus.DONE) {
+            data[userId].projectsDone++;
           }
         }
       });
@@ -607,24 +606,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     });
 
     activeProjects.forEach((p: Project) => {
-      // 1. Usuário é o Responsável Principal (Titular)
-      if (p.assigneeId) {
-        const user = users.find(u => u.id === p.assigneeId);
-        if (user) {
-          matrix[user.username].mainProjects++;
-          matrix[user.username].stats[p.status]++;
-        }
-      }
-
-      // 2. Sub-tarefas ativas
+      const projectUsers = new Set<string>();
+      if (p.assigneeId) projectUsers.add(p.assigneeId);
       p.subtasks?.forEach(st => {
-        const isActiveST = st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED;
-        if (st.assigneeId && isActiveST) {
-          const user = users.find(u => u.id === st.assigneeId);
-          if (user) {
+        if (st.assigneeId && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
+          projectUsers.add(st.assigneeId);
+        }
+      });
+
+      projectUsers.forEach(userId => {
+        const user = users.find(u => u.id === userId);
+        if (user && matrix[user.username]) {
+          // Se o usuário é o responsável principal, conta como mainProject, caso contrário subtasks (participação)
+          if (p.assigneeId === userId) {
+            matrix[user.username].mainProjects++;
+          } else {
             matrix[user.username].subtasks++;
-            matrix[user.username].stats[st.status]++;
           }
+          matrix[user.username].stats[p.status]++;
         }
       });
     });
@@ -717,21 +716,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
 
       activeProjects.forEach(p => {
         let isUserInvolved = false;
-        let countedAsTask = false;
 
+        // Verifica se o usuário é o dono ou tem subtarefa ativa no projeto
         if (p.assigneeId === u.id) {
           isUserInvolved = true;
-          activeTasksCount++;
-          countedAsTask = true;
           userTasks.push({ type: 'PROJETO', name: p.name, status: p.status, deadline: p.deliveryDate });
         }
 
         p.subtasks?.forEach(st => {
           if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
             isUserInvolved = true;
-            if (!countedAsTask) {
-              activeTasksCount++;
-            }
             userTasks.push({ type: 'SUB-TAREFA', name: st.name, status: st.status, deadline: st.deliveryDate, parentName: p.name });
           }
         });
@@ -739,6 +733,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         if (isUserInvolved) {
           projectsOnRadar.add(p.id);
           userProjects.push(p);
+          // Cada envolvimento em projeto ativo conta como apenas 1 tarefa para capacidade/carga
+          activeTasksCount++;
         }
       });
 
