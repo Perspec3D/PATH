@@ -832,7 +832,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       const userDetails = activeUsers_Capacity.map(u => {
         let userWorkDays = 0;
 
-        const calculateDays = (startStr: string, endStr: string) => {
+        const getProjectDays = (startStr: string, endStr: string) => {
+          const daysSet = new Set<string>();
           const start = new Date(startStr + 'T00:00:00');
           const end = new Date(endStr + 'T23:59:59');
 
@@ -845,38 +846,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           // Caso especial: Projetos atrasados (fim < hoje) mas ainda ativos.
           // Eles contam como carga para o dia de hoje enquanto não forem concluídos.
           if (selectedWeekOffset === 0 && end < today && today <= endOfWeek) {
-            return 1;
+            daysSet.add(today.toISOString().split('T')[0]);
+            return daysSet;
           }
 
-          let days = 0;
           if (overlapStart <= overlapEnd) {
             const current = new Date(overlapStart);
             while (current <= overlapEnd) {
               const dow = current.getDay();
-              if (dow !== 0 && dow !== 6) days++;
+              if (dow !== 0 && dow !== 6) {
+                daysSet.add(current.toISOString().split('T')[0]);
+              }
               current.setDate(current.getDate() + 1);
             }
           }
-          return days;
+          return daysSet;
         };
 
         projects.forEach(p => {
-          let projectMainCalculated = false;
-          // Atividade principal do projeto
+          const daysForThisProject = new Set<string>();
+
+          // Atividade principal do projeto 
           if (p.assigneeId === u.id && p.status !== ProjectStatus.DONE && p.status !== ProjectStatus.CANCELED && p.startDate && p.deliveryDate) {
-            userWorkDays += calculateDays(p.startDate, p.deliveryDate);
-            projectMainCalculated = true;
+            getProjectDays(p.startDate, p.deliveryDate).forEach(d => daysForThisProject.add(d));
           }
+
           // Subtarefas
           p.subtasks?.forEach(st => {
             if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED && st.startDate && st.deliveryDate) {
-              // Só soma os dias da subtarefa se o usuário NÃO for o responsável pelo projeto principal
-              // Isso evita que projetos de 5 dias + 3 subtarefas de 5 dias somem 20 dias de carga (400%)
-              if (!projectMainCalculated) {
-                userWorkDays += calculateDays(st.startDate, st.deliveryDate);
-              }
+              getProjectDays(st.startDate, st.deliveryDate).forEach(d => daysForThisProject.add(d));
             }
           });
+
+          userWorkDays += daysForThisProject.size;
         });
         totalOccupiedDays += userWorkDays;
         return {
