@@ -823,10 +823,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         : 5;
 
       const totalAvailableDays = activeUsers_Capacity.length * daysAvailablePerUser;
-      let totalOccupiedDays = 0;
+      let totalOccupiedDays_Backlog = 0; // Soma para o Gauge Global (ex: 310%)
 
       const userDetails = activeUsers_Capacity.map(u => {
-        let userWorkDays = 0;
+        const userWorkDaysSet = new Set<string>(); // União para Ocupação de Agenda (Airon 60%)
+        let userBacklogDays = 0; // Soma para Total (Load)
 
         const getProjectDays = (startStr: string, endStr: string) => {
           const daysSet = new Set<string>();
@@ -860,37 +861,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         };
 
         projects.forEach(p => {
-          const userSubtaskDays = new Set<string>();
+          const projectUserDays = new Set<string>();
           let hasSubtasks = false;
 
           // 1. Coletar dias de execução (subtarefas) do usuário neste projeto
           p.subtasks?.forEach(st => {
             if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED && st.startDate && st.deliveryDate) {
               hasSubtasks = true;
-              getProjectDays(st.startDate, st.deliveryDate).forEach(d => userSubtaskDays.add(d));
+              getProjectDays(st.startDate, st.deliveryDate).forEach(d => {
+                projectUserDays.add(d);
+                userWorkDaysSet.add(d); // Adiciona ao calendário unificado
+              });
             }
           });
 
           if (hasSubtasks) {
-            // Se ele tem subtarefas, a carga é definida pelo esforço real (deduplicado)
-            userWorkDays += userSubtaskDays.size;
+            userBacklogDays += projectUserDays.size;
           } else if (p.assigneeId === u.id && p.status !== ProjectStatus.DONE && p.status !== ProjectStatus.CANCELED && p.startDate && p.deliveryDate) {
             // Se ele é o dono mas NÃO tem subtarefas atribuídas, a carga é o período total (Gestão/Liderança)
-            userWorkDays += getProjectDays(p.startDate, p.deliveryDate).size;
+            const pDays = getProjectDays(p.startDate, p.deliveryDate);
+            userBacklogDays += pDays.size;
+            pDays.forEach(d => userWorkDaysSet.add(d)); // Adiciona ao calendário unificado
           }
         });
-        totalOccupiedDays += userWorkDays;
+
+        totalOccupiedDays_Backlog += userBacklogDays;
+        
         return {
           id: u.id,
           name: u.username,
-          occupied: userWorkDays,
-          percentage: Math.round((userWorkDays / daysAvailablePerUser) * 100)
+          occupied: userWorkDaysSet.size, // Ocupação de Agenda (dias únicos)
+          backlog: userBacklogDays, // Carga total (soma)
+          percentage: Math.round((userWorkDaysSet.size / daysAvailablePerUser) * 100) // Percentual baseado na Agenda (Airon 60%)
         };
       });
 
       teamCapacity = {
-        percentage: Math.round((totalOccupiedDays / totalAvailableDays) * 100),
-        occupied: totalOccupiedDays,
+        percentage: Math.round((totalOccupiedDays_Backlog / totalAvailableDays) * 100), // Percentual baseado na Carga Global (310%)
+        occupied: totalOccupiedDays_Backlog,
         total: totalAvailableDays,
         userDetails,
         weekRange: {
