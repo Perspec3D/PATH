@@ -6,7 +6,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Calendar, Download, Filter, FileText, Users, CheckCircle2, TrendingUp, BarChart3, Clock } from 'lucide-react';
+import { Calendar, Download, Filter, FileText, Users, CheckCircle2, TrendingUp, BarChart3, Clock, Share2, ShieldCheck } from 'lucide-react';
+import { exportReportToPDF } from '../utils/exportUtils';
 
 interface ReportsProps {
   db: AppDB;
@@ -146,31 +147,66 @@ export const Reports: React.FC<ReportsProps> = ({ db, theme = 'dark' }) => {
           <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Extraia insights operacionais baseados em períodos específicos.</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-3xl border border-slate-100 dark:border-slate-800">
-          <div className="px-4 py-2 space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Início</label>
-            <input 
-              type="date" 
-              value={startDate} 
-              onChange={e => setStartDate(e.target.value)}
-              className="bg-transparent text-sm font-bold text-slate-700 dark:text-white outline-none border-none p-0 cursor-pointer" 
-            />
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-3xl border border-slate-100 dark:border-slate-800">
+            <div className="px-4 py-2 space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Início</label>
+              <input 
+                type="date" 
+                value={startDate} 
+                onChange={e => setStartDate(e.target.value)}
+                className="bg-transparent text-sm font-bold text-slate-700 dark:text-white outline-none border-none p-0 cursor-pointer" 
+              />
+            </div>
+            <div className="w-px h-10 bg-slate-200 dark:bg-slate-800" />
+            <div className="px-4 py-2 space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Fim</label>
+              <input 
+                type="date" 
+                value={endDate} 
+                onChange={e => setEndDate(e.target.value)}
+                className="bg-transparent text-sm font-bold text-slate-700 dark:text-white outline-none border-none p-0 cursor-pointer" 
+              />
+            </div>
           </div>
-          <div className="w-px h-10 bg-slate-200 dark:bg-slate-800" />
-          <div className="px-4 py-2 space-y-1">
-            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Fim</label>
-            <input 
-              type="date" 
-              value={endDate} 
-              onChange={e => setEndDate(e.target.value)}
-              className="bg-transparent text-sm font-bold text-slate-700 dark:text-white outline-none border-none p-0 cursor-pointer" 
-            />
-          </div>
-          <button className="bg-indigo-600 hover:bg-indigo-500 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20 active:scale-95 transition-all">
-            <Filter className="w-5 h-5" />
+          
+          <button 
+            onClick={() => exportReportToPDF('report-print-area', db.company?.name || 'PATH')}
+            className="bg-emerald-600 hover:bg-emerald-500 px-6 py-4 rounded-3xl text-white shadow-xl shadow-emerald-500/20 active:scale-95 transition-all flex items-center space-x-3 group"
+          >
+            <Download className="w-5 h-5 group-hover:bounce" />
+            <span className="text-xs font-black uppercase tracking-widest">Exportar PDF</span>
           </button>
         </div>
       </div>
+
+      <div id="report-print-area" className="space-y-8 p-4 bg-slate-50 dark:bg-[#0f172a] rounded-[48px]">
+        {/* AUDIT HEADER (Visible in PDF) */}
+        <div className="bg-white dark:bg-[#1e293b] p-8 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+            <div className="flex items-center space-x-6">
+                <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center p-3">
+                    <img src="/PATH_logo.png" alt="Logo" className="w-full h-full object-contain" />
+                </div>
+                <div>
+                    <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tighter">Relatório Operacional Auditable</h2>
+                    <div className="flex items-center space-x-4 mt-1">
+                        <div className="flex items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            <Calendar className="w-3 h-3 mr-1.5" />
+                            Período: {new Date(startDate + 'T12:00:00').toLocaleDateString('pt-BR')} - {new Date(endDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                        </div>
+                        <div className="w-1 h-1 rounded-full bg-slate-700" />
+                        <div className="flex items-center text-[10px] font-bold text-indigo-500 uppercase tracking-widest">
+                            <ShieldCheck className="w-3 h-3 mr-1.5" />
+                            Fonte: {db.company?.name || 'PATH System'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div className="text-right">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Gerado em</p>
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{new Date().toLocaleString('pt-BR')}</p>
+            </div>
+        </div>
 
       {/* KPI GRID */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -368,6 +404,7 @@ export const Reports: React.FC<ReportsProps> = ({ db, theme = 'dark' }) => {
                 </tbody>
             </table>
         </div>
+      </div>
       </div>
     </div>
   );
