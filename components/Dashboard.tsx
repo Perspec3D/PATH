@@ -840,13 +840,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           const overlapStart = new Date(Math.max(start.getTime(), effectiveCountStart.getTime()));
           const overlapEnd = new Date(Math.min(end.getTime(), endOfWeek.getTime()));
 
-          // Caso especial: Projetos atrasados (fim < hoje) mas ainda ativos.
-          // Eles contam como carga para o dia de hoje enquanto não forem concluídos.
-          if (selectedWeekOffset === 0 && end < today && today <= endOfWeek) {
-            daysSet.add(today.toISOString().split('T')[0]);
-            return daysSet;
-          }
-
           if (overlapStart <= overlapEnd) {
             const current = new Date(overlapStart);
             while (current <= overlapEnd) {
