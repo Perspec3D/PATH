@@ -82,27 +82,45 @@ export const Reports: React.FC<ReportsProps> = ({ db, theme = 'dark' }) => {
       count
     }));
 
-    // 5. User Performance
+    // 5. User Performance Detalhado
     const userData = db.users.filter(u => u.isActive).map(u => {
-      const userDone = filteredProjects.filter(p => 
+      // 5.1 Projetos Liderados (Dono do Projeto)
+      const projectsLed = filteredProjects.filter(p => p.assigneeId === u.id).length;
+      
+      // 5.2 Participação em Subtarefas (Em projetos que não é o dono)
+      const subtaskParticipations = filteredProjects.filter(p => 
+        p.assigneeId !== u.id && 
+        p.subtasks?.some(st => st.assigneeId === u.id)
+      ).length;
+
+      // 5.3 Entregas de Projetos (Concluídos no período por este usuário como responsável)
+      const projectsDone = filteredProjects.filter(p => 
         p.assigneeId === u.id && 
         p.status === ProjectStatus.DONE && 
         p.deliveryDate && new Date(p.deliveryDate + 'T12:00:00') >= start && new Date(p.deliveryDate + 'T12:00:00') <= end
       ).length;
       
-      const userInvolved = filteredProjects.filter(p => {
-          const isOwner = p.assigneeId === u.id;
-          const hasST = p.subtasks?.some(st => st.assigneeId === u.id);
-          return isOwner || hasST;
-      }).length;
+      // 5.4 Entregas de Subtarefas (Concluídas no período por este usuário)
+      let subtasksDone = 0;
+      db.projects.forEach(p => {
+        p.subtasks?.forEach(st => {
+          if (st.assigneeId === u.id && st.status === ProjectStatus.DONE && st.deliveryDate) {
+            const d = new Date(st.deliveryDate + 'T12:00:00');
+            if (d >= start && d <= end) subtasksDone++;
+          }
+        });
+      });
 
       return {
         id: u.id,
         name: u.username,
-        done: userDone,
-        involved: userInvolved
+        projectsLed,
+        subtaskParticipations,
+        projectsDone,
+        subtasksDone,
+        totalDeliveries: projectsDone + subtasksDone
       };
-    }).sort((a, b) => b.done - a.done);
+    }).sort((a, b) => b.totalDeliveries - a.totalDeliveries);
 
     return {
       kpis: { createdInRange, doneInRange, efficiency },
@@ -240,6 +258,30 @@ export const Reports: React.FC<ReportsProps> = ({ db, theme = 'dark' }) => {
           </div>
         </div>
 
+        {/* TEAM PRODUCTIVITY - NEW CHART */}
+        <div className="md:col-span-2 bg-white dark:bg-[#1e293b] p-8 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-sm transition-colors h-[400px] flex flex-col">
+          <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest mb-8 flex items-center">
+            <Users className="w-4 h-4 mr-2 text-indigo-500" />
+            Produtividade da Equipe (PJ vs ST)
+          </h3>
+          <div className="flex-1">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={filteredData.userData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 9, fontWeight: 700 }} />
+                <YAxis tick={{ fontSize: 9, fontWeight: 700 }} />
+                <Tooltip 
+                  cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                  contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '16px', color: '#fff' }}
+                />
+                <Legend iconType="circle" />
+                <Bar dataKey="projectsDone" name="Projetos (PJ)" stackId="a" fill="#6366f1" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="subtasksDone" name="Subtarefas (ST)" stackId="a" fill="#10b981" radius={[10, 10, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
         {/* Creation Trend */}
         <div className="md:col-span-2 bg-white dark:bg-[#1e293b] p-8 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-sm transition-colors h-[300px] flex flex-col">
           <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest mb-8 flex items-center">
@@ -268,26 +310,23 @@ export const Reports: React.FC<ReportsProps> = ({ db, theme = 'dark' }) => {
         </div>
       </div>
 
-      {/* USER PERFORMANCE TABLE */}
       <div className="bg-white dark:bg-[#1e293b] rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors">
         <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center">
                 <Users className="w-4 h-4 mr-2 text-indigo-500" />
-                Desempenho da Equipe no Período
+                Detalhamento por Colaborador
             </h3>
-            <button className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-500 transition-colors">
-                <Download className="w-3 h-3" />
-                <span>Exportar Dados</span>
-            </button>
         </div>
         <div className="overflow-x-auto">
             <table className="w-full text-left">
                 <thead>
                     <tr className="bg-slate-50 dark:bg-slate-900/30">
                         <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Colaborador</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Envolvimentos</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Entregas Concluídas</th>
-                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ação</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Liderança (PJ)</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Execução (ST)</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Entregas PJ</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Entregas ST</th>
+                        <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Média Prod.</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -302,23 +341,27 @@ export const Reports: React.FC<ReportsProps> = ({ db, theme = 'dark' }) => {
                                 </div>
                             </td>
                             <td className="px-8 py-5 text-center">
-                                <span className="text-xs font-black text-slate-400 dark:text-slate-500">{user.involved}</span>
+                                <span className="text-xs font-black text-slate-400 dark:text-slate-500">{user.projectsLed}</span>
                             </td>
                             <td className="px-8 py-5 text-center">
-                                <div className="flex items-center justify-center space-x-2">
-                                    <span className="text-sm font-black text-emerald-500">{user.done}</span>
+                                <span className="text-xs font-black text-slate-400 dark:text-slate-500">{user.subtaskParticipations}</span>
+                            </td>
+                            <td className="px-8 py-5 text-center">
+                                <span className="text-sm font-black text-indigo-500">{user.projectsDone}</span>
+                            </td>
+                            <td className="px-8 py-5 text-center">
+                                <span className="text-sm font-black text-emerald-500">{user.subtasksDone}</span>
+                            </td>
+                            <td className="px-8 py-5 text-right">
+                                <div className="flex items-center justify-end space-x-2">
+                                    <span className="text-sm font-black text-slate-700 dark:text-white">{user.totalDeliveries}</span>
                                     <div className="w-16 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                         <div 
-                                            className="h-full bg-emerald-500 rounded-full" 
-                                            style={{ width: `${user.involved > 0 ? (user.done / user.involved) * 100 : 0}%` }}
+                                            className="h-full bg-indigo-500 rounded-full" 
+                                            style={{ width: `${Math.min(100, (user.totalDeliveries / 10) * 100)}%` }}
                                         />
                                     </div>
                                 </div>
-                            </td>
-                            <td className="px-8 py-5 text-right">
-                                <button className="p-2 text-slate-300 dark:text-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors">
-                                    <FileText className="w-4 h-4" />
-                                </button>
                             </td>
                         </tr>
                     ))}
