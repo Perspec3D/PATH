@@ -890,9 +890,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         return {
           id: u.id,
           name: u.username,
-          occupied: userWorkDaysSet.size, // Ocupação de Agenda (dias únicos)
-          backlog: userBacklogDays, // Carga total (soma)
-          percentage: Math.round((userWorkDaysSet.size / daysAvailablePerUser) * 100) // Percentual baseado na Agenda (Airon 60%)
+          occupied: userBacklogDays, // Alterado para refletir a Carga Acumulada (3+2=5)
+          backlog: userBacklogDays,
+          percentage: Math.round((userBacklogDays / daysAvailablePerUser) * 100) // Percentual baseado na Carga Acumulada (Soma)
         };
       });
 
