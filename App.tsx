@@ -499,7 +499,20 @@ const App: React.FC = () => {
   }
 
   const activeUser = db.users.find(u => u.id === userSession.id);
+
+  if (userSession && db.company && userSession.workspaceId !== db.company.id) {
+    setUserSession(null);
+    localStorage.removeItem('PATH_USER_SESSION');
+    return null;
+  }
+
   if (activeUser && !activeUser.isActive) {
+    setUserSession(null);
+    localStorage.removeItem('PATH_USER_SESSION');
+    return null;
+  }
+
+  if (!activeUser && !isLoading && db.users.length > 0) {
     setUserSession(null);
     localStorage.removeItem('PATH_USER_SESSION');
     return null;

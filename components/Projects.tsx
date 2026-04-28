@@ -158,7 +158,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     const projectData: Project = {
       ...(editingProject || {}),
       id: editingProject?.id || crypto.randomUUID(),
-      workspaceId: currentUser.workspaceId,
+      workspaceId: editingProject?.workspaceId || currentUser.workspaceId,
       clientId,
       assigneeId,
       code: finalCode,
