@@ -158,6 +158,11 @@ export const syncProject = async (project: Project) => {
   if (error) throw error;
 };
 
+export const deleteProject = async (projectId: string) => {
+  const { error } = await supabase.from('projects').delete().eq('id', projectId);
+  if (error) throw error;
+};
+
 export const syncUser = async (user: InternalUser) => {
   const { error } = await supabase.from('internal_users').upsert({
     id: user.id,

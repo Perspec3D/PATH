@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole } from '../types';
-import { getNextGlobalProjectSeq, syncProject, AppDB } from '../storage';
+import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB } from '../storage';
 
 interface ProjectsProps {
   db: AppDB;
@@ -200,6 +200,27 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       resetForm();
     } catch (err: any) {
       alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!editingProject) return;
+    if (currentUser.role !== UserRole.ADMIN) {
+      alert("Apenas administradores podem excluir projetos.");
+      return;
+    }
+    if (confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o projeto "${editingProject.name}"?\nEsta ação não pode ser desfeita.`)) {
+      try {
+        await deleteProject(editingProject.id);
+        setDb({
+          ...db,
+          projects: db.projects.filter(p => p.id !== editingProject.id)
+        });
+        setShowModal(false);
+        resetForm();
+      } catch (err: any) {
+        alert("Erro ao excluir no Supabase: " + (err.message || "Erro desconhecido"));
+      }
     }
   };
 
@@ -738,6 +759,16 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
               </div>
 
               <div className="pt-8 border-t border-slate-100 dark:border-slate-800 flex space-x-4 transition-colors bg-white dark:bg-[#0f172a] sticky bottom-0 z-10">
+                {editingProject && currentUser.role === UserRole.ADMIN && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteProject}
+                    className="py-4 px-6 bg-rose-100 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center hover:bg-rose-200 dark:hover:bg-rose-500/20 transition-all active:scale-[0.98]"
+                    title="Excluir Projeto"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
