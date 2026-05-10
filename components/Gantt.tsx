@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, UserRole } from '../types';
-import { syncProject, AppDB } from '../storage';
+import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskType } from '../types';
+import { syncProject, AppDB, syncTeamTask, deleteTeamTask } from '../storage';
 
 interface GanttProps {
   db: AppDB;
@@ -28,6 +28,14 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const [startDate, setStartDate] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [subtasks, setSubtasks] = useState<any[]>([]); // Para edição no modal
+
+  const [editingTeamTask, setEditingTeamTask] = useState<TeamTask | null>(null);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskType, setTaskType] = useState<TaskType>(TaskType.REUNIAO);
+  const [taskAssigneeId, setTaskAssigneeId] = useState('');
+  const [taskStartDate, setTaskStartDate] = useState('');
+  const [taskEndDate, setTaskEndDate] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
 
   const [expandedProjects, setExpandedProjects] = useState<string[]>([]);
 
@@ -75,6 +83,60 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
       setEditingProject(null);
     } catch (err: any) {
       alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+    }
+  };
+
+  const openEditTeamTask = (task: any) => {
+    const originalTask = db.tasks.find(t => t.id === task.id);
+    if (originalTask) {
+      setEditingTeamTask(originalTask);
+      setTaskTitle(originalTask.title);
+      setTaskType(originalTask.type);
+      setTaskAssigneeId(originalTask.assigneeId);
+      setTaskStartDate(originalTask.startDate);
+      setTaskEndDate(originalTask.endDate);
+      setTaskDescription(originalTask.description || '');
+    }
+  };
+
+  const handleSaveTeamTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTeamTask) return;
+    
+    if (new Date(taskEndDate) < new Date(taskStartDate)) {
+      alert("A data final não pode ser menor que a data inicial.");
+      return;
+    }
+
+    const taskData: TeamTask = {
+      ...editingTeamTask,
+      title: taskTitle,
+      type: taskType,
+      assigneeId: taskAssigneeId,
+      startDate: taskStartDate,
+      endDate: taskEndDate,
+      description: taskDescription,
+    };
+
+    try {
+      await syncTeamTask(taskData);
+      setDb({ ...db, tasks: db.tasks.map(t => t.id === taskData.id ? taskData : t) });
+      setEditingTeamTask(null);
+    } catch (err: any) {
+      alert("Erro ao salvar: " + (err.message || "Erro desconhecido"));
+    }
+  };
+
+  const handleDeleteTeamTask = async () => {
+    if (!editingTeamTask) return;
+    if (window.confirm("Deseja realmente excluir esta tarefa? Qualquer usuário pode realizar esta ação.")) {
+      try {
+        await deleteTeamTask(editingTeamTask.id);
+        setDb({ ...db, tasks: db.tasks.filter(t => t.id !== editingTeamTask.id) });
+        setEditingTeamTask(null);
+      } catch (err: any) {
+        alert("Erro ao excluir: " + (err.message || "Erro desconhecido"));
+      }
     }
   };
 
@@ -589,11 +651,12 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                               onClick={() => {
                                 if (task.type === 'project') openEdit(task);
                                 else if (task.type === 'subtask') openEdit(task.parentProject);
+                                else if (task.type === 'activity') openEditTeamTask(task);
                               }}
                             >
                               <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.type === 'subtask' ? task.parentProject.id : task.id)}`} />
                               <span className="text-[8px] font-black text-white/90 truncate uppercase tracking-tighter">
-                                {task.type === 'subtask' ? `[ST] ${task.name}` : task.type === 'activity' ? `[${task.type.toUpperCase()}] ${task.name}` : task.name}
+                                {task.type === 'subtask' ? `[ST] ${task.name}` : task.name}
                               </span>
 
                               {/* TOOLTIP ATRIBUIÇÃO */}
@@ -769,6 +832,57 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
           </div>
         )
       }
+
+      {/* Modal de Tarefa Avulsa */}
+      {editingTeamTask && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#1e293b] rounded-[32px] shadow-2xl w-full max-w-lg border border-slate-200 dark:border-slate-700 p-8 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar transition-colors">
+            <h3 className="text-slate-900 dark:text-white font-black uppercase mb-6 text-sm tracking-widest transition-colors">
+              Detalhes da Tarefa / Bloqueio
+            </h3>
+            <form onSubmit={handleSaveTeamTask} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Título da Tarefa *</label>
+                <input type="text" required value={taskTitle} onChange={e => setTaskTitle(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Tipo *</label>
+                  <select required value={taskType} onChange={e => setTaskType(e.target.value as TaskType)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
+                    {Object.values(TaskType).map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Responsável *</label>
+                  <select required value={taskAssigneeId} onChange={e => setTaskAssigneeId(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
+                    {allUsers.filter(u => u.isActive).map(u => <option key={u.id} value={u.id}>{u.username}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Data Início *</label>
+                  <input type="date" required value={taskStartDate} onChange={e => setTaskStartDate(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Data Fim *</label>
+                  <input type="date" required value={taskEndDate} onChange={e => setTaskEndDate(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Descrição / Observação</label>
+                <textarea value={taskDescription} onChange={e => setTaskDescription(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors resize-none h-24" />
+              </div>
+              <div className="flex space-x-3 pt-6 border-t border-slate-100 dark:border-slate-800 transition-colors">
+                <button type="button" onClick={handleDeleteTeamTask} className="flex-1 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 p-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all">Excluir</button>
+                <button type="button" onClick={() => setEditingTeamTask(null)} className="flex-1 bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">Cancelar</button>
+                <button type="submit" className="flex-1 bg-indigo-600 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE RESUMO DE CARGA */}
       {viewingUserCarga && (
         <UserCargaModal
