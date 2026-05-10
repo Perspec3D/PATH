@@ -119,7 +119,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
       case ProjectStatus.QUEUE: return 'bg-slate-500';
       case ProjectStatus.DONE: return 'bg-emerald-500';
       case ProjectStatus.CANCELED: return 'bg-orange-500';
-      case 'ACTIVITY': return 'bg-slate-500/80 dark:bg-slate-700/80';
+      case 'ACTIVITY': return 'bg-amber-500';
       default: return 'bg-slate-700';
     }
   };
@@ -591,7 +591,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                 else if (task.type === 'subtask') openEdit(task.parentProject);
                               }}
                             >
-                              <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.parentProject.id)}`} />
+                              <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.type === 'subtask' ? task.parentProject.id : task.id)}`} />
                               <span className="text-[8px] font-black text-white/90 truncate uppercase tracking-tighter">
                                 {task.type === 'subtask' ? `[ST] ${task.name}` : task.type === 'activity' ? `[${task.type.toUpperCase()}] ${task.name}` : task.name}
                               </span>
