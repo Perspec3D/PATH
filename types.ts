@@ -13,6 +13,16 @@ export enum ProjectStatus {
   CANCELED = 'Cancelado'
 }
 
+export enum TaskType {
+  REUNIAO = 'Reunião',
+  ESTUDO = 'Estudo',
+  FOLGA = 'Folga',
+  FERIAS = 'Férias',
+  TREINAMENTO = 'Treinamento',
+  OBSERVACAO = 'Observação',
+  OUTROS = 'Outros'
+}
+
 export enum LicenseStatus {
   TRIAL = 'TRIAL',
   ACTIVE = 'ACTIVE',
@@ -114,4 +124,16 @@ export interface Project {
   conclusionResponsibleId?: string;
   deadlineChangesCount?: number;
   deadlineAtConclusion?: string;
+}
+
+export interface TeamTask {
+  id: string;
+  workspaceId: string;
+  title: string;
+  type: TaskType;
+  assigneeId: string;
+  startDate: string;
+  endDate: string;
+  description?: string;
+  createdAt: number;
 }

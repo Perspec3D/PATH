@@ -13,8 +13,9 @@ import { Team } from './components/Team';
 import { CompanyLogin } from './components/Auth';
 import { InternalUserLogin } from './components/Who';
 import { Reports } from './components/Reports';
+import { Tasks } from './components/Tasks';
 
-type Page = 'dashboard' | 'clients' | 'projects' | 'timeline' | 'team' | 'reports' | 'settings';
+type Page = 'dashboard' | 'clients' | 'projects' | 'tasks' | 'timeline' | 'team' | 'reports' | 'settings';
 
 const App: React.FC = () => {
   const [db, setDb] = useState<AppDB>({
@@ -22,6 +23,7 @@ const App: React.FC = () => {
     users: [],
     clients: [],
     projects: [],
+    tasks: [],
   });
   const [companySession, setCompanySession] = useState<Company | null>(null);
   const [userSession, setUserSession] = useState<InternalUser | null>(null);
@@ -87,6 +89,7 @@ const App: React.FC = () => {
             company: mergedCompany,
             clients: remoteData.clients || [],
             projects: remoteData.projects || [],
+            tasks: remoteData.tasks || [],
           });
           if (mergedCompany && JSON.stringify(mergedCompany) !== JSON.stringify(companySession)) {
             setCompanySession(mergedCompany);
@@ -534,6 +537,7 @@ const App: React.FC = () => {
       {currentPage === 'dashboard' && <Dashboard db={db} theme={theme} />}
       {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
       {currentPage === 'projects' && <Projects db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+      {currentPage === 'tasks' && <Tasks db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
       {currentPage === 'timeline' && <Gantt db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
       {currentPage === 'team' && userSession.role === UserRole.ADMIN && <Team db={db} theme={theme} />}
       {currentPage === 'reports' && userSession.role === UserRole.ADMIN && <Reports db={db} theme={theme} />}

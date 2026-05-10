@@ -112,13 +112,14 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
     return { timelineDates: timeline, minDate: min };
   }, [activeProjects]);
 
-  const getStatusColor = (status: ProjectStatus) => {
+  const getStatusColor = (status: ProjectStatus | string) => {
     switch (status) {
       case ProjectStatus.IN_PROGRESS: return 'bg-indigo-600';
       case ProjectStatus.PAUSED: return 'bg-purple-500';
       case ProjectStatus.QUEUE: return 'bg-slate-500';
       case ProjectStatus.DONE: return 'bg-emerald-500';
       case ProjectStatus.CANCELED: return 'bg-orange-500';
+      case 'ACTIVITY': return 'bg-slate-500/80 dark:bg-slate-700/80';
       default: return 'bg-slate-700';
     }
   };
@@ -455,8 +456,17 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                       .filter(st => st.assigneeId === user.id)
                       .map(st => ({ ...st, type: 'subtask', parentProject: p }))
                   );
-                  const allAssignments = [...userTasks, ...userSubtasks];
-                  const distinctProjectsCount = new Set(allAssignments.map(a => a.type === 'project' ? a.id : a.parentProject?.id)).size;
+                  const userActivities = (db.tasks || []).filter(t => t.assigneeId === user.id).map(t => ({
+                    ...t,
+                    type: 'activity',
+                    deliveryDate: t.endDate,
+                    name: t.title,
+                    status: 'ACTIVITY'
+                  }));
+                  const allAssignments = [...userTasks, ...userSubtasks, ...userActivities];
+                  const projectsAndSubtasks = [...userTasks, ...userSubtasks];
+                  const distinctProjectsCount = new Set(projectsAndSubtasks.map(a => a.type === 'project' ? a.id : a.parentProject?.id)).size;
+                  const activitiesCount = userActivities.length;
 
                   if (allAssignments.length === 0) return null;
 
@@ -492,13 +502,12 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                     const distinctRootProjectIds = new Set();
 
                     allAssignments.forEach((t: any) => {
-                      // Ignorar projetos ou subtarefas que já foram concluídos ou cancelados
+                      if (t.type === 'activity') return; // Ignorar atividades para conflitos
                       if (t.status === ProjectStatus.DONE || t.status === ProjectStatus.CANCELED) return;
 
                       const s = new Date(t.startDate + 'T12:00:00');
                       const e = new Date(t.deliveryDate + 'T12:00:00');
                       if (date >= s && date <= e) {
-                        // Se for subtask, o root é o parent. Se for projeto, é o próprio ID.
                         const rootId = t.type === 'subtask' ? t.parentProject.id : t.id;
                         distinctRootProjectIds.add(rootId);
                       }
@@ -531,6 +540,12 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                               <span className="w-1 h-1 rounded-full bg-emerald-500 mr-1.5" />
                               {distinctProjectsCount} {distinctProjectsCount === 1 ? 'Projeto' : 'Projetos'}
                             </p>
+                            {activitiesCount > 0 && (
+                              <p className="text-[9px] text-indigo-500/60 font-black uppercase tracking-widest flex items-center">
+                                <span className="w-1 h-1 rounded-full bg-indigo-500 mr-1.5" />
+                                {activitiesCount} {activitiesCount === 1 ? 'Atividade' : 'Atividades'}
+                              </p>
+                            )}
                           </div>
                           {conflictMap.size > 0 && (
                             <span className="inline-block mt-2 px-2 py-0.5 bg-red-500/10 border border-red-500/20 text-red-500 text-[8px] font-black rounded-full uppercase tracking-tighter animate-pulse">
@@ -573,27 +588,30 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                               className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 hover:z-50 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
                               onClick={() => {
                                 if (task.type === 'project') openEdit(task);
-                                else openEdit(task.parentProject);
+                                else if (task.type === 'subtask') openEdit(task.parentProject);
                               }}
                             >
                               <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.parentProject.id)}`} />
                               <span className="text-[8px] font-black text-white/90 truncate uppercase tracking-tighter">
-                                {task.type === 'subtask' ? `[ST] ${task.name}` : task.name}
+                                {task.type === 'subtask' ? `[ST] ${task.name}` : task.type === 'activity' ? `[${task.type.toUpperCase()}] ${task.name}` : task.name}
                               </span>
 
                               {/* TOOLTIP ATRIBUIÇÃO */}
                               <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/task:opacity-100 transition-all transform translate-y-2 group-hover/task:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[220px] ring-1 ring-white/10">
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="flex flex-col">
-                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">{task.type === 'project' ? 'PROJETO PAI' : 'SUB-TAREFA'}</p>
+                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">
+                                      {task.type === 'project' ? 'PROJETO PAI' : task.type === 'subtask' ? 'SUB-TAREFA' : 'TAREFA / BLOQUEIO'}
+                                    </p>
                                     <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">
-                                      {task.type === 'project' ? (task as any).code : (task as any).parentProject?.code}
+                                      {task.type === 'project' ? (task as any).code : task.type === 'subtask' ? (task as any).parentProject?.code : task.type}
                                     </p>
                                   </div>
-                                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(task.status)} text-white`}>{task.status}</span>
+                                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(task.status)} text-white`}>{task.status === 'ACTIVITY' ? 'AVULSA' : task.status}</span>
                                 </div>
                                 <p className="text-xs font-bold text-white mb-1 leading-tight whitespace-normal">{task.name}</p>
                                 {task.type === 'subtask' && <p className="text-[9px] text-slate-500 font-black uppercase mb-3 truncate">Ref: {task.parentProject?.name}</p>}
+                                {task.type === 'activity' && task.description && <p className="text-[10px] text-slate-400 font-medium mb-3 whitespace-normal break-words">{task.description}</p>}
                                 <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
                                   <div><p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p><p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p></div>
                                   <div><p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p><p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p></div>
@@ -773,10 +791,10 @@ const UserCargaModal: React.FC<{
 }> = ({ data, onClose, getStatusColor, getProjectMarkerColor }) => {
   // Agrupar tarefas por projeto pai
   const groupedTasks = data.assignments.reduce((acc: any, task: any) => {
-    const parentId = task.type === 'project' ? task.id : task.parentProject.id;
+    const parentId = task.type === 'project' ? task.id : task.type === 'subtask' ? task.parentProject.id : 'activities';
     if (!acc[parentId]) {
       acc[parentId] = {
-        project: task.type === 'project' ? task : task.parentProject,
+        project: task.type === 'project' ? task : task.type === 'subtask' ? task.parentProject : { name: 'Tarefas / Bloqueios Avulsos', code: 'ATIVIDADES', status: 'ACTIVITY' },
         tasks: []
       };
     }

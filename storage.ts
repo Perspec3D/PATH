@@ -1,4 +1,4 @@
-import { Company, InternalUser, Client, Project, LicenseStatus, UserRole } from './types';
+import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType } from './types';
 import { supabase } from './lib/supabase';
 
 export interface AppDB {
@@ -6,6 +6,7 @@ export interface AppDB {
   users: InternalUser[];
   clients: Client[];
   projects: Project[];
+  tasks: TeamTask[];
 }
 
 export { supabase };
@@ -27,6 +28,10 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
 
   const { data: projects } = await supabase.from('projects')
     .select('id, workspace_id, client_id, assignee_id, code, name, photo_url, revision, status, start_date, delivery_date, due_date, notes, subtasks, created_at')
+    .eq('workspace_id', companyId);
+
+  const { data: teamTasks } = await supabase.from('team_tasks')
+    .select('id, workspace_id, title, type, assignee_id, start_date, end_date, description, created_at')
     .eq('workspace_id', companyId);
 
   const { data: users } = await supabase.from('internal_users')
@@ -79,6 +84,17 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
       notes: p.notes,
       subtasks: p.subtasks || [],
       createdAt: new Date(p.created_at).getTime()
+    })),
+    tasks: (teamTasks || []).map((t: any) => ({
+      id: t.id,
+      workspaceId: t.workspace_id,
+      title: t.title,
+      type: t.type,
+      assigneeId: t.assignee_id,
+      startDate: t.start_date,
+      endDate: t.end_date,
+      description: t.description,
+      createdAt: new Date(t.created_at).getTime()
     })),
     users: (users || []).map((u: any) => ({
       id: u.id,
@@ -160,6 +176,26 @@ export const syncProject = async (project: Project) => {
 
 export const deleteProject = async (projectId: string) => {
   const { error } = await supabase.from('projects').delete().eq('id', projectId);
+  if (error) throw error;
+};
+
+export const syncTeamTask = async (task: TeamTask) => {
+  const { error } = await supabase.from('team_tasks').upsert({
+    id: task.id,
+    workspace_id: task.workspaceId,
+    title: task.title,
+    type: task.type,
+    assignee_id: task.assigneeId,
+    start_date: task.startDate,
+    end_date: task.endDate,
+    description: task.description,
+    created_at: new Date(task.createdAt).toISOString()
+  });
+  if (error) throw error;
+};
+
+export const deleteTeamTask = async (taskId: string) => {
+  const { error } = await supabase.from('team_tasks').delete().eq('id', taskId);
   if (error) throw error;
 };
 
