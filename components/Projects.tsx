@@ -217,7 +217,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       alert("Não foi possível gerar o código do projeto. Verifique os dados.");
       return;
     }
+    
+    // Concatena o nome base e sanitiza para evitar caracteres proibidos no sistema de arquivos ou API (como /, \, <, >, :, ", |, ?, *, etc)
     const folderName = `${previewCode} - ${name}`;
+    const safeFolderName = folderName.replace(/[<>:"\/\\|?*]/g, '-').trim().replace(/\.$/, '');
+    
     try {
       if (!('showDirectoryPicker' in window)) {
         alert("Seu navegador não suporta a criação direta de pastas. Recomendamos usar o Google Chrome ou Microsoft Edge no computador.");
@@ -228,8 +232,8 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
         mode: 'readwrite',
         startIn: 'desktop'
       });
-      await dirHandle.getDirectoryHandle(folderName, { create: true });
-      alert(`Pasta "${folderName}" criada com sucesso!`);
+      await dirHandle.getDirectoryHandle(safeFolderName, { create: true });
+      alert(`Pasta "${safeFolderName}" criada com sucesso!`);
     } catch (error: any) {
       if (error.name !== 'AbortError') {
         alert("Erro ao criar pasta: " + error.message);
