@@ -203,6 +203,40 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     }
   };
 
+  const handleCreateFolder = async () => {
+    if (!clientId) {
+      alert("Por favor, selecione um cliente primeiro.");
+      return;
+    }
+    if (!name) {
+      alert("Por favor, preencha o nome do projeto primeiro.");
+      return;
+    }
+    const previewCode = getPreviewCode();
+    if (previewCode === "---") {
+      alert("Não foi possível gerar o código do projeto. Verifique os dados.");
+      return;
+    }
+    const folderName = `${previewCode} - ${name}`;
+    try {
+      if (!('showDirectoryPicker' in window)) {
+        alert("Seu navegador não suporta a criação direta de pastas. Recomendamos usar o Google Chrome ou Microsoft Edge no computador.");
+        return;
+      }
+      const dirHandle = await (window as any).showDirectoryPicker({
+        id: 'projetos-perspec3d',
+        mode: 'readwrite',
+        startIn: 'desktop'
+      });
+      await dirHandle.getDirectoryHandle(folderName, { create: true });
+      alert(`Pasta "${folderName}" criada com sucesso!`);
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        alert("Erro ao criar pasta: " + error.message);
+      }
+    }
+  };
+
   const handleDeleteProject = async () => {
     if (!editingProject) return;
     if (currentUser.role !== UserRole.ADMIN) {
@@ -769,6 +803,15 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={handleCreateFolder}
+                  className="py-4 px-6 bg-amber-400 text-amber-950 rounded-2xl flex items-center justify-center hover:bg-amber-500 transition-all active:scale-[0.98] font-black text-[10px] uppercase tracking-[0.2em] shadow-lg shadow-amber-500/20 whitespace-nowrap"
+                  title="Criar pasta do projeto"
+                >
+                  <svg className="w-5 h-5 sm:mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                  <span className="hidden sm:inline">Criar Pasta do Projeto</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
