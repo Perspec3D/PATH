@@ -411,7 +411,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 <th className="w-2 px-0 py-4"></th>
                 <th className="px-2.5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-12">Mini</th>
                 <th className="px-2.5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[450px]">Nome do Projeto</th>
-                <th className="px-2.5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32 text-center">Código</th>
+                <th className="px-2.5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-44 text-center">Código</th>
                 <th className="px-2.5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Cliente</th>
                 <th className="px-2.5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-36">Status</th>
                 <th className="px-2.5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Responsável</th>
@@ -454,10 +454,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     </td>
                     <td className="px-2.5 py-4 text-center">
                       <div className="flex flex-col whitespace-nowrap">
-                        <span className="font-mono text-[10px] text-indigo-600 dark:text-indigo-400 tracking-tighter uppercase font-black transition-colors">
+                        <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400 tracking-tighter uppercase font-black transition-colors">
                           {project.code}
                         </span>
-                        <span className="text-[8px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest transition-colors">{project.revision}</span>
+                        <span className="text-[9px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest transition-colors">{project.revision}</span>
                       </div>
                     </td>
                     <td className="px-2.5 py-4">
