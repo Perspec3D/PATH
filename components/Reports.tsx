@@ -67,20 +67,29 @@ export const Reports: React.FC<ReportsProps> = ({ db, theme = 'dark' }) => {
       .sort((a, b) => b.value - a.value)
       .slice(0, 10);
 
-    // 4. Time Evolution (Created)
-    const dailyMap: Record<string, number> = {};
+    // 4. Time Evolution (Created vs Done)
+    const dailyMap: Record<string, { created: number, done: number }> = {};
     let cur = new Date(start);
     while (cur <= end) {
-      dailyMap[cur.toISOString().split('T')[0]] = 0;
+      dailyMap[cur.toISOString().split('T')[0]] = { created: 0, done: 0 };
       cur.setDate(cur.getDate() + 1);
     }
     filteredProjects.forEach(p => {
-      const d = new Date(p.createdAt || Date.now()).toISOString().split('T')[0];
-      if (dailyMap[d] !== undefined) dailyMap[d]++;
+      // Created
+      const dCreated = new Date(p.createdAt || Date.now()).toISOString().split('T')[0];
+      if (dailyMap[dCreated] !== undefined) dailyMap[dCreated].created++;
+
+      // Done
+      if (p.status === ProjectStatus.DONE && p.deliveryDate) {
+        const dDone = new Date(p.deliveryDate + 'T12:00:00').toISOString().split('T')[0];
+        if (dailyMap[dDone] !== undefined) dailyMap[dDone].done++;
+      }
     });
-    const timelineData = Object.entries(dailyMap).map(([date, count]) => ({
+    const timelineData = Object.entries(dailyMap).map(([date, counts]) => ({
       date: new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-      count
+      count: counts.created,
+      created: counts.created,
+      done: counts.done
     }));
 
     // 5. User Performance Detalhado
@@ -322,7 +331,7 @@ export const Reports: React.FC<ReportsProps> = ({ db, theme = 'dark' }) => {
         <div className="md:col-span-2 bg-white dark:bg-[#1e293b] p-8 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-sm transition-colors h-[300px] flex flex-col">
           <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest mb-8 flex items-center">
             <TrendingUp className="w-4 h-4 mr-2 text-amber-500" />
-            Curva de Demanda (Projetos Criados)
+            Curva de Demanda (Criados vs Finalizados)
           </h3>
           <div className="flex-1">
             <ResponsiveContainer width="100%" height="100%">
@@ -332,6 +341,10 @@ export const Reports: React.FC<ReportsProps> = ({ db, theme = 'dark' }) => {
                     <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
                     <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
                   </linearGradient>
+                  <linearGradient id="colorDone" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} vertical={false} />
                 <XAxis dataKey="date" tick={{ fontSize: 9, fontWeight: 700 }} />
@@ -339,7 +352,9 @@ export const Reports: React.FC<ReportsProps> = ({ db, theme = 'dark' }) => {
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '16px', color: '#fff' }}
                 />
-                <Area type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" />
+                <Legend iconType="circle" />
+                <Area type="monotone" dataKey="created" name="Criados" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" />
+                <Area type="monotone" dataKey="done" name="Finalizados" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorDone)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
