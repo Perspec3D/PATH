@@ -810,10 +810,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 <button
                   type="button"
                   onClick={handleCreateFolder}
-                  className="py-4 px-6 bg-amber-400 text-amber-950 rounded-2xl flex items-center justify-center hover:bg-amber-500 transition-all active:scale-[0.98] font-black text-[10px] uppercase tracking-[0.2em] shadow-lg shadow-amber-500/20 whitespace-nowrap"
+                  className="py-4 px-6 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-2xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 dark:hover:text-white transition-all active:scale-[0.98] font-black text-[10px] uppercase tracking-[0.2em] whitespace-nowrap"
                   title="Criar pasta do projeto"
                 >
-                  <svg className="w-5 h-5 sm:mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                  <svg className="w-5 h-5 sm:mr-2 text-amber-500" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
                   <span className="hidden sm:inline">Criar Pasta do Projeto</span>
                 </button>
                 <button
