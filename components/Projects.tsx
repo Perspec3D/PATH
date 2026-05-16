@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole } from '../types';
-import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB } from '../storage';
+import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction } from '../types';
+import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction } from '../storage';
 
 interface ProjectsProps {
   db: AppDB;
@@ -191,8 +191,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       let newProjects;
       if (editingProject) {
         newProjects = db.projects.map((p: Project) => p.id === editingProject.id ? projectData : p);
+        await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} atualizou o projeto ${projectData.code}`, projectData.id);
       } else {
         newProjects = [...db.projects, projectData];
+        await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.CREATE, `${currentUser.username} criou o projeto ${projectData.code}`, projectData.id);
       }
 
       setDb({ ...db, projects: newProjects });
@@ -250,6 +252,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     if (confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o projeto "${editingProject.name}"?\nEsta ação não pode ser desfeita.`)) {
       try {
         await deleteProject(editingProject.id);
+        await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.DELETE, `${currentUser.username} excluiu o projeto ${editingProject.code}`, editingProject.id);
         setDb({
           ...db,
           projects: db.projects.filter(p => p.id !== editingProject.id)

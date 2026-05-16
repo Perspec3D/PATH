@@ -137,3 +137,38 @@ export interface TeamTask {
   description?: string;
   createdAt: number;
 }
+
+export enum LogModule {
+  CLIENTS = 'Clientes',
+  PROJECTS = 'Projetos',
+  SUBTASKS = 'Subtarefas',
+  TASKS = 'Tarefas',
+  USERS = 'Usuários',
+  SETTINGS = 'Configurações',
+  AUTH = 'Login e Logout'
+}
+
+export enum LogAction {
+  CREATE = 'CREATE',
+  UPDATE = 'UPDATE',
+  DELETE = 'DELETE',
+  STATUS_CHANGE = 'STATUS_CHANGE',
+  DATE_CHANGE = 'DATE_CHANGE',
+  ASSIGNMENT_CHANGE = 'ASSIGNMENT_CHANGE',
+  LOGIN = 'LOGIN',
+  LOGOUT = 'LOGOUT'
+}
+
+export interface SystemLog {
+  id: string;
+  workspaceId: string;
+  createdAt: number;
+  userId: string;
+  userName: string;
+  userRole: string;
+  module: LogModule;
+  action: LogAction;
+  itemId?: string;
+  details: string;
+  ipAddress?: string;
+}

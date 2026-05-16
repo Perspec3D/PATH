@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Company, InternalUser, LicenseStatus, UserRole } from './types';
-import { AppDB, fetchAllData, syncUser } from './storage';
+import { Company, InternalUser, LicenseStatus, UserRole, LogModule, LogAction } from './types';
+import { AppDB, fetchAllData, syncUser, logAction } from './storage';
 import { supabase } from './lib/supabase';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -14,8 +14,9 @@ import { CompanyLogin } from './components/Auth';
 import { InternalUserLogin } from './components/Who';
 import { Reports } from './components/Reports';
 import { Tasks } from './components/Tasks';
+import { Logs } from './components/Logs';
 
-type Page = 'dashboard' | 'clients' | 'projects' | 'tasks' | 'timeline' | 'team' | 'reports' | 'settings';
+type Page = 'dashboard' | 'clients' | 'projects' | 'tasks' | 'timeline' | 'team' | 'reports' | 'logs' | 'settings';
 
 const App: React.FC = () => {
   const [db, setDb] = useState<AppDB>({
@@ -233,12 +234,18 @@ const App: React.FC = () => {
     setCompanySession(company);
   };
 
-  const handleUserLogin = (user: InternalUser) => {
+  const handleUserLogin = async (user: InternalUser) => {
     setUserSession(user);
     localStorage.setItem('PATH_USER_SESSION', JSON.stringify(user));
+    if (db.company) {
+      await logAction(db.company.id, user, LogModule.AUTH, LogAction.LOGIN, `${user.username} realizou login no sistema.`);
+    }
   };
 
   const handleLogout = async () => {
+    if (userSession && db.company) {
+      await logAction(db.company.id, userSession, LogModule.AUTH, LogAction.LOGOUT, `${userSession.username} saiu do sistema.`);
+    }
     await supabase.auth.signOut();
     setUserSession(null);
     setCompanySession(null);
@@ -544,6 +551,7 @@ const App: React.FC = () => {
       {currentPage === 'settings' && userSession.role === UserRole.ADMIN && (
         <Settings db={db} setDb={setDb} currentUser={userSession} theme={theme} />
       )}
+      {currentPage === 'logs' && userSession.role === UserRole.ADMIN && <Logs db={db} theme={theme} />}
     </Layout>
   );
 };

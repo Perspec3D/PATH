@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { Client, InternalUser, Project, UserRole } from '../types';
-import { getNextClientCode, syncClient, AppDB } from '../storage';
+import { Client, InternalUser, Project, UserRole, LogModule, LogAction } from '../types';
+import { getNextClientCode, syncClient, AppDB, logAction } from '../storage';
 
 interface ClientsProps {
   db: AppDB;
@@ -139,8 +139,10 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
       let newClients;
       if (editingClient) {
         newClients = db.clients.map((c: Client) => c.id === editingClient.id ? clientData : c);
+        await logAction(currentUser.workspaceId, currentUser, LogModule.CLIENTS, LogAction.UPDATE, `${currentUser.username} atualizou o cliente ${clientData.name}`, clientData.code);
       } else {
         newClients = [...db.clients, clientData];
+        await logAction(currentUser.workspaceId, currentUser, LogModule.CLIENTS, LogAction.CREATE, `${currentUser.username} cadastrou o cliente ${clientData.name}`, clientData.code);
       }
 
       setDb({ ...db, clients: newClients });

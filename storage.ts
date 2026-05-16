@@ -1,4 +1,4 @@
-import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType } from './types';
+import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction } from './types';
 import { supabase } from './lib/supabase';
 
 export interface AppDB {
@@ -257,3 +257,42 @@ export const getNextProjectSeq = (projects: Project[], clientId: string, year: n
   return getNextGlobalProjectSeq(projects);
 };
 
+export const logAction = async (workspaceId: string, user: InternalUser, module: LogModule, action: LogAction, details: string, itemId?: string) => {
+  const { error } = await supabase.from('logs').insert({
+    workspace_id: workspaceId,
+    user_id: user.id,
+    user_name: user.username,
+    user_role: user.role,
+    module: module,
+    action: action,
+    details: details,
+    item_id: itemId || null
+  });
+  if (error) console.error("Error logging action:", error);
+};
+
+export const fetchLogs = async (workspaceId: string): Promise<SystemLog[]> => {
+  const { data, error } = await supabase.from('logs')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .order('created_at', { ascending: false });
+  
+  if (error) {
+    console.error("Error fetching logs:", error);
+    return [];
+  }
+
+  return (data || []).map((l: any) => ({
+    id: l.id,
+    workspaceId: l.workspace_id,
+    createdAt: new Date(l.created_at).getTime(),
+    userId: l.user_id,
+    userName: l.user_name,
+    userRole: l.user_role,
+    module: l.module,
+    action: l.action,
+    itemId: l.item_id,
+    details: l.details,
+    ipAddress: l.ip_address
+  }));
+};

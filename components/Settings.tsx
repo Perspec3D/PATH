@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { InternalUser, UserRole, LicenseStatus } from '../types';
-import { syncUser, syncCompany, AppDB, supabase } from '../storage';
+import { InternalUser, UserRole, LicenseStatus, LogModule, LogAction } from '../types';
+import { syncUser, syncCompany, AppDB, supabase, logAction } from '../storage';
 
 interface SettingsProps {
   db: AppDB;
@@ -98,6 +98,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
     try {
       await syncCompany(newCompany as any);
       setDb({ ...db, company: newCompany as any });
+      await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} atualizou as configurações da empresa`, 'COMPANY');
       alert('Configurações da empresa salvas!');
     } catch (err: any) {
       alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
@@ -140,6 +141,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
       const updatedCompany = { ...db.company, logoUrl: publicUrl };
       await syncCompany(updatedCompany as any);
       setDb({ ...db, company: updatedCompany as any });
+      await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} atualizou o logotipo da empresa`, 'COMPANY_LOGO');
 
     } catch (err: any) {
       alert("Erro ao enviar logotipo: " + (err.message || "Erro desconhecido"));
@@ -171,12 +173,14 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
       let newUsers;
       if (editingUser) {
         newUsers = db.users.map((u: InternalUser) => u.id === editingUser.id ? userData : u);
+        await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} atualizou o usuário ${userData.username}`, userData.id);
       } else {
         if (db.users.some((u: any) => u.username === username)) {
           alert('Username já existe');
           return;
         }
         newUsers = [...db.users, userData];
+        await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.CREATE, `${currentUser.username} cadastrou o usuário ${userData.username}`, userData.id);
       }
 
       setDb({ ...db, users: newUsers });
@@ -199,6 +203,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
         u.id === user.id ? updatedUser : u
       );
       setDb({ ...db, users: newUsers });
+      await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} ${updatedUser.isActive ? 'ativou' : 'desativou'} o usuário ${user.username}`, user.id);
     } catch (err: any) {
       alert("Erro ao atualizar status: " + err.message);
     }

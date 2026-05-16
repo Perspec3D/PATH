@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { InternalUser, UserRole, TeamTask, TaskType } from '../types';
-import { AppDB, syncTeamTask, deleteTeamTask } from '../storage';
+import { InternalUser, UserRole, TeamTask, TaskType, LogModule, LogAction } from '../types';
+import { AppDB, syncTeamTask, deleteTeamTask, logAction } from '../storage';
 
 interface TasksProps {
   db: AppDB;
@@ -49,6 +49,10 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
     if (window.confirm('Tem certeza que deseja excluir esta tarefa?')) {
       try {
         await deleteTeamTask(taskId);
+        const taskToDelete = db.tasks.find(t => t.id === taskId);
+        if (taskToDelete) {
+          await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.DELETE, `${currentUser.username} excluiu a tarefa "${taskToDelete.title}"`, taskToDelete.id);
+        }
         setDb({ ...db, tasks: db.tasks.filter(t => t.id !== taskId) });
       } catch (err: any) {
         alert("Erro ao excluir: " + (err.message || "Erro desconhecido"));
@@ -85,8 +89,10 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
       await syncTeamTask(taskData);
       if (editingTask) {
         setDb({ ...db, tasks: db.tasks.map(t => t.id === editingTask.id ? taskData : t) });
+        await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} atualizou a tarefa "${taskData.title}"`, taskData.id);
       } else {
         setDb({ ...db, tasks: [...db.tasks, taskData] });
+        await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.CREATE, `${currentUser.username} criou a tarefa "${taskData.title}"`, taskData.id);
       }
       setIsModalOpen(false);
     } catch (err: any) {
