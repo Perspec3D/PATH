@@ -195,10 +195,10 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
 
         if (diffLogs.length > 0) {
           for (const log of diffLogs) {
-             await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} ${log}`, userData.id);
+             await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} ${log}`, userData.username);
           }
         } else {
-           await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} atualizou o usuário ${userData.username}`, userData.id);
+           await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} atualizou o usuário ${userData.username}`, userData.username);
         }
       } else {
         if (db.users.some((u: any) => u.username === username)) {
@@ -206,7 +206,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
           return;
         }
         newUsers = [...db.users, userData];
-        await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.CREATE, `${currentUser.username} cadastrou o usuário ${userData.username}`, userData.id);
+        await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.CREATE, `${currentUser.username} cadastrou o usuário ${userData.username}`, userData.username);
       }
 
       setDb({ ...db, users: newUsers });
@@ -229,7 +229,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
         u.id === user.id ? updatedUser : u
       );
       setDb({ ...db, users: newUsers });
-      await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} ${updatedUser.isActive ? 'ativou' : 'desativou'} o usuário ${user.username}`, user.id);
+      await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} ${updatedUser.isActive ? 'ativou' : 'desativou'} o usuário ${user.username}`, user.username);
     } catch (err: any) {
       alert("Erro ao atualizar status: " + err.message);
     }

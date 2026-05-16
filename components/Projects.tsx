@@ -206,14 +206,14 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
 
         if (diffLogs.length > 0) {
           for (const log of diffLogs) {
-             await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} ${log}`, projectData.id);
+             await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} ${log}`, projectData.code);
           }
         } else {
-           await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} atualizou o projeto ${projectData.code}`, projectData.id);
+           await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} atualizou o projeto ${projectData.code}`, projectData.code);
         }
       } else {
         newProjects = [...db.projects, projectData];
-        await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.CREATE, `${currentUser.username} criou o projeto ${projectData.code}`, projectData.id);
+        await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.CREATE, `${currentUser.username} criou o projeto ${projectData.code}`, projectData.code);
       }
 
       setDb({ ...db, projects: newProjects });
@@ -271,7 +271,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     if (confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o projeto "${editingProject.name}"?\nEsta ação não pode ser desfeita.`)) {
       try {
         await deleteProject(editingProject.id);
-        await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.DELETE, `${currentUser.username} excluiu o projeto ${editingProject.code}`, editingProject.id);
+        await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.DELETE, `${currentUser.username} excluiu o projeto ${editingProject.code}`, editingProject.code);
         setDb({
           ...db,
           projects: db.projects.filter(p => p.id !== editingProject.id)

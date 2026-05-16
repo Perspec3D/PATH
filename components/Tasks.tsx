@@ -52,7 +52,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
         await deleteTeamTask(taskId);
         const taskToDelete = db.tasks.find(t => t.id === taskId);
         if (taskToDelete) {
-          await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.DELETE, `${currentUser.username} excluiu a tarefa "${taskToDelete.title}"`, taskToDelete.id);
+          await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.DELETE, `${currentUser.username} excluiu a tarefa "${taskToDelete.title}"`, taskToDelete.title);
         }
         setDb({ ...db, tasks: db.tasks.filter(t => t.id !== taskId) });
       } catch (err: any) {
@@ -102,14 +102,14 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
 
         if (diffLogs.length > 0) {
           for (const log of diffLogs) {
-             await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} ${log}`, taskData.id);
+             await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} ${log}`, taskData.title);
           }
         } else {
-           await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} atualizou a tarefa "${taskData.title}"`, taskData.id);
+           await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} atualizou a tarefa "${taskData.title}"`, taskData.title);
         }
       } else {
         setDb({ ...db, tasks: [...db.tasks, taskData] });
-        await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.CREATE, `${currentUser.username} criou a tarefa "${taskData.title}"`, taskData.id);
+        await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.CREATE, `${currentUser.username} criou a tarefa "${taskData.title}"`, taskData.title);
       }
       setIsModalOpen(false);
     } catch (err: any) {
