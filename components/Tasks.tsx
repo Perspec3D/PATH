@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { InternalUser, UserRole, TeamTask, TaskType, LogModule, LogAction } from '../types';
 import { AppDB, syncTeamTask, deleteTeamTask, logAction } from '../storage';
+import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 
 interface TasksProps {
   db: AppDB;
@@ -89,7 +90,23 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
       await syncTeamTask(taskData);
       if (editingTask) {
         setDb({ ...db, tasks: db.tasks.map(t => t.id === editingTask.id ? taskData : t) });
-        await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} atualizou a tarefa "${taskData.title}"`, taskData.id);
+        
+        const diffLogs = generateDiffLogs(editingTask, taskData, {
+          title: { label: 'Título' },
+          type: { label: 'Tipo' },
+          assigneeId: { label: 'Responsável', format: (id) => db.users.find(u => u.id === id)?.username || 'Sem Resp.' },
+          startDate: { label: 'Data Início', format: formatDateForLog },
+          endDate: { label: 'Data Fim', format: formatDateForLog },
+          description: { label: 'Descrição' }
+        }, `a tarefa "${taskData.title}"`);
+
+        if (diffLogs.length > 0) {
+          for (const log of diffLogs) {
+             await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} ${log}`, taskData.id);
+          }
+        } else {
+           await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} atualizou a tarefa "${taskData.title}"`, taskData.id);
+        }
       } else {
         setDb({ ...db, tasks: [...db.tasks, taskData] });
         await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.CREATE, `${currentUser.username} criou a tarefa "${taskData.title}"`, taskData.id);

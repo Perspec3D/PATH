@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction } from '../types';
 import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction } from '../storage';
+import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 
 interface ProjectsProps {
   db: AppDB;
@@ -191,7 +192,25 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       let newProjects;
       if (editingProject) {
         newProjects = db.projects.map((p: Project) => p.id === editingProject.id ? projectData : p);
-        await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} atualizou o projeto ${projectData.code}`, projectData.id);
+        
+        const diffLogs = generateDiffLogs(editingProject, projectData, {
+          name: { label: 'Nome' },
+          clientId: { label: 'Cliente', format: (id) => db.clients.find((c: Client) => c.id === id)?.name || id },
+          assigneeId: { label: 'Responsável', format: (id) => db.users.find((u: InternalUser) => u.id === id)?.username || 'Sem Resp.' },
+          status: { label: 'Status' },
+          revision: { label: 'Revisão' },
+          startDate: { label: 'Data de Início', format: formatDateForLog },
+          deliveryDate: { label: 'Prazo', format: formatDateForLog },
+          notes: { label: 'Anotações' }
+        }, `o projeto ${projectData.code}`);
+
+        if (diffLogs.length > 0) {
+          for (const log of diffLogs) {
+             await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} ${log}`, projectData.id);
+          }
+        } else {
+           await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} atualizou o projeto ${projectData.code}`, projectData.id);
+        }
       } else {
         newProjects = [...db.projects, projectData];
         await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.CREATE, `${currentUser.username} criou o projeto ${projectData.code}`, projectData.id);

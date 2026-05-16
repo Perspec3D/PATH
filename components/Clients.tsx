@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Client, InternalUser, Project, UserRole, LogModule, LogAction } from '../types';
 import { getNextClientCode, syncClient, AppDB, logAction } from '../storage';
+import { generateDiffLogs } from '../utils/logDiff';
 
 interface ClientsProps {
   db: AppDB;
@@ -139,7 +140,30 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
       let newClients;
       if (editingClient) {
         newClients = db.clients.map((c: Client) => c.id === editingClient.id ? clientData : c);
-        await logAction(currentUser.workspaceId, currentUser, LogModule.CLIENTS, LogAction.UPDATE, `${currentUser.username} atualizou o cliente ${clientData.name}`, clientData.code);
+        
+        const diffLogs = generateDiffLogs(editingClient, clientData, {
+          name: { label: 'Nome' },
+          type: { label: 'Tipo' },
+          status: { label: 'Status' },
+          cpfCnpj: { label: 'CPF/CNPJ' },
+          email: { label: 'Email' },
+          phone: { label: 'Telefone' },
+          zipCode: { label: 'CEP' },
+          address: { label: 'Endereço' },
+          number: { label: 'Número' },
+          neighborhood: { label: 'Bairro' },
+          city: { label: 'Cidade' },
+          state: { label: 'Estado' },
+          complement: { label: 'Complemento' }
+        }, `o cliente ${clientData.name}`);
+
+        if (diffLogs.length > 0) {
+          for (const log of diffLogs) {
+             await logAction(currentUser.workspaceId, currentUser, LogModule.CLIENTS, LogAction.UPDATE, `${currentUser.username} ${log}`, clientData.code);
+          }
+        } else {
+           await logAction(currentUser.workspaceId, currentUser, LogModule.CLIENTS, LogAction.UPDATE, `${currentUser.username} atualizou o cliente ${clientData.name}`, clientData.code);
+        }
       } else {
         newClients = [...db.clients, clientData];
         await logAction(currentUser.workspaceId, currentUser, LogModule.CLIENTS, LogAction.CREATE, `${currentUser.username} cadastrou o cliente ${clientData.name}`, clientData.code);

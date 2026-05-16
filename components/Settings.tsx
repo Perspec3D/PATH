@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { InternalUser, UserRole, LicenseStatus, LogModule, LogAction } from '../types';
 import { syncUser, syncCompany, AppDB, supabase, logAction } from '../storage';
+import { generateDiffLogs, formatBooleanForLog } from '../utils/logDiff';
 
 interface SettingsProps {
   db: AppDB;
@@ -98,7 +99,19 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
     try {
       await syncCompany(newCompany as any);
       setDb({ ...db, company: newCompany as any });
-      await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} atualizou as configurações da empresa`, 'COMPANY');
+      
+      const diffLogs = generateDiffLogs(db.company, newCompany, {
+        name: { label: 'Nome Fantasia' }
+      }, 'a empresa');
+
+      if (diffLogs.length > 0) {
+        for (const log of diffLogs) {
+           await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} ${log}`, 'COMPANY');
+        }
+      } else {
+         await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} atualizou as configurações da empresa`, 'COMPANY');
+      }
+
       alert('Configurações da empresa salvas!');
     } catch (err: any) {
       alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
@@ -173,7 +186,20 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
       let newUsers;
       if (editingUser) {
         newUsers = db.users.map((u: InternalUser) => u.id === editingUser.id ? userData : u);
-        await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} atualizou o usuário ${userData.username}`, userData.id);
+        
+        const diffLogs = generateDiffLogs(editingUser, userData, {
+          username: { label: 'Username' },
+          role: { label: 'Permissão' },
+          isActive: { label: 'Status', format: formatBooleanForLog }
+        }, `o usuário ${userData.username}`);
+
+        if (diffLogs.length > 0) {
+          for (const log of diffLogs) {
+             await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} ${log}`, userData.id);
+          }
+        } else {
+           await logAction(currentUser.workspaceId, currentUser, LogModule.SETTINGS, LogAction.UPDATE, `${currentUser.username} atualizou o usuário ${userData.username}`, userData.id);
+        }
       } else {
         if (db.users.some((u: any) => u.username === username)) {
           alert('Username já existe');
