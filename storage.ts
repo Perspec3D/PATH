@@ -31,7 +31,7 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
     .eq('workspace_id', companyId);
 
   const { data: teamTasks } = await supabase.from('team_tasks')
-    .select('id, workspace_id, title, type, assignee_id, start_date, end_date, description, created_at, start_time, end_time, reminder, reminder_dismissed, snooze_until')
+    .select('id, workspace_id, title, type, assignee_id, start_date, end_date, description, created_at, start_time, end_time, reminder, reminder_dismissed, snooze_until, invited_users, reminder_state')
     .eq('workspace_id', companyId);
 
   const { data: users } = await supabase.from('internal_users')
@@ -99,7 +99,9 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
       endTime: t.end_time || undefined,
       reminder: t.reminder || 'none',
       reminderDismissed: t.reminder_dismissed || false,
-      snoozeUntil: t.snooze_until ? new Date(t.snooze_until).getTime() : undefined
+      snoozeUntil: t.snooze_until ? new Date(t.snooze_until).getTime() : undefined,
+      invitedUsers: t.invited_users || [],
+      reminderState: t.reminder_state || {}
     })),
     users: (users || []).map((u: any) => ({
       id: u.id,
@@ -199,7 +201,9 @@ export const syncTeamTask = async (task: TeamTask) => {
     end_time: task.endTime || null,
     reminder: task.reminder || 'none',
     reminder_dismissed: task.reminderDismissed || false,
-    snooze_until: task.snoozeUntil ? new Date(task.snoozeUntil).toISOString() : null
+    snooze_until: task.snoozeUntil ? new Date(task.snoozeUntil).toISOString() : null,
+    invited_users: task.invitedUsers || [],
+    reminder_state: task.reminderState || {}
   });
   if (error) throw error;
 };

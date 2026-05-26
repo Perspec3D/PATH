@@ -209,10 +209,26 @@ const App: React.FC = () => {
       const adminGeneralAlerts = localStorage.getItem('PATH_ADMIN_GENERAL_ALERTS') === 'true';
 
       const triggeredTasks = db.tasks.filter(t => {
-        if (!t.reminder || t.reminder === 'none' || t.reminderDismissed) return false;
+        if (!t.reminder || t.reminder === 'none') return false;
 
-        const isRecipient = t.assigneeId === userSession.id || (isAdmin && adminGeneralAlerts);
+        const isRecipient = t.assigneeId === userSession.id || 
+                            (t.invitedUsers && t.invitedUsers.includes(userSession.id)) || 
+                            (isAdmin && adminGeneralAlerts);
         if (!isRecipient) return false;
+
+        const userState = t.reminderState?.[userSession.id];
+        let isDismissed = false;
+        let snoozeUntil: number | undefined = undefined;
+
+        if (userState) {
+          isDismissed = userState.dismissed;
+          snoozeUntil = userState.snoozeUntil;
+        } else if (t.assigneeId === userSession.id) {
+          isDismissed = !!t.reminderDismissed;
+          snoozeUntil = t.snoozeUntil;
+        }
+
+        if (isDismissed) return false;
 
         if (!t.startTime) return false;
         const taskDateTime = new Date(`${t.startDate}T${t.startTime}:00`);
@@ -227,8 +243,8 @@ const App: React.FC = () => {
 
         const scheduledTime = taskDateTime.getTime() - offsetMinutes * 60 * 1000;
 
-        if (t.snoozeUntil) {
-          return now >= t.snoozeUntil;
+        if (snoozeUntil) {
+          return now >= snoozeUntil;
         } else {
           return now >= scheduledTime;
         }
@@ -248,11 +264,22 @@ const App: React.FC = () => {
   }, [db.tasks, userSession, currentAlert]);
 
   const handleDismissAlert = async (task: TeamTask) => {
+    if (!userSession) return;
+    const updatedReminderState = {
+      ...(task.reminderState || {}),
+      [userSession.id]: {
+        dismissed: true,
+        snoozeUntil: undefined
+      }
+    };
     const updatedTask: TeamTask = {
       ...task,
-      reminderDismissed: true,
-      snoozeUntil: undefined
+      reminderState: updatedReminderState
     };
+    if (task.assigneeId === userSession.id) {
+      updatedTask.reminderDismissed = true;
+      updatedTask.snoozeUntil = undefined;
+    }
     try {
       setDb(prev => ({
         ...prev,
@@ -274,11 +301,23 @@ const App: React.FC = () => {
   };
 
   const handleSnoozeAlert = async (task: TeamTask) => {
+    if (!userSession) return;
+    const snoozeTime = Date.now() + 5 * 60 * 1000; // 5 minutes
+    const updatedReminderState = {
+      ...(task.reminderState || {}),
+      [userSession.id]: {
+        dismissed: false,
+        snoozeUntil: snoozeTime
+      }
+    };
     const updatedTask: TeamTask = {
       ...task,
-      reminderDismissed: false,
-      snoozeUntil: Date.now() + 5 * 60 * 1000 // 5 minutes
+      reminderState: updatedReminderState
     };
+    if (task.assigneeId === userSession.id) {
+      updatedTask.reminderDismissed = false;
+      updatedTask.snoozeUntil = snoozeTime;
+    }
     try {
       setDb(prev => ({
         ...prev,
@@ -719,6 +758,21 @@ const TaskAlertModal: React.FC<{
               <span className="font-bold text-slate-700 dark:text-slate-300">{assignee ? assignee.username : 'Desconhecido'}</span>
             </div>
           </div>
+
+          {task.invitedUsers && task.invitedUsers.length > 0 && (
+            <div className="flex justify-between items-start text-xs pt-3 border-t border-slate-100 dark:border-slate-800/50">
+              <span className="font-black text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-1">Convidados</span>
+              <div className="flex flex-wrap gap-1.5 max-w-[70%] justify-end">
+                {users
+                  .filter(u => task.invitedUsers?.includes(u.id))
+                  .map(u => (
+                    <span key={u.id} className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md font-bold text-[10px]">
+                      {u.username}
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-between items-center text-xs pt-3 border-t border-slate-100 dark:border-slate-800/50">
             <span className="font-black text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest">Data</span>

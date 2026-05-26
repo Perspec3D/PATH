@@ -24,6 +24,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [reminder, setReminder] = useState('none');
+  const [invitedUsers, setInvitedUsers] = useState<string[]>([]);
 
   const activeUsers = db.users.filter(u => u.isActive);
 
@@ -38,6 +39,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
     setStartTime('');
     setEndTime('');
     setReminder('none');
+    setInvitedUsers([]);
     setIsModalOpen(true);
   };
 
@@ -52,6 +54,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
     setStartTime(task.startTime || '');
     setEndTime(task.endTime || '');
     setReminder(task.reminder || 'none');
+    setInvitedUsers(task.invitedUsers || []);
     setIsModalOpen(true);
   };
 
@@ -100,6 +103,8 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
       editingTask.startDate !== startDate
     ) : false;
 
+    const filteredInvitedUsers = invitedUsers.filter(id => id !== assigneeId);
+
     const taskData: TeamTask = {
       id: editingTask ? editingTask.id : crypto.randomUUID(),
       workspaceId: currentUser.workspaceId,
@@ -114,7 +119,9 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
       endTime: endTime || undefined,
       reminder: reminder || 'none',
       reminderDismissed: editingTask ? (isTimingOrReminderChanged ? false : editingTask.reminderDismissed) : false,
-      snoozeUntil: editingTask ? (isTimingOrReminderChanged ? undefined : editingTask.snoozeUntil) : undefined
+      snoozeUntil: editingTask ? (isTimingOrReminderChanged ? undefined : editingTask.snoozeUntil) : undefined,
+      invitedUsers: filteredInvitedUsers,
+      reminderState: editingTask ? (isTimingOrReminderChanged ? {} : editingTask.reminderState || {}) : {}
     };
 
     try {
@@ -126,6 +133,13 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
           title: { label: 'Título' },
           type: { label: 'Tipo' },
           assigneeId: { label: 'Responsável', format: (id) => db.users.find(u => u.id === id)?.username || 'Sem Resp.' },
+          invitedUsers: {
+            label: 'Participantes',
+            format: (ids) => {
+              const arrayIds = Array.isArray(ids) ? ids : [];
+              return arrayIds.map(id => db.users.find(u => u.id === id)?.username || '').filter(Boolean).join(', ') || 'Nenhum';
+            }
+          },
           startDate: { label: 'Data Início', format: formatDateForLog },
           endDate: { label: 'Data Fim', format: formatDateForLog },
           description: { label: 'Descrição' },
@@ -224,7 +238,26 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                         <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-xs uppercase transition-colors">
                           {assignee ? assignee.username.charAt(0) : '?'}
                         </div>
-                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300 transition-colors">{assignee ? assignee.username : 'Desconhecido'}</span>
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-slate-600 dark:text-slate-300 transition-colors">{assignee ? assignee.username : 'Desconhecido'}</span>
+                          {task.invitedUsers && task.invitedUsers.length > 0 && (
+                            <div className="flex items-center -space-x-1.5 mt-1 overflow-hidden">
+                              {task.invitedUsers.map(id => {
+                                const u = db.users.find(usr => usr.id === id);
+                                if (!u) return null;
+                                return (
+                                  <div 
+                                    key={id}
+                                    title={u.username}
+                                    className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 border border-white dark:border-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold text-[8px] uppercase cursor-help shrink-0"
+                                  >
+                                    {u.username.charAt(0)}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="p-5">
@@ -338,6 +371,35 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                       <option key={u.id} value={u.id}>{u.username}</option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Participantes Convidados</label>
+                <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl max-h-36 overflow-y-auto custom-scrollbar space-y-2">
+                  {activeUsers.filter(u => u.id !== assigneeId).map(u => {
+                    const isChecked = invitedUsers.includes(u.id);
+                    return (
+                      <label key={u.id} className="flex items-center space-x-3 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setInvitedUsers(invitedUsers.filter(id => id !== u.id));
+                            } else {
+                              setInvitedUsers([...invitedUsers, u.id]);
+                            }
+                          }}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800"
+                        />
+                        <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{u.username}</span>
+                      </label>
+                    );
+                  })}
+                  {activeUsers.filter(u => u.id !== assigneeId).length === 0 && (
+                    <span className="text-xs text-slate-400 dark:text-slate-500">Nenhum outro usuário disponível</span>
+                  )}
                 </div>
               </div>
 

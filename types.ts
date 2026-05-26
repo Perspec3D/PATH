@@ -141,6 +141,8 @@ export interface TeamTask {
   reminder?: string;
   reminderDismissed?: boolean;
   snoozeUntil?: number;
+  invitedUsers?: string[];
+  reminderState?: { [userId: string]: { dismissed: boolean; snoozeUntil?: number } };
 }
 
 export enum LogModule {
