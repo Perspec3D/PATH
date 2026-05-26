@@ -201,31 +201,18 @@ const App: React.FC = () => {
     localStorage.setItem('PATH_THEME', theme);
   }, [theme]);
 
-  // Solicitar permissão de notificação do navegador ao acessar o PERSPECPATH
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission().catch(err => {
-          console.error("Erro ao solicitar permissão para notificações:", err);
-        });
-      }
-    }
-  }, []);
-
   useEffect(() => {
     if (!userSession || !db.tasks || db.tasks.length === 0) return;
 
     const checkAlerts = () => {
       const now = Date.now();
-      const isAdmin = userSession.role === UserRole.ADMIN;
-      const adminGeneralAlerts = localStorage.getItem('PATH_ADMIN_GENERAL_ALERTS') === 'true';
 
       const triggeredTasks = db.tasks.filter(t => {
         if (!t.reminder || t.reminder === 'none') return false;
 
+        // O alerta deve ser exibido apenas para o responsável principal e os participantes convidados
         const isRecipient = t.assigneeId === userSession.id || 
-                            (t.invitedUsers && t.invitedUsers.includes(userSession.id)) || 
-                            (isAdmin && adminGeneralAlerts);
+                            (t.invitedUsers && t.invitedUsers.includes(userSession.id));
         if (!isRecipient) return false;
 
         const userState = t.reminderState?.[userSession.id];
@@ -286,9 +273,10 @@ const App: React.FC = () => {
             if (!notifiedTasksRef.current[notificationKey]) {
               const assignee = db.users.find(u => u.id === t.assigneeId);
               const assigneeName = assignee ? assignee.username : 'Desconhecido';
+              const formattedDate = new Date(t.startDate + 'T12:00:00').toLocaleDateString('pt-BR');
               const timeStr = t.startTime ? `${t.startTime}${t.endTime ? ` - ${t.endTime}` : ''}` : 'Sem horário';
               
-              let bodyText = `Horário: ${timeStr}\nResponsável: ${assigneeName}`;
+              let bodyText = `Tipo: ${t.type}\nData: ${formattedDate} (${timeStr})\nResponsável: ${assigneeName}`;
               if (t.description) {
                 const cleanDesc = t.description.trim();
                 if (cleanDesc) {

@@ -35,6 +35,50 @@ export const Layout: React.FC<LayoutProps> = ({
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [legalView, setLegalView] = useState<'about' | 'terms' | 'privacy'>('about');
 
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      return 'unsupported';
+    }
+    return Notification.permission;
+  });
+
+  const [isBannerDismissed, setIsBannerDismissed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('PATH_DISMISS_NOTIFICATION_BANNER') === 'true';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(Notification.permission);
+      if (Notification.permission === 'granted') {
+        localStorage.setItem('PATH_NOTIFICATIONS_PREFERENCE', 'allowed');
+      }
+    }
+  }, []);
+
+  const handleRequestPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const permission = await Notification.requestPermission();
+        setNotificationPermission(permission);
+        if (permission === 'granted') {
+          localStorage.setItem('PATH_NOTIFICATIONS_PREFERENCE', 'allowed');
+        }
+      } catch (err) {
+        console.error("Erro ao solicitar permissão de notificação:", err);
+      }
+    }
+  };
+
+  const handleDismissBanner = () => {
+    setIsBannerDismissed(true);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('PATH_DISMISS_NOTIFICATION_BANNER', 'true');
+    }
+  };
+
   useEffect(() => {
     const handleFsChange = () => {
       setIsFullScreen(!!document.fullscreenElement);
@@ -259,6 +303,51 @@ export const Layout: React.FC<LayoutProps> = ({
             </div>
           )}
         </header>
+
+        {notificationPermission !== 'granted' && notificationPermission !== 'unsupported' && !isBannerDismissed && (
+          <div className={`px-8 py-3 border-b flex items-center justify-between transition-colors ${
+            notificationPermission === 'default' 
+              ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-100 dark:border-indigo-900/40 text-indigo-700 dark:text-indigo-300' 
+              : 'bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/30 text-amber-700 dark:text-amber-400'
+          }`}>
+            <div className="flex items-center space-x-3">
+              {notificationPermission === 'default' ? (
+                <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              )}
+              <span className="text-xs font-semibold">
+                {notificationPermission === 'default' 
+                  ? 'Ative as notificações para receber lembretes de tarefas mesmo fora da aba do PERSPECPATH.'
+                  : 'As notificações estão bloqueadas no navegador. Ative as notificações nas configurações do site para receber lembretes fora da aba.'
+                }
+              </span>
+            </div>
+            <div className="flex items-center space-x-3">
+              {notificationPermission === 'default' && (
+                <button
+                  onClick={handleRequestPermission}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95"
+                >
+                  Ativar
+                </button>
+              )}
+              <button
+                onClick={handleDismissBanner}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                title="Fechar"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-8">
           <div className="max-w-7xl mx-auto">
