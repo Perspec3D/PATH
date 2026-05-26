@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Company, InternalUser, LicenseStatus, UserRole, LogModule, LogAction, TeamTask } from './types';
 import { AppDB, fetchAllData, syncUser, logAction, syncTeamTask } from './storage';
 import { supabase } from './lib/supabase';
@@ -31,6 +31,7 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
   const [currentAlert, setCurrentAlert] = useState<TeamTask | null>(null);
+  const notifiedTasksRef = useRef<Record<string, boolean>>({});
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('PATH_THEME');
     return (saved as 'dark' | 'light') || 'dark';
@@ -200,6 +201,17 @@ const App: React.FC = () => {
     localStorage.setItem('PATH_THEME', theme);
   }, [theme]);
 
+  // Solicitar permissão de notificação do navegador ao acessar o PERSPECPATH
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().catch(err => {
+          console.error("Erro ao solicitar permissão para notificações:", err);
+        });
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!userSession || !db.tasks || db.tasks.length === 0) return;
 
@@ -251,6 +263,57 @@ const App: React.FC = () => {
       });
 
       if (triggeredTasks.length > 0) {
+        // Disparar notificações do navegador (se permitido)
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          triggeredTasks.forEach(t => {
+            const userState = t.reminderState?.[userSession.id];
+            const snoozeUntil = userState ? userState.snoozeUntil : (t.assigneeId === userSession.id ? t.snoozeUntil : undefined);
+            
+            let offsetMinutes = 0;
+            if (t.reminder === '5m') offsetMinutes = 5;
+            else if (t.reminder === '10m') offsetMinutes = 10;
+            else if (t.reminder === '15m') offsetMinutes = 15;
+            else if (t.reminder === '30m') offsetMinutes = 30;
+            else if (t.reminder === '1h') offsetMinutes = 60;
+
+            const taskDateTime = new Date(`${t.startDate}T${t.startTime}:00`);
+            const scheduledTime = !isNaN(taskDateTime.getTime()) 
+              ? taskDateTime.getTime() - offsetMinutes * 60 * 1000 
+              : 0;
+
+            const notificationKey = `${t.id}-${snoozeUntil || 0}-${scheduledTime}`;
+
+            if (!notifiedTasksRef.current[notificationKey]) {
+              const assignee = db.users.find(u => u.id === t.assigneeId);
+              const assigneeName = assignee ? assignee.username : 'Desconhecido';
+              const timeStr = t.startTime ? `${t.startTime}${t.endTime ? ` - ${t.endTime}` : ''}` : 'Sem horário';
+              
+              let bodyText = `Horário: ${timeStr}\nResponsável: ${assigneeName}`;
+              if (t.description) {
+                const cleanDesc = t.description.trim();
+                if (cleanDesc) {
+                  const shortDesc = cleanDesc.length > 80 ? cleanDesc.substring(0, 77) + '...' : cleanDesc;
+                  bodyText += `\nDescrição: ${shortDesc}`;
+                }
+              }
+
+              try {
+                const notification = new Notification(t.title, {
+                  body: bodyText,
+                  icon: '/PATH_logo.png'
+                });
+                notification.onclick = () => {
+                  window.focus();
+                  setCurrentAlert(t);
+                };
+              } catch (err) {
+                console.error("Erro ao disparar notificação de lembrete:", err);
+              }
+              notifiedTasksRef.current[notificationKey] = true;
+            }
+          });
+        }
+
         const nextAlert = triggeredTasks.find(t => !currentAlert || currentAlert.id !== t.id);
         if (nextAlert && (!currentAlert || currentAlert.id !== nextAlert.id)) {
           setCurrentAlert(nextAlert);
@@ -376,6 +439,7 @@ const App: React.FC = () => {
   const handleUserLogin = async (user: InternalUser) => {
     setUserSession(user);
     localStorage.setItem('PATH_USER_SESSION', JSON.stringify(user));
+    notifiedTasksRef.current = {};
     if (db.company) {
       await logAction(db.company.id, user, LogModule.AUTH, LogAction.LOGIN, `${user.username} realizou login no sistema.`);
     }
@@ -389,6 +453,7 @@ const App: React.FC = () => {
     setUserSession(null);
     setCompanySession(null);
     localStorage.removeItem('PATH_USER_SESSION');
+    notifiedTasksRef.current = {};
   };
 
   const handleResendConfirmation = async () => {
@@ -413,6 +478,7 @@ const App: React.FC = () => {
   const switchUser = () => {
     setUserSession(null);
     localStorage.removeItem('PATH_USER_SESSION');
+    notifiedTasksRef.current = {};
   };
 
   if (isLoading) return <div className="h-screen flex items-center justify-center text-slate-500 font-black uppercase text-xs tracking-widest">Carregando PERSPEC PATH...</div>;
