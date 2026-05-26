@@ -27,6 +27,15 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
   const [returnStatus, setReturnStatus] = useState<'success' | 'pending' | 'failure' | null>(null);
   const [logoUrl, setLogoUrl] = useState(db.company?.logoUrl || '');
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [adminGeneralAlerts, setAdminGeneralAlerts] = useState<boolean>(() => {
+    const saved = localStorage.getItem('PATH_ADMIN_GENERAL_ALERTS');
+    return saved ? JSON.parse(saved) : false;
+  });
+
+  const handleToggleAdminAlerts = (checked: boolean) => {
+    setAdminGeneralAlerts(checked);
+    localStorage.setItem('PATH_ADMIN_GENERAL_ALERTS', JSON.stringify(checked));
+  };
 
   // Check for payment return parameters
   React.useEffect(() => {
@@ -392,6 +401,32 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
               Salvar Alterações
             </button>
           </form>
+        </div>
+      </section>
+
+      {/* Alertas e Agenda Section */}
+      <section className="bg-white dark:bg-[#1e293b] rounded-3xl shadow-sm dark:shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
+        <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 transition-colors">
+          <h2 className="font-black text-xs text-slate-400 dark:text-slate-400 uppercase tracking-widest">Configurações de Agenda e Alertas</h2>
+        </div>
+        <div className="p-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight mb-1">Visualizar Alertas Gerais (ADMIN)</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed pr-6">
+                Permitir que usuários com perfil ADMINISTRADOR recebam pop-ups de alertas para todas as tarefas cadastradas na equipe, não apenas as que estão atribuídas diretamente a eles.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+              <input 
+                type="checkbox" 
+                checked={adminGeneralAlerts} 
+                onChange={e => handleToggleAdminAlerts(e.target.checked)}
+                className="sr-only peer" 
+              />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none dark:bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
         </div>
       </section>
 

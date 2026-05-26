@@ -136,6 +136,11 @@ export interface TeamTask {
   endDate: string;
   description?: string;
   createdAt: number;
+  startTime?: string;
+  endTime?: string;
+  reminder?: string;
+  reminderDismissed?: boolean;
+  snoozeUntil?: number;
 }
 
 export enum LogModule {

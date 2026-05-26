@@ -21,6 +21,9 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [description, setDescription] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [reminder, setReminder] = useState('none');
 
   const activeUsers = db.users.filter(u => u.isActive);
 
@@ -32,6 +35,9 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
     setStartDate('');
     setEndDate('');
     setDescription('');
+    setStartTime('');
+    setEndTime('');
+    setReminder('none');
     setIsModalOpen(true);
   };
 
@@ -43,6 +49,9 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
     setStartDate(task.startDate);
     setEndDate(task.endDate);
     setDescription(task.description || '');
+    setStartTime(task.startTime || '');
+    setEndTime(task.endTime || '');
+    setReminder(task.reminder || 'none');
     setIsModalOpen(true);
   };
 
@@ -74,6 +83,23 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
       return;
     }
 
+    if (reminder !== 'none' && !startTime) {
+      alert("Por favor, defina a hora de início para configurar um lembrete.");
+      return;
+    }
+
+    if (startDate === endDate && startTime && endTime && startTime > endTime) {
+      alert("A hora de início não pode ser maior que a hora de fim no mesmo dia.");
+      return;
+    }
+
+    const isTimingOrReminderChanged = editingTask ? (
+      editingTask.startTime !== startTime ||
+      editingTask.endTime !== endTime ||
+      editingTask.reminder !== reminder ||
+      editingTask.startDate !== startDate
+    ) : false;
+
     const taskData: TeamTask = {
       id: editingTask ? editingTask.id : crypto.randomUUID(),
       workspaceId: currentUser.workspaceId,
@@ -83,7 +109,12 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
       startDate,
       endDate,
       description,
-      createdAt: editingTask ? editingTask.createdAt : Date.now()
+      createdAt: editingTask ? editingTask.createdAt : Date.now(),
+      startTime: startTime || undefined,
+      endTime: endTime || undefined,
+      reminder: reminder || 'none',
+      reminderDismissed: editingTask ? (isTimingOrReminderChanged ? false : editingTask.reminderDismissed) : false,
+      snoozeUntil: editingTask ? (isTimingOrReminderChanged ? undefined : editingTask.snoozeUntil) : undefined
     };
 
     try {
@@ -97,7 +128,21 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
           assigneeId: { label: 'Responsável', format: (id) => db.users.find(u => u.id === id)?.username || 'Sem Resp.' },
           startDate: { label: 'Data Início', format: formatDateForLog },
           endDate: { label: 'Data Fim', format: formatDateForLog },
-          description: { label: 'Descrição' }
+          description: { label: 'Descrição' },
+          startTime: { label: 'Hora Início' },
+          endTime: { label: 'Hora Fim' },
+          reminder: { label: 'Lembrete', format: (r) => {
+            switch(r) {
+              case 'none': return 'Sem lembrete';
+              case 'on_time': return 'No horário';
+              case '5m': return '5 min antes';
+              case '10m': return '10 min antes';
+              case '15m': return '15 min antes';
+              case '30m': return '30 min antes';
+              case '1h': return '1 hora antes';
+              default: return 'Sem lembrete';
+            }
+          }}
         }, `a tarefa "${taskData.title}"`);
 
         if (diffLogs.length > 0) {
@@ -105,7 +150,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
              await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} ${log}`, taskData.title);
           }
         } else {
-           await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} atualizou a tarefa "${taskData.title}"`, taskData.title);
+            await logAction(currentUser.workspaceId, currentUser, LogModule.TASKS, LogAction.UPDATE, `${currentUser.username} atualizou a tarefa "${taskData.title}"`, taskData.title);
         }
       } else {
         setDb({ ...db, tasks: [...db.tasks, taskData] });
@@ -166,7 +211,9 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                   <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors group">
                     <td className="p-5">
                       <div className="flex flex-col">
-                        <span className="text-sm font-bold text-slate-900 dark:text-white mb-1 transition-colors">{task.title}</span>
+                        <span className="text-sm font-bold text-slate-900 dark:text-white mb-1 transition-colors">
+                          {task.startTime ? `${task.startTime} - ` : ''}{task.title}
+                        </span>
                         <span className={`self-start px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${getTaskTypeBadgeColor(task.type)}`}>
                           {task.type}
                         </span>
@@ -246,7 +293,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-1">Aviso de Expiração Automática</p>
                 <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  Esta tarefa será mantida no sistema por <strong>30 dias</strong> e depois será excluída automaticamente para não poluir o banco de dados.
+                  Esta tarefa será mantida no sistema por <strong>30 dias</strong> e depois será excluída automaticamente para não poluir o banco de dados. Se um lembrete for configurado, o alerta será exibido dentro do PERSPECPATH no horário definido.
                 </p>
               </div>
             </div>
@@ -314,6 +361,43 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                     onChange={e => setEndDate(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Hora Início</label>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={e => setStartTime(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Hora Fim</label>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={e => setEndTime(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Lembrete</label>
+                  <select
+                    value={reminder}
+                    onChange={e => setReminder(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                  >
+                    <option value="none">Sem lembrete</option>
+                    <option value="on_time">No horário da tarefa</option>
+                    <option value="5m">5 minutos antes</option>
+                    <option value="10m">10 minutos antes</option>
+                    <option value="15m">15 minutos antes</option>
+                    <option value="30m">30 minutos antes</option>
+                    <option value="1h">1 hora antes</option>
+                  </select>
                 </div>
               </div>
 

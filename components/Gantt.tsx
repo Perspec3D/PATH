@@ -36,6 +36,9 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const [taskStartDate, setTaskStartDate] = useState('');
   const [taskEndDate, setTaskEndDate] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
+  const [taskStartTime, setTaskStartTime] = useState('');
+  const [taskEndTime, setTaskEndTime] = useState('');
+  const [taskReminder, setTaskReminder] = useState('none');
 
   const [expandedProjects, setExpandedProjects] = useState<string[]>([]);
 
@@ -96,6 +99,9 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
       setTaskStartDate(originalTask.startDate);
       setTaskEndDate(originalTask.endDate);
       setTaskDescription(originalTask.description || '');
+      setTaskStartTime(originalTask.startTime || '');
+      setTaskEndTime(originalTask.endTime || '');
+      setTaskReminder(originalTask.reminder || 'none');
     }
   };
 
@@ -108,6 +114,23 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
       return;
     }
 
+    if (taskReminder !== 'none' && !taskStartTime) {
+      alert("Por favor, defina a hora de início para configurar um lembrete.");
+      return;
+    }
+
+    if (taskStartDate === taskEndDate && taskStartTime && taskEndTime && taskStartTime > taskEndTime) {
+      alert("A hora de início não pode ser maior que a hora de fim no mesmo dia.");
+      return;
+    }
+
+    const isTimingOrReminderChanged = editingTeamTask ? (
+      editingTeamTask.startTime !== taskStartTime ||
+      editingTeamTask.endTime !== taskEndTime ||
+      editingTeamTask.reminder !== taskReminder ||
+      editingTeamTask.startDate !== taskStartDate
+    ) : false;
+
     const taskData: TeamTask = {
       ...editingTeamTask,
       title: taskTitle,
@@ -116,6 +139,11 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
       startDate: taskStartDate,
       endDate: taskEndDate,
       description: taskDescription,
+      startTime: taskStartTime || undefined,
+      endTime: taskEndTime || undefined,
+      reminder: taskReminder || 'none',
+      reminderDismissed: editingTeamTask ? (isTimingOrReminderChanged ? false : editingTeamTask.reminderDismissed) : false,
+      snoozeUntil: editingTeamTask ? (isTimingOrReminderChanged ? undefined : editingTeamTask.snoozeUntil) : undefined
     };
 
     try {
@@ -656,7 +684,11 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                             >
                               <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.type === 'subtask' ? task.parentProject.id : task.id)}`} />
                               <span className="text-[8px] font-black text-white/90 truncate uppercase tracking-tighter">
-                                {task.type === 'subtask' ? `[ST] ${task.name}` : task.name}
+                                {task.type === 'subtask' 
+                                  ? `[ST] ${task.name}` 
+                                  : task.type === 'activity' && task.startTime
+                                    ? `${task.startTime} - ${task.name}`
+                                    : task.name}
                               </span>
 
                               {/* TOOLTIP ATRIBUIÇÃO */}
@@ -869,6 +901,43 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                   <input type="date" required value={taskEndDate} onChange={e => setTaskEndDate(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors" />
                 </div>
               </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Hora Início</label>
+                  <input
+                    type="time"
+                    value={taskStartTime}
+                    onChange={e => setTaskStartTime(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Hora Fim</label>
+                  <input
+                    type="time"
+                    value={taskEndTime}
+                    onChange={e => setTaskEndTime(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Lembrete</label>
+                  <select
+                    value={taskReminder}
+                    onChange={e => setTaskReminder(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
+                  >
+                    <option value="none">Sem lembrete</option>
+                    <option value="on_time">No horário da tarefa</option>
+                    <option value="5m">5 minutos antes</option>
+                    <option value="10m">10 minutos antes</option>
+                    <option value="15m">15 minutos antes</option>
+                    <option value="30m">30 minutos antes</option>
+                    <option value="1h">1 hora antes</option>
+                  </select>
+                </div>
+              </div>
+
               <div>
                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 block">Descrição / Observação</label>
                 <textarea value={taskDescription} onChange={e => setTaskDescription(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors resize-none h-24" />

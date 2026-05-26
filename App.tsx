@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Company, InternalUser, LicenseStatus, UserRole, LogModule, LogAction } from './types';
-import { AppDB, fetchAllData, syncUser, logAction } from './storage';
+import { Company, InternalUser, LicenseStatus, UserRole, LogModule, LogAction, TeamTask } from './types';
+import { AppDB, fetchAllData, syncUser, logAction, syncTeamTask } from './storage';
 import { supabase } from './lib/supabase';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [userSession, setUserSession] = useState<InternalUser | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
+  const [currentAlert, setCurrentAlert] = useState<TeamTask | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('PATH_THEME');
     return (saved as 'dark' | 'light') || 'dark';
@@ -198,6 +199,105 @@ const App: React.FC = () => {
     root.classList.add(theme);
     localStorage.setItem('PATH_THEME', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!userSession || !db.tasks || db.tasks.length === 0) return;
+
+    const checkAlerts = () => {
+      const now = Date.now();
+      const isAdmin = userSession.role === UserRole.ADMIN;
+      const adminGeneralAlerts = localStorage.getItem('PATH_ADMIN_GENERAL_ALERTS') === 'true';
+
+      const triggeredTasks = db.tasks.filter(t => {
+        if (!t.reminder || t.reminder === 'none' || t.reminderDismissed) return false;
+
+        const isRecipient = t.assigneeId === userSession.id || (isAdmin && adminGeneralAlerts);
+        if (!isRecipient) return false;
+
+        if (!t.startTime) return false;
+        const taskDateTime = new Date(`${t.startDate}T${t.startTime}:00`);
+        if (isNaN(taskDateTime.getTime())) return false;
+
+        let offsetMinutes = 0;
+        if (t.reminder === '5m') offsetMinutes = 5;
+        else if (t.reminder === '10m') offsetMinutes = 10;
+        else if (t.reminder === '15m') offsetMinutes = 15;
+        else if (t.reminder === '30m') offsetMinutes = 30;
+        else if (t.reminder === '1h') offsetMinutes = 60;
+
+        const scheduledTime = taskDateTime.getTime() - offsetMinutes * 60 * 1000;
+
+        if (t.snoozeUntil) {
+          return now >= t.snoozeUntil;
+        } else {
+          return now >= scheduledTime;
+        }
+      });
+
+      if (triggeredTasks.length > 0) {
+        const nextAlert = triggeredTasks.find(t => !currentAlert || currentAlert.id !== t.id);
+        if (nextAlert && (!currentAlert || currentAlert.id !== nextAlert.id)) {
+          setCurrentAlert(nextAlert);
+        }
+      }
+    };
+
+    checkAlerts();
+    const interval = setInterval(checkAlerts, 10000);
+    return () => clearInterval(interval);
+  }, [db.tasks, userSession, currentAlert]);
+
+  const handleDismissAlert = async (task: TeamTask) => {
+    const updatedTask: TeamTask = {
+      ...task,
+      reminderDismissed: true,
+      snoozeUntil: undefined
+    };
+    try {
+      setDb(prev => ({
+        ...prev,
+        tasks: prev.tasks.map(t => t.id === task.id ? updatedTask : t)
+      }));
+      setCurrentAlert(null);
+      await syncTeamTask(updatedTask);
+      await logAction(
+        db.company?.id || task.workspaceId,
+        userSession!,
+        LogModule.TASKS,
+        LogAction.UPDATE,
+        `${userSession?.username} confirmou o alerta da tarefa "${task.title}"`,
+        task.title
+      );
+    } catch (err: any) {
+      console.error("Erro ao dispensar alerta:", err);
+    }
+  };
+
+  const handleSnoozeAlert = async (task: TeamTask) => {
+    const updatedTask: TeamTask = {
+      ...task,
+      reminderDismissed: false,
+      snoozeUntil: Date.now() + 5 * 60 * 1000 // 5 minutes
+    };
+    try {
+      setDb(prev => ({
+        ...prev,
+        tasks: prev.tasks.map(t => t.id === task.id ? updatedTask : t)
+      }));
+      setCurrentAlert(null);
+      await syncTeamTask(updatedTask);
+      await logAction(
+        db.company?.id || task.workspaceId,
+        userSession!,
+        LogModule.TASKS,
+        LogAction.UPDATE,
+        `${userSession?.username} adiou o alerta da tarefa "${task.title}" em 5 minutos`,
+        task.title
+      );
+    } catch (err: any) {
+      console.error("Erro ao adiar alerta:", err);
+    }
+  };
 
   const isOverLimit = useMemo(() => {
     if (!db.company) return false;
@@ -529,30 +629,137 @@ const App: React.FC = () => {
   }
 
   return (
-    <Layout
-      currentPage={currentPage}
-      setCurrentPage={setCurrentPage}
-      user={userSession}
-      onLogout={handleLogout}
-      onSwitchUser={switchUser}
-      companyName={db.company?.name || 'PERSPEC PATH'}
-      logoUrl={db.company?.logoUrl}
-      theme={theme}
-      setTheme={setTheme}
-      db={db}
-    >
-      {currentPage === 'dashboard' && <Dashboard db={db} theme={theme} />}
-      {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
-      {currentPage === 'projects' && <Projects db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
-      {currentPage === 'tasks' && <Tasks db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
-      {currentPage === 'timeline' && <Gantt db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
-      {currentPage === 'team' && userSession.role === UserRole.ADMIN && <Team db={db} theme={theme} />}
-      {currentPage === 'reports' && userSession.role === UserRole.ADMIN && <Reports db={db} theme={theme} />}
-      {currentPage === 'settings' && userSession.role === UserRole.ADMIN && (
-        <Settings db={db} setDb={setDb} currentUser={userSession} theme={theme} />
+    <>
+      <Layout
+        currentPage={currentPage}
+        setCurrentPage={setCurrentPage}
+        user={userSession}
+        onLogout={handleLogout}
+        onSwitchUser={switchUser}
+        companyName={db.company?.name || 'PERSPEC PATH'}
+        logoUrl={db.company?.logoUrl}
+        theme={theme}
+        setTheme={setTheme}
+        db={db}
+      >
+        {currentPage === 'dashboard' && <Dashboard db={db} theme={theme} />}
+        {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+        {currentPage === 'projects' && <Projects db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+        {currentPage === 'tasks' && <Tasks db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+        {currentPage === 'timeline' && <Gantt db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+        {currentPage === 'team' && userSession.role === UserRole.ADMIN && <Team db={db} theme={theme} />}
+        {currentPage === 'reports' && userSession.role === UserRole.ADMIN && <Reports db={db} theme={theme} />}
+        {currentPage === 'settings' && userSession.role === UserRole.ADMIN && (
+          <Settings db={db} setDb={setDb} currentUser={userSession} theme={theme} />
+        )}
+        {currentPage === 'logs' && userSession.role === UserRole.ADMIN && <Logs db={db} theme={theme} />}
+      </Layout>
+
+      {currentAlert && (
+        <TaskAlertModal
+          task={currentAlert}
+          users={db.users}
+          theme={theme}
+          onDismiss={() => handleDismissAlert(currentAlert)}
+          onSnooze={() => handleSnoozeAlert(currentAlert)}
+        />
       )}
-      {currentPage === 'logs' && userSession.role === UserRole.ADMIN && <Logs db={db} theme={theme} />}
-    </Layout>
+    </>
+  );
+};
+
+const TaskAlertModal: React.FC<{
+  task: TeamTask;
+  users: InternalUser[];
+  theme: 'dark' | 'light';
+  onDismiss: () => void;
+  onSnooze: () => void;
+}> = ({ task, users, theme, onDismiss, onSnooze }) => {
+  const assignee = users.find(u => u.id === task.assigneeId);
+  const formattedDate = new Date(task.startDate + 'T12:00:00').toLocaleDateString('pt-BR');
+
+  return (
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[999] flex items-center justify-center p-4 animate-in fade-in duration-300">
+      {/* Background alarm glow */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+        <div className="w-[500px] h-[500px] bg-amber-500/10 rounded-full blur-[120px] animate-pulse pointer-events-none" />
+      </div>
+
+      <div className="bg-white dark:bg-[#1e293b] rounded-[36px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)] dark:shadow-[0_30px_70px_-10px_rgba(0,0,0,0.8)] w-full max-w-md border border-slate-200 dark:border-slate-700 p-8 transform transition-all relative z-10 animate-in zoom-in-95 duration-200">
+        
+        {/* Animated Alarm Icon / Badge */}
+        <div className="flex justify-center mb-6">
+          <div className="w-16 h-16 rounded-3xl bg-amber-500/15 dark:bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center text-amber-500 relative group animate-bounce">
+            <svg className="w-8 h-8 filter drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+        </div>
+
+        <div className="text-center mb-6">
+          <span className="px-3 py-1 bg-amber-100 dark:bg-amber-500/20 border border-amber-200 dark:border-amber-500/30 rounded-full text-[9px] font-black uppercase text-amber-700 dark:text-amber-400 tracking-widest">
+            Alerta de Lembrete
+          </span>
+          <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight mt-3 mb-1">
+            {task.title}
+          </h2>
+          <span className="inline-block text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+            {task.type}
+          </span>
+        </div>
+
+        {/* Task Details */}
+        <div className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-100 dark:border-slate-800/80 p-5 space-y-4 mb-8 text-left animate-in slide-in-from-bottom-2">
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-black text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest">Responsável</span>
+            <div className="flex items-center space-x-2">
+              <div className="w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-[10px] uppercase">
+                {assignee ? assignee.username.charAt(0) : '?'}
+              </div>
+              <span className="font-bold text-slate-700 dark:text-slate-300">{assignee ? assignee.username : 'Desconhecido'}</span>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center text-xs pt-3 border-t border-slate-100 dark:border-slate-800/50">
+            <span className="font-black text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest">Data</span>
+            <span className="font-bold text-slate-700 dark:text-slate-300">{formattedDate}</span>
+          </div>
+
+          <div className="flex justify-between items-center text-xs pt-3 border-t border-slate-100 dark:border-slate-800/50">
+            <span className="font-black text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest">Horário</span>
+            <span className="font-bold text-indigo-600 dark:text-indigo-400">
+              {task.startTime || '00:00'}{task.endTime ? ` - ${task.endTime}` : ''}
+            </span>
+          </div>
+
+          {task.description && (
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800/50">
+              <span className="font-black text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1.5">Descrição / Obs.</span>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium break-words whitespace-pre-wrap">
+                {task.description}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Buttons */}
+        <div className="flex flex-col space-y-3">
+          <button
+            onClick={onDismiss}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-white shadow-xl shadow-indigo-500/20 active:scale-95 transition-all"
+          >
+            Entendi
+          </button>
+          <button
+            onClick={onSnooze}
+            className="w-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all"
+          >
+            Lembrar novamente em 5 minutos
+          </button>
+        </div>
+
+      </div>
+    </div>
   );
 };
 
