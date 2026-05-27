@@ -220,7 +220,8 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
     }
   };
 
-  const getProjectMarkerColor = (projectId: string) => {
+  const getProjectMarkerColor = (projectId?: string) => {
+    if (!projectId) return 'bg-slate-400';
     const colors = [
       'bg-pink-400', 'bg-cyan-400', 'bg-yellow-400', 'bg-rose-400',
       'bg-violet-400', 'bg-orange-400', 'bg-emerald-400', 'bg-teal-400',
@@ -1022,14 +1023,14 @@ const UserCargaModal: React.FC<{
   data: { user: InternalUser, assignments: any[], distinctCount: number },
   onClose: () => void,
   getStatusColor: (s: ProjectStatus) => string,
-  getProjectMarkerColor: (id: string) => string
+  getProjectMarkerColor: (id?: string) => string
 }> = ({ data, onClose, getStatusColor, getProjectMarkerColor }) => {
   // Agrupar tarefas por projeto pai
   const groupedTasks = data.assignments.reduce((acc: any, task: any) => {
     const parentId = task.type === 'project' ? task.id : task.type === 'subtask' ? task.parentProject.id : 'activities';
     if (!acc[parentId]) {
       acc[parentId] = {
-        project: task.type === 'project' ? task : task.type === 'subtask' ? task.parentProject : { name: 'Tarefas / Bloqueios Avulsos', code: 'ATIVIDADES', status: 'ACTIVITY' },
+        project: task.type === 'project' ? task : task.type === 'subtask' ? task.parentProject : { id: 'activities', name: 'Tarefas / Bloqueios Avulsos', code: 'ATIVIDADES', status: 'ACTIVITY' },
         tasks: []
       };
     }
