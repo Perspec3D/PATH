@@ -269,18 +269,11 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
       return months;
     })();
 
-    // Projetos para a mini linha do tempo
+    // Projetos para a mini linha do tempo (100% reais, sem fallbacks)
     const previewProjects = (() => {
-      const list = activeProjects.slice(0, 4);
-      const fallbacks = [
-        { id: 'mock-p1', code: 'PROJETO 070-001-26', name: 'Projeto 070-001-26', startOffset: 15, width: 35, barColor: 'from-violet-600 to-indigo-500' },
-        { id: 'mock-p2', code: 'PROJETO 030-004-26', name: 'Projeto 030-004-26', startOffset: 25, width: 50, barColor: 'from-violet-600/80 to-indigo-500/80 repeating-stripes' },
-        { id: 'mock-p3', code: 'PROJETO 120-002-26', name: 'Projeto 120-002-26', startOffset: 5, width: 25, barColor: 'from-cyan-500 to-blue-500' },
-        { id: 'mock-p4', code: 'PROJETO 080-003-26', name: 'Projeto 080-003-26', startOffset: 40, width: 45, barColor: 'from-teal-500 to-emerald-400' }
-      ];
-
+      const list = activeProjects;
       if (list.length === 0) {
-        return fallbacks;
+        return [];
       }
 
       const today = new Date();
@@ -295,7 +288,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
         'from-fuchsia-600 to-pink-500'
       ];
 
-      const mapped = list.map((p, idx) => {
+      return list.slice(0, 5).map((p, idx) => {
         const pStart = p.startDate ? new Date(p.startDate + 'T12:00:00').getTime() : windowStart;
         const pEnd = p.deliveryDate ? new Date(p.deliveryDate + 'T12:00:00').getTime() : windowEnd;
 
@@ -315,16 +308,9 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
           barColor: colors[idx % colors.length]
         };
       });
-
-      const finalProjects = [...mapped];
-      for (let i = finalProjects.length; i < 4; i++) {
-        finalProjects.push(fallbacks[i % fallbacks.length]);
-      }
-
-      return finalProjects.slice(0, 4);
     })();
 
-    // Carga de equipe
+    // Carga de equipe (100% real, sem fallbacks)
     const teamWorkload = (() => {
       const activeUsers = allUsers.filter(u => u.isActive);
       const usersLoad = activeUsers.map(user => {
@@ -333,9 +319,9 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
         const totalAssignments = userTasksCount + userSubtasksCount;
 
         let percentage = 0;
-        let status: 'OK' | 'ALTO' | 'SOBRECARREGADO' = 'OK';
-        let barColor = 'from-cyan-500 to-blue-500';
-        let textColor = 'text-cyan-400';
+        let status: 'OK' | 'Atenção' | 'Alto' | 'Sobrecarregado' = 'OK';
+        let barColor = 'from-emerald-500 to-teal-400';
+        let textColor = 'text-emerald-400';
 
         if (totalAssignments === 0) {
           percentage = 0;
@@ -343,23 +329,23 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
           barColor = 'from-slate-700 to-slate-600';
           textColor = 'text-slate-400';
         } else if (totalAssignments === 1) {
-          percentage = 60;
+          percentage = 45;
           status = 'OK';
           barColor = 'from-emerald-500 to-teal-400';
           textColor = 'text-emerald-400';
         } else if (totalAssignments === 2) {
-          percentage = 78;
-          status = 'OK';
-          barColor = 'from-emerald-500 to-teal-400';
-          textColor = 'text-emerald-400';
+          percentage = 75;
+          status = 'Atenção';
+          barColor = 'from-yellow-500 to-amber-400';
+          textColor = 'text-yellow-400';
         } else if (totalAssignments === 3) {
-          percentage = 95;
-          status = 'ALTO';
-          barColor = 'from-amber-500 to-orange-400';
-          textColor = 'text-amber-400';
+          percentage = 92;
+          status = 'Alto';
+          barColor = 'from-orange-500 to-amber-500';
+          textColor = 'text-orange-400';
         } else {
-          percentage = 102;
-          status = 'SOBRECARREGADO';
+          percentage = Math.min(150, 100 + (totalAssignments - 3) * 10);
+          status = 'Sobrecarregado';
           barColor = 'from-rose-600 to-red-500';
           textColor = 'text-rose-500';
         }
@@ -378,27 +364,16 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
 
       usersLoad.sort((a, b) => b.percentage - a.percentage);
 
-      const fallbackUsers = [
-        { id: 'mock-1', username: 'Airon', initial: 'A', percentage: 85, status: 'OK' as const, barColor: 'from-cyan-500 to-blue-500', textColor: 'text-cyan-400', totalAssignments: 2 },
-        { id: 'mock-2', username: 'Eduardo', initial: 'E', percentage: 102, status: 'SOBRECARREGADO' as const, barColor: 'from-rose-600 to-red-500', textColor: 'text-rose-500', totalAssignments: 4 },
-        { id: 'mock-3', username: 'Jaqueline', initial: 'J', percentage: 78, status: 'OK' as const, barColor: 'from-emerald-500 to-teal-400', textColor: 'text-emerald-400', totalAssignments: 1 },
-        { id: 'mock-4', username: 'Rafael', initial: 'R', percentage: 95, status: 'ALTO' as const, barColor: 'from-amber-500 to-orange-400', textColor: 'text-amber-400', totalAssignments: 3 },
-        { id: 'mock-5', username: 'Lucas', initial: 'L', percentage: 60, status: 'OK' as const, barColor: 'from-emerald-500 to-teal-400', textColor: 'text-emerald-400', totalAssignments: 1 }
-      ];
-
-      const finalUsers = [...usersLoad];
-      for (let i = finalUsers.length; i < 5; i++) {
-        finalUsers.push(fallbackUsers[i % fallbackUsers.length]);
-      }
-
-      return finalUsers.slice(0, 5);
+      return usersLoad.slice(0, 5);
     })();
 
     const teamStats = (() => {
-      const overloadedCount = teamWorkload.filter(u => u.status === 'SOBRECARREGADO').length;
-      const highLoadCount = teamWorkload.filter(u => u.status === 'ALTO').length;
+      const overloadedCount = teamWorkload.filter(u => u.status === 'Sobrecarregado').length;
+      const highLoadCount = teamWorkload.filter(u => u.status === 'Alto').length;
       const conflicts = overloadedCount + highLoadCount;
-      const avgCapacity = Math.round(teamWorkload.reduce((sum, u) => sum + u.percentage, 0) / teamWorkload.length);
+      const avgCapacity = teamWorkload.length === 0
+        ? 0
+        : Math.round(teamWorkload.reduce((sum, u) => sum + u.percentage, 0) / teamWorkload.length);
       return {
         overloadedCount,
         conflicts,
@@ -544,19 +519,28 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                       <div className="h-full" />
                     </div>
 
-                    {previewProjects.map((p, idx) => (
-                      <div key={idx} className="flex flex-col relative z-10">
-                        <div className="flex justify-between items-center text-[7px] text-slate-500 font-mono mb-0.5">
-                          <span className="truncate max-w-[120px]">{p.name}</span>
-                        </div>
-                        <div className="w-full h-2.5 bg-slate-950/80 rounded-full overflow-hidden relative border border-indigo-500/[0.05]">
-                          <div
-                            style={{ left: `${p.startOffset}%`, width: `${p.width}%` }}
-                            className={`absolute h-full rounded-full bg-gradient-to-r ${p.barColor} animate-bar-grow`}
-                          />
-                        </div>
+                    {previewProjects.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-6 text-center border border-dashed border-indigo-500/20 rounded-2xl bg-indigo-950/10 min-h-[90px] relative z-10">
+                        <svg className="w-6 h-6 text-indigo-400/50 mb-1.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                        </svg>
+                        <p className="text-[9px] font-black text-indigo-300/60 uppercase tracking-widest">Nenhum projeto ativo disponível</p>
                       </div>
-                    ))}
+                    ) : (
+                      previewProjects.map((p, idx) => (
+                        <div key={idx} className="flex flex-col relative z-10">
+                          <div className="flex justify-between items-center text-[7px] text-slate-500 font-mono mb-0.5">
+                            <span className="truncate max-w-[120px]">{p.name}</span>
+                          </div>
+                          <div className="w-full h-2.5 bg-slate-950/80 rounded-full overflow-hidden relative border border-indigo-500/[0.05]">
+                            <div
+                              style={{ left: `${p.startOffset}%`, width: `${p.width}%` }}
+                              className={`absolute h-full rounded-full bg-gradient-to-r ${p.barColor} animate-bar-grow`}
+                            />
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -660,33 +644,42 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                   <span className="text-[8px] font-black text-emerald-400/80 uppercase tracking-widest block mb-3">Distribuição da Equipe</span>
 
                   {/* Linhas de Usuários */}
-                  <div className="space-y-2.5">
-                    {teamWorkload.map((u, idx) => (
-                      <div key={idx} className="flex items-center justify-between space-x-3">
-                        <div className="flex items-center space-x-2 w-[80px]">
-                          <div className="w-5 h-5 rounded-full bg-slate-900 border border-emerald-500/25 flex items-center justify-center text-[8px] font-bold text-slate-300">
-                            {u.initial}
-                          </div>
-                          <span className="text-[9px] font-semibold text-slate-300 truncate">{u.username}</span>
-                        </div>
-                        
-                        {/* Barra */}
-                        <div className="flex-1 h-2 bg-slate-950/80 rounded-full overflow-hidden border border-emerald-500/[0.05]">
-                          <div
-                            style={{ width: `${Math.min(100, u.percentage)}%` }}
-                            className={`h-full rounded-full bg-gradient-to-r ${u.barColor} animate-bar-grow`}
-                          />
-                        </div>
-                        
-                        {/* Valor e Badge */}
-                        <div className="flex items-center justify-end space-x-2 w-[70px]">
-                          <span className="text-[9px] font-bold text-slate-200">{u.percentage}%</span>
-                          <span className={`text-[6px] font-black uppercase tracking-wider py-0.5 px-1 bg-slate-950/80 rounded border border-white/5 ${u.textColor}`}>
-                            {u.status}
-                          </span>
-                        </div>
+                  <div className="space-y-2.5 min-h-[90px] flex flex-col justify-center">
+                    {teamWorkload.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-6 text-center border border-dashed border-emerald-500/20 rounded-2xl bg-emerald-950/10 w-full">
+                        <svg className="w-6 h-6 text-emerald-400/50 mb-1.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.109A11.386 11.386 0 0110.089 21c-2.24 0-4.303-.647-6.04-1.758V19.13c0-1.113.285-2.16.786-3.07" />
+                        </svg>
+                        <p className="text-[9px] font-black text-emerald-300/60 uppercase tracking-widest">Nenhum profissional cadastrado</p>
                       </div>
-                    ))}
+                    ) : (
+                      teamWorkload.map((u, idx) => (
+                        <div key={idx} className="flex items-center justify-between space-x-3">
+                          <div className="flex items-center space-x-2 w-[80px]">
+                            <div className="w-5 h-5 rounded-full bg-slate-900 border border-emerald-500/25 flex items-center justify-center text-[8px] font-bold text-slate-300">
+                              {u.initial}
+                            </div>
+                            <span className="text-[9px] font-semibold text-slate-300 truncate">{u.username}</span>
+                          </div>
+                          
+                          {/* Barra */}
+                          <div className="flex-1 h-2 bg-slate-950/80 rounded-full overflow-hidden border border-emerald-500/[0.05]">
+                            <div
+                              style={{ width: `${Math.min(100, u.percentage)}%` }}
+                              className={`h-full rounded-full bg-gradient-to-r ${u.barColor} animate-bar-grow`}
+                            />
+                          </div>
+                          
+                          {/* Valor e Badge */}
+                          <div className="flex items-center justify-end space-x-2 w-[70px]">
+                            <span className="text-[9px] font-bold text-slate-200">{u.percentage}%</span>
+                            <span className={`text-[6px] font-black uppercase tracking-wider py-0.5 px-1 bg-slate-950/80 rounded border border-white/5 ${u.textColor}`}>
+                              {u.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
