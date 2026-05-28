@@ -558,6 +558,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                     .map(t => ({
                       ...t,
                       type: 'activity',
+                      activityType: t.type,
                       deliveryDate: t.endDate,
                       name: t.title,
                       status: 'ACTIVITY'
@@ -715,7 +716,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                       {task.type === 'project' ? 'PROJETO PAI' : task.type === 'subtask' ? 'SUB-TAREFA' : 'TAREFA / BLOQUEIO'}
                                     </p>
                                     <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">
-                                      {task.type === 'project' ? (task as any).code : task.type === 'subtask' ? (task as any).parentProject?.code : task.type}
+                                      {task.type === 'project' ? (task as any).code : task.type === 'subtask' ? (task as any).parentProject?.code : (task as any).activityType || task.type}
                                     </p>
                                   </div>
                                   <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(task.status)} text-white`}>{task.status === 'ACTIVITY' ? 'AVULSA' : task.status}</span>
