@@ -732,8 +732,20 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                   </div>
                                 )}
                                 <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
-                                  <div><p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p><p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p></div>
-                                  <div><p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p><p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p></div>
+                                  <div>
+                                    <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p>
+                                    <p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p>
+                                    {task.type === 'activity' && task.startTime && (
+                                      <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.startTime}</p>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p>
+                                    <p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p>
+                                    {task.type === 'activity' && task.endTime && (
+                                      <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.endTime}</p>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
