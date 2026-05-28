@@ -238,149 +238,6 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const todayStr = new Date().toDateString();
 
   if (viewMode === 'selector') {
-    // --- CÁLCULOS DINÂMICOS PARA O SELETOR ---
-    const todayStrYMD = (() => {
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const dd = String(today.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
-    })();
-
-    const delayedProjectsCount = activeProjects.filter(
-      p => p.deliveryDate && p.deliveryDate < todayStrYMD && p.status !== ProjectStatus.DONE
-    ).length;
-
-    const healthPercentage = activeProjects.length === 0
-      ? 100
-      : Math.max(0, Math.min(100, Math.round(((activeProjects.length - delayedProjectsCount) / activeProjects.length) * 100)));
-
-    // Meses para a mini linha do tempo
-    const previewMonths = (() => {
-      const months = [];
-      const today = new Date();
-      for (let i = 0; i < 5; i++) {
-        const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
-        months.push({
-          label: d.toLocaleDateString('pt-BR', { month: 'short' }).substring(0, 3).toUpperCase(),
-          year: d.getFullYear()
-        });
-      }
-      return months;
-    })();
-
-    // Projetos para a mini linha do tempo (100% reais, sem fallbacks)
-    const previewProjects = (() => {
-      const list = activeProjects;
-      if (list.length === 0) {
-        return [];
-      }
-
-      const today = new Date();
-      const windowStart = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
-      const windowEnd = new Date(today.getFullYear(), today.getMonth() + 5, 0).getTime();
-      const windowDuration = windowEnd - windowStart;
-
-      const colors = [
-        'from-violet-600 to-indigo-500',
-        'from-cyan-500 to-blue-500',
-        'from-teal-500 to-emerald-400',
-        'from-fuchsia-600 to-pink-500'
-      ];
-
-      return list.slice(0, 5).map((p, idx) => {
-        const pStart = p.startDate ? new Date(p.startDate + 'T12:00:00').getTime() : windowStart;
-        const pEnd = p.deliveryDate ? new Date(p.deliveryDate + 'T12:00:00').getTime() : windowEnd;
-
-        const startClamped = Math.max(windowStart, Math.min(windowEnd, pStart));
-        const endClamped = Math.max(windowStart, Math.min(windowEnd, pEnd));
-
-        const startOffsetPercent = ((startClamped - windowStart) / windowDuration) * 100;
-        const endOffsetPercent = ((endClamped - windowStart) / windowDuration) * 100;
-        const widthPercent = Math.max(8, endOffsetPercent - startOffsetPercent);
-
-        return {
-          id: p.id,
-          code: p.code,
-          name: p.name,
-          startOffset: startOffsetPercent,
-          width: widthPercent,
-          barColor: colors[idx % colors.length]
-        };
-      });
-    })();
-
-    // Carga de equipe (100% real, sem fallbacks)
-    const teamWorkload = (() => {
-      const activeUsers = allUsers.filter(u => u.isActive);
-      const usersLoad = activeUsers.map(user => {
-        const userTasksCount = activeProjects.filter(p => p.assigneeId === user.id).length;
-        const userSubtasksCount = activeProjects.flatMap(p => (p.subtasks || []).filter(st => st.assigneeId === user.id)).length;
-        const totalAssignments = userTasksCount + userSubtasksCount;
-
-        let percentage = 0;
-        let status: 'OK' | 'Atenção' | 'Alto' | 'Sobrecarregado' = 'OK';
-        let barColor = 'from-emerald-500 to-teal-400';
-        let textColor = 'text-emerald-400';
-
-        if (totalAssignments === 0) {
-          percentage = 0;
-          status = 'OK';
-          barColor = 'from-slate-700 to-slate-600';
-          textColor = 'text-slate-400';
-        } else if (totalAssignments === 1) {
-          percentage = 45;
-          status = 'OK';
-          barColor = 'from-emerald-500 to-teal-400';
-          textColor = 'text-emerald-400';
-        } else if (totalAssignments === 2) {
-          percentage = 75;
-          status = 'Atenção';
-          barColor = 'from-yellow-500 to-amber-400';
-          textColor = 'text-yellow-400';
-        } else if (totalAssignments === 3) {
-          percentage = 92;
-          status = 'Alto';
-          barColor = 'from-orange-500 to-amber-500';
-          textColor = 'text-orange-400';
-        } else {
-          percentage = Math.min(150, 100 + (totalAssignments - 3) * 10);
-          status = 'Sobrecarregado';
-          barColor = 'from-rose-600 to-red-500';
-          textColor = 'text-rose-500';
-        }
-
-        return {
-          id: user.id,
-          username: user.username,
-          initial: user.username.charAt(0).toUpperCase(),
-          percentage,
-          status,
-          barColor,
-          textColor,
-          totalAssignments
-        };
-      });
-
-      usersLoad.sort((a, b) => b.percentage - a.percentage);
-
-      return usersLoad.slice(0, 5);
-    })();
-
-    const teamStats = (() => {
-      const overloadedCount = teamWorkload.filter(u => u.status === 'Sobrecarregado').length;
-      const highLoadCount = teamWorkload.filter(u => u.status === 'Alto').length;
-      const conflicts = overloadedCount + highLoadCount;
-      const avgCapacity = teamWorkload.length === 0
-        ? 0
-        : Math.round(teamWorkload.reduce((sum, u) => sum + u.percentage, 0) / teamWorkload.length);
-      return {
-        overloadedCount,
-        conflicts,
-        avgCapacity
-      };
-    })();
-
     return (
       <div className="-m-8 p-8 min-h-[calc(100vh-4rem)] bg-[#081120] text-slate-100 flex flex-col items-center justify-between relative overflow-hidden transition-all duration-500 hud-grid">
         {/* ESTILOS INLINE PARA ANIMAÇÕES E EFEITOS HUD */}
@@ -390,21 +247,6 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
             background-image: 
               linear-gradient(to right, rgba(99, 102, 241, 0.03) 1px, transparent 1px),
               linear-gradient(to bottom, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
-          }
-          .repeating-stripes {
-            background-image: repeating-linear-gradient(
-              45deg,
-              transparent,
-              transparent 10px,
-              rgba(255, 255, 255, 0.15) 10px,
-              rgba(255, 255, 255, 0.15) 20px
-            );
-          }
-          @keyframes barGrow {
-            from { width: 0; }
-          }
-          .animate-bar-grow {
-            animation: barGrow 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           }
           .glow-purple {
             box-shadow: 0 0 25px rgba(139, 92, 246, 0.15);
@@ -455,7 +297,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
         </div>
 
         {/* CARDS PRINCIPAIS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 w-full max-w-6xl relative z-10 my-4 flex-1">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 w-full max-w-5xl relative z-10 my-4 flex-1">
           {/* CARD: FLUXO GERAL */}
           <div
             onClick={() => setViewMode('flow')}
@@ -471,130 +313,109 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
 
               <div>
                 {/* Header Card */}
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center border border-indigo-500/30 group-hover:bg-indigo-500/20 group-hover:scale-105 transition-all duration-500">
-                      {/* Icone HUD de Fluxo */}
-                      <svg className="w-7 h-7 text-indigo-400 drop-shadow-[0_0_6px_rgba(129,140,248,0.5)]" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white uppercase tracking-wider transition-colors">
-                        Fluxo <span className="text-indigo-400">Geral</span>
-                      </h3>
-                      <div className="h-[2px] w-8 bg-indigo-500/60 rounded-full mt-1" />
-                    </div>
+                <div className="flex items-center space-x-4 mb-6">
+                  <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center border border-indigo-500/30 group-hover:bg-indigo-500/20 group-hover:scale-105 transition-all duration-500">
+                    <svg className="w-7 h-7 text-indigo-400 drop-shadow-[0_0_6px_rgba(129,140,248,0.5)]" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+                    </svg>
                   </div>
-                  <span className="px-3.5 py-1 bg-indigo-500/10 border border-indigo-500/30 rounded-full text-[8px] font-black text-indigo-400 uppercase tracking-widest group-hover:bg-indigo-500/20 transition-all">
-                    Visão Estratégica
-                  </span>
+                  <div>
+                    <h3 className="text-xl font-bold text-white uppercase tracking-wider">
+                      Fluxo <span className="text-indigo-400">Geral</span>
+                    </h3>
+                    <div className="h-[2px] w-8 bg-indigo-500/60 rounded-full mt-1" />
+                  </div>
                 </div>
 
-                <p className="text-slate-400 text-sm font-medium leading-relaxed mb-6">
-                  Acompanhe o pulso operacional através da visão clássica de projetos e suas etapas críticas.
+                <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8 min-h-[40px]">
+                  Visualize o fluxo operacional dos projetos, prazos e entregas em uma visão cronológica clara.
                 </p>
 
-                {/* PREVIEW DA LINHA DO TEMPO */}
-                <div className="bg-[#050a14]/60 border border-indigo-500/10 rounded-2xl p-4 mb-6 relative">
-                  <span className="text-[8px] font-black text-indigo-400/80 uppercase tracking-widest block mb-3">Linha do Tempo Geral</span>
-                  
-                  {/* Grid de Meses */}
-                  <div className="grid grid-cols-5 gap-1 border-b border-indigo-500/10 pb-1.5 mb-2.5 text-center">
-                    {previewMonths.map((m, idx) => (
-                      <span key={idx} className="text-[8px] font-bold text-slate-500">
-                        {m.label}
-                      </span>
-                    ))}
+                {/* ILUSTRAÇÃO ABSTRATA TIMELINE */}
+                <div className="bg-[#050a14]/40 border border-indigo-500/10 rounded-2xl p-6 mb-6 relative overflow-hidden h-[180px] flex flex-col justify-between">
+                  {/* Fine HUD Grid lines */}
+                  <div className="absolute inset-0 opacity-15 pointer-events-none" style={{
+                    backgroundImage: `linear-gradient(to right, rgba(99, 102, 241, 0.1) 1px, transparent 1px),
+                                      linear-gradient(to bottom, rgba(99, 102, 241, 0.1) 1px, transparent 1px)`,
+                    backgroundSize: '20px 20px'
+                  }} />
+
+                  {/* Dotted helper grid background */}
+                  <div className="absolute inset-0 flex justify-between px-6 pointer-events-none opacity-5">
+                    <div className="border-r border-dashed border-indigo-400 h-full" />
+                    <div className="border-r border-dashed border-indigo-400 h-full" />
+                    <div className="border-r border-dashed border-indigo-400 h-full" />
+                    <div className="border-r border-dashed border-indigo-400 h-full" />
+                    <div className="border-r border-dashed border-indigo-400 h-full" />
                   </div>
 
-                  {/* Linhas de Projetos */}
-                  <div className="space-y-2.5 relative min-h-[90px]">
-                    {/* Linhas verticais pontilhadas da grid */}
-                    <div className="absolute inset-0 grid grid-cols-5 gap-1 pointer-events-none">
-                      <div className="border-r border-indigo-500/[0.03] h-full" />
-                      <div className="border-r border-indigo-500/[0.03] h-full" />
-                      <div className="border-r border-indigo-500/[0.03] h-full" />
-                      <div className="border-r border-indigo-500/[0.03] h-full" />
-                      <div className="h-full" />
+                  {/* Main Timeline Line and Nodes */}
+                  <div className="relative w-full my-auto">
+                    {/* Horizontal Line */}
+                    <div className="w-full h-[2px] bg-gradient-to-r from-indigo-500/10 via-indigo-500/50 to-indigo-500/10 relative">
+                      {/* Glow path */}
+                      <div className="absolute inset-0 bg-indigo-500/30 blur-[2px]" />
+                    </div>
+                    
+                    {/* Connected Nodes */}
+                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
+                      <div className="w-3.5 h-3.5 rounded-full bg-indigo-400 border-2 border-indigo-300 shadow-[0_0_12px_#818cf8] -translate-y-[2px] relative">
+                        <div className="absolute inset-0.5 rounded-full bg-white animate-ping opacity-75" />
+                      </div>
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
+                      <div className="w-3.5 h-3.5 rounded-full bg-purple-500 border-2 border-purple-400 shadow-[0_0_12px_#a78bfa] -translate-y-[2px]" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
+                    </div>
+                  </div>
+
+                  {/* Floating Bars below the line */}
+                  <div className="space-y-3 relative z-10 w-full">
+                    {/* Bar 1 */}
+                    <div className="flex items-center w-full">
+                      <div className="w-[10%] shrink-0" />
+                      <div className="w-[30%] h-3 rounded-full bg-gradient-to-r from-blue-600 via-indigo-500 to-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.3)] relative">
+                        <div className="absolute inset-0 bg-white/10 rounded-full" />
+                      </div>
+                    </div>
+                    
+                    {/* Bar 2 */}
+                    <div className="flex items-center w-full">
+                      <div className="w-[35%] shrink-0" />
+                      <div className="w-[45%] h-3 rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 shadow-[0_0_15px_rgba(139,92,246,0.3)] relative">
+                        <div className="absolute inset-0 bg-white/10 rounded-full" />
+                      </div>
+                    </div>
+                    
+                    {/* Bar 3 */}
+                    <div className="flex items-center w-full">
+                      <div className="w-[20%] shrink-0" />
+                      <div className="w-[25%] h-3 rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 shadow-[0_0_15px_rgba(6,182,212,0.3)] relative">
+                        <div className="absolute inset-0 bg-white/10 rounded-full" />
+                      </div>
                     </div>
 
-                    {previewProjects.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-6 text-center border border-dashed border-indigo-500/20 rounded-2xl bg-indigo-950/10 min-h-[90px] relative z-10">
-                        <svg className="w-6 h-6 text-indigo-400/50 mb-1.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-                        </svg>
-                        <p className="text-[9px] font-black text-indigo-300/60 uppercase tracking-widest">Nenhum projeto ativo disponível</p>
+                    {/* Bar 4 */}
+                    <div className="flex items-center w-full">
+                      <div className="w-[50%] shrink-0" />
+                      <div className="w-[40%] h-3 rounded-full bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.2)] relative">
+                        <div className="absolute inset-0 bg-white/10 rounded-full" />
                       </div>
-                    ) : (
-                      previewProjects.map((p, idx) => (
-                        <div key={idx} className="flex flex-col relative z-10">
-                          <div className="flex justify-between items-center text-[7px] text-slate-500 font-mono mb-0.5">
-                            <span className="truncate max-w-[120px]">{p.name}</span>
-                          </div>
-                          <div className="w-full h-2.5 bg-slate-950/80 rounded-full overflow-hidden relative border border-indigo-500/[0.05]">
-                            <div
-                              style={{ left: `${p.startOffset}%`, width: `${p.width}%` }}
-                              className={`absolute h-full rounded-full bg-gradient-to-r ${p.barColor} animate-bar-grow`}
-                            />
-                          </div>
-                        </div>
-                      ))
-                    )}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* KPIs & Rodapé Card */}
-              <div>
-                <div className="grid grid-cols-3 gap-3 mb-6">
-                  <div className="bg-indigo-950/20 border border-indigo-500/10 rounded-2xl p-2.5 flex items-center space-x-2.5">
-                    <div className="w-8 h-8 bg-indigo-500/10 rounded-lg flex items-center justify-center border border-indigo-500/20 text-indigo-400">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A9 9 0 0112 3v8.25m0 12.75V12a9 9 0 008.83-9.4m-17.66 0A9.001 9.001 0 0112 3v8.25m0 12.75a9 9 0 009-9M12 21.75a9.001 9.001 0 01-9-9" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-lg font-extrabold text-white leading-tight">{activeProjects.length}</p>
-                      <p className="text-[7px] font-black text-indigo-300/60 uppercase tracking-widest">Ativos</p>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-rose-950/20 border border-rose-500/10 rounded-2xl p-2.5 flex items-center space-x-2.5">
-                    <div className="w-8 h-8 bg-rose-500/10 rounded-lg flex items-center justify-center border border-rose-500/20 text-rose-400">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-lg font-extrabold text-white leading-tight">{delayedProjectsCount}</p>
-                      <p className="text-[7px] font-black text-rose-300/60 uppercase tracking-widest">Atrasados</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-emerald-950/20 border border-emerald-500/10 rounded-2xl p-2.5 flex items-center space-x-2.5">
-                    <div className="w-8 h-8 bg-emerald-500/10 rounded-lg flex items-center justify-center border border-emerald-500/20 text-emerald-400">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-lg font-extrabold text-white leading-tight">{healthPercentage}%</p>
-                      <p className="text-[7px] font-black text-emerald-300/60 uppercase tracking-widest">Saúde Ops</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-indigo-500/10 pt-5">
-                  <span className="px-4 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-[9px] font-black text-indigo-400 uppercase tracking-widest group-hover:bg-indigo-500/20 transition-all">
-                    Alta Performance
-                  </span>
-                  <div className="flex items-center text-white font-extrabold text-xs uppercase tracking-widest group-hover:text-indigo-400 transition-colors">
-                    Explorar Visão 
-                    <svg className="w-4 h-4 ml-2 transform group-hover:translate-x-1.5 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                    </svg>
-                  </div>
+              {/* Botão Explorar Visão */}
+              <div className="flex justify-center mt-4">
+                <div className="px-8 py-3 rounded-full border border-indigo-500/30 text-white font-extrabold text-xs uppercase tracking-widest bg-indigo-500/5 group-hover:bg-indigo-500/15 group-hover:border-indigo-400/60 group-hover:shadow-[0_0_20px_rgba(99,102,241,0.3)] transition-all duration-300 flex items-center space-x-2">
+                  <span>Explorar Visão</span>
+                  <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                  </svg>
                 </div>
               </div>
             </div>
@@ -615,184 +436,123 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
 
               <div>
                 {/* Header Card */}
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center border border-emerald-500/30 group-hover:bg-emerald-500/20 group-hover:scale-105 transition-all duration-500">
-                      {/* Icone HUD de Carga */}
-                      <svg className="w-7 h-7 text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white uppercase tracking-wider transition-colors">
-                        Time <span className="text-emerald-400">& Carga</span>
-                      </h3>
-                      <div className="h-[2px] w-8 bg-emerald-500/60 rounded-full mt-1" />
-                    </div>
+                <div className="flex items-center space-x-4 mb-6">
+                  <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center border border-emerald-500/30 group-hover:bg-emerald-500/20 group-hover:scale-105 transition-all duration-500">
+                    <svg className="w-7 h-7 text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                    </svg>
                   </div>
-                  <span className="px-3.5 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-full text-[8px] font-black text-emerald-400 uppercase tracking-widest group-hover:bg-emerald-500/20 transition-all">
-                    Visão Analítica
-                  </span>
+                  <div>
+                    <h3 className="text-xl font-bold text-white uppercase tracking-wider">
+                      Time <span className="text-emerald-400">& Carga</span>
+                    </h3>
+                    <div className="h-[2px] w-8 bg-emerald-500/60 rounded-full mt-1" />
+                  </div>
                 </div>
 
-                <p className="text-slate-400 text-sm font-medium leading-relaxed mb-6">
-                  Visualize a distribuição de tarefas por profissional e identifique gargalos de produtividade em tempo real.
+                <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8 min-h-[40px]">
+                  Analise a distribuição de atividades por profissional e identifique sobreposições de prazos no cronograma real.
                 </p>
 
-                {/* PREVIEW DE DISTRIBUIÇÃO DA EQUIPE */}
-                <div className="bg-[#050a14]/60 border border-emerald-500/10 rounded-2xl p-4 mb-6 relative">
-                  <span className="text-[8px] font-black text-emerald-400/80 uppercase tracking-widest block mb-3">Distribuição da Equipe</span>
+                {/* ILUSTRAÇÃO ABSTRATA CARGA */}
+                <div className="bg-[#050a14]/40 border border-emerald-500/10 rounded-2xl p-6 mb-6 relative overflow-hidden h-[180px] flex flex-col justify-between">
+                  {/* Fine HUD Grid lines */}
+                  <div className="absolute inset-0 opacity-15 pointer-events-none" style={{
+                    backgroundImage: `linear-gradient(to right, rgba(16, 185, 129, 0.1) 1px, transparent 1px),
+                                      linear-gradient(to bottom, rgba(16, 185, 129, 0.1) 1px, transparent 1px)`,
+                    backgroundSize: '20px 20px'
+                  }} />
 
-                  {/* Linhas de Usuários */}
-                  <div className="space-y-2.5 min-h-[90px] flex flex-col justify-center">
-                    {teamWorkload.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-6 text-center border border-dashed border-emerald-500/20 rounded-2xl bg-emerald-950/10 w-full">
-                        <svg className="w-6 h-6 text-emerald-400/50 mb-1.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.109A11.386 11.386 0 0110.089 21c-2.24 0-4.303-.647-6.04-1.758V19.13c0-1.113.285-2.16.786-3.07" />
+                  {/* Dotted helper grid background */}
+                  <div className="absolute inset-0 flex justify-between px-6 pointer-events-none opacity-5">
+                    <div className="border-r border-dashed border-emerald-400 h-full" />
+                    <div className="border-r border-dashed border-emerald-400 h-full" />
+                    <div className="border-r border-dashed border-emerald-400 h-full" />
+                    <div className="border-r border-dashed border-emerald-400 h-full" />
+                  </div>
+
+                  <div className="space-y-3 relative z-10 w-full my-auto">
+                    {/* Row 1 */}
+                    <div className="flex items-center space-x-4">
+                      {/* Abstract User Avatar */}
+                      <div className="w-7 h-7 rounded-full border border-emerald-500/30 flex items-center justify-center bg-[#081120] text-emerald-400/60 shadow-[0_0_8px_rgba(16,185,129,0.1)] shrink-0">
+                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                         </svg>
-                        <p className="text-[9px] font-black text-emerald-300/60 uppercase tracking-widest">Nenhum profissional cadastrado</p>
                       </div>
-                    ) : (
-                      teamWorkload.map((u, idx) => (
-                        <div key={idx} className="flex items-center justify-between space-x-3">
-                          <div className="flex items-center space-x-2 w-[80px]">
-                            <div className="w-5 h-5 rounded-full bg-slate-900 border border-emerald-500/25 flex items-center justify-center text-[8px] font-bold text-slate-300">
-                              {u.initial}
-                            </div>
-                            <span className="text-[9px] font-semibold text-slate-300 truncate">{u.username}</span>
-                          </div>
-                          
-                          {/* Barra */}
-                          <div className="flex-1 h-2 bg-slate-950/80 rounded-full overflow-hidden border border-emerald-500/[0.05]">
-                            <div
-                              style={{ width: `${Math.min(100, u.percentage)}%` }}
-                              className={`h-full rounded-full bg-gradient-to-r ${u.barColor} animate-bar-grow`}
-                            />
-                          </div>
-                          
-                          {/* Valor e Badge */}
-                          <div className="flex items-center justify-end space-x-2 w-[70px]">
-                            <span className="text-[9px] font-bold text-slate-200">{u.percentage}%</span>
-                            <span className={`text-[6px] font-black uppercase tracking-wider py-0.5 px-1 bg-slate-950/80 rounded border border-white/5 ${u.textColor}`}>
-                              {u.status}
-                            </span>
-                          </div>
-                        </div>
-                      ))
-                    )}
+                      {/* Abstract bar */}
+                      <div className="flex-1 h-3 bg-slate-950/40 rounded-full border border-emerald-500/[0.05] overflow-hidden relative">
+                        <div className="absolute left-[5%] w-[45%] h-full rounded-full bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.2)]" />
+                      </div>
+                    </div>
+
+                    {/* Row 2 */}
+                    <div className="flex items-center space-x-4">
+                      {/* Abstract User Avatar */}
+                      <div className="w-7 h-7 rounded-full border border-cyan-500/30 flex items-center justify-center bg-[#081120] text-cyan-400/60 shadow-[0_0_8px_rgba(34,211,238,0.1)] shrink-0">
+                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                        </svg>
+                      </div>
+                      {/* Abstract bar */}
+                      <div className="flex-1 h-3 bg-slate-950/40 rounded-full border border-cyan-500/[0.05] overflow-hidden relative">
+                        <div className="absolute left-[15%] w-[70%] h-full rounded-full bg-gradient-to-r from-cyan-600 via-emerald-500 to-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.3)]" />
+                      </div>
+                    </div>
+
+                    {/* Row 3 */}
+                    <div className="flex items-center space-x-4">
+                      {/* Abstract User Avatar */}
+                      <div className="w-7 h-7 rounded-full border border-emerald-500/30 flex items-center justify-center bg-[#081120] text-emerald-400/60 shadow-[0_0_8px_rgba(16,185,129,0.1)] shrink-0">
+                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                        </svg>
+                      </div>
+                      {/* Abstract bar */}
+                      <div className="flex-1 h-3 bg-slate-950/40 rounded-full border border-emerald-500/[0.05] overflow-hidden relative">
+                        <div className="absolute left-[2%] w-[28%] h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-teal-500 shadow-[0_0_10px_rgba(16,185,129,0.15)]" />
+                      </div>
+                    </div>
+
+                    {/* Row 4 */}
+                    <div className="flex items-center space-x-4">
+                      {/* Abstract User Avatar */}
+                      <div className="w-7 h-7 rounded-full border border-cyan-500/30 flex items-center justify-center bg-[#081120] text-cyan-400/60 shadow-[0_0_8px_rgba(34,211,238,0.1)] shrink-0">
+                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                        </svg>
+                      </div>
+                      {/* Abstract bar */}
+                      <div className="flex-1 h-3 bg-slate-950/40 rounded-full border border-cyan-500/[0.05] overflow-hidden relative">
+                        <div className="absolute left-[20%] w-[55%] h-full rounded-full bg-gradient-to-r from-teal-600 via-cyan-500 to-emerald-500 shadow-[0_0_12px_rgba(20,184,166,0.2)]" />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* KPIs & Rodapé Card */}
-              <div>
-                <div className="grid grid-cols-3 gap-3 mb-6">
-                  <div className="bg-amber-950/20 border border-amber-500/10 rounded-2xl p-2.5 flex items-center space-x-2.5">
-                    <div className="w-8 h-8 bg-amber-500/10 rounded-lg flex items-center justify-center border border-amber-500/20 text-amber-400">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-lg font-extrabold text-white leading-tight">{teamStats.conflicts}</p>
-                      <p className="text-[7px] font-black text-amber-300/60 uppercase tracking-widest">Conflitos</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-teal-950/20 border border-teal-500/10 rounded-2xl p-2.5 flex items-center space-x-2.5">
-                    <div className="w-8 h-8 bg-teal-500/10 rounded-lg flex items-center justify-center border border-teal-500/20 text-teal-400">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6a7.5 7.5 0 107.5 7.5h-7.5V6z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0013.5 3v7.5z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-lg font-extrabold text-white leading-tight">{teamStats.avgCapacity}%</p>
-                      <p className="text-[7px] font-black text-teal-300/60 uppercase tracking-widest">Capacidade</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-rose-950/20 border border-rose-500/10 rounded-2xl p-2.5 flex items-center space-x-2.5">
-                    <div className="w-8 h-8 bg-rose-500/10 rounded-lg flex items-center justify-center border border-rose-500/20 text-rose-400">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.109A11.386 11.386 0 0110.089 21c-2.24 0-4.303-.647-6.04-1.758V19.13c0-1.113.285-2.16.786-3.07M15 19.128v-.109m-5.4-3.55a5.004 5.004 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-lg font-extrabold text-white leading-tight">{teamStats.overloadedCount}</p>
-                      <p className="text-[7px] font-black text-rose-300/60 uppercase tracking-widest">Sobrecargas</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-emerald-500/10 pt-5">
-                  <span className="px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[9px] font-black text-emerald-400 uppercase tracking-widest group-hover:bg-emerald-500/20 transition-all">
-                    Visão Analítica
-                  </span>
-                  <div className="flex items-center text-white font-extrabold text-xs uppercase tracking-widest group-hover:text-emerald-400 transition-colors">
-                    Explorar Visão 
-                    <svg className="w-4 h-4 ml-2 transform group-hover:translate-x-1.5 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                    </svg>
-                  </div>
+              {/* Botão Explorar Visão */}
+              <div className="flex justify-center mt-4">
+                <div className="px-8 py-3 rounded-full border border-emerald-500/30 text-white font-extrabold text-xs uppercase tracking-widest bg-emerald-500/5 group-hover:bg-emerald-500/15 group-hover:border-emerald-400/60 group-hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300 flex items-center space-x-2">
+                  <span>Explorar Visão</span>
+                  <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                  </svg>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* BARRA INFORMATIVA HUD NO RODAPÉ */}
-        <div className="w-full max-w-6xl mt-8 mb-4 bg-[#0a1122]/60 border border-blue-500/10 rounded-2xl p-4 relative overflow-hidden shadow-2xl z-10">
-          <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500/25 to-transparent" />
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="flex items-start space-x-3.5">
-              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
-                <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="text-[10px] font-black text-slate-200 uppercase tracking-widest">Dados em Tempo Real</h4>
-                <p className="text-[9px] text-slate-400 font-medium leading-relaxed mt-0.5">Informações sempre atualizadas para decisões assertivas.</p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3.5">
-              <div className="w-9 h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 shrink-0">
-                <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="text-[10px] font-black text-slate-200 uppercase tracking-widest">Gestão Inteligente</h4>
-                <p className="text-[9px] text-slate-400 font-medium leading-relaxed mt-0.5">Automação e análise para máxima eficiência do fluxo.</p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3.5">
-              <div className="w-9 h-9 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shrink-0">
-                <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.61 6.51m5.98 7.86a14.98 14.98 0 01-6.16 12.12m6.16-12.12c-1.12-1.12-2.56-1.74-4.05-1.74-1.49 0-2.93.62-4.05 1.74M9.61 6.51a14.98 14.98 0 00-6.16 12.12A14.98 14.98 0 0015.59 14.37M9.61 6.51c-1.12 1.12-1.74 2.56-1.74 4.05 0 1.49.62 2.93 1.74 4.05" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="text-[10px] font-black text-slate-200 uppercase tracking-widest">Foco no que Importa</h4>
-                <p className="text-[9px] text-slate-400 font-medium leading-relaxed mt-0.5">Visibilidade clara do que impulsiona seus resultados.</p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3.5">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="text-[10px] font-black text-slate-200 uppercase tracking-widest">Segurança Total</h4>
-                <p className="text-[9px] text-slate-400 font-medium leading-relaxed mt-0.5">Seus dados protegidos com padrões de excelência.</p>
-              </div>
-            </div>
+        {/* RODAPÉ MÍNIMO */}
+        <div className="w-full flex justify-center mt-12 mb-4 relative z-10">
+          <div className="inline-flex items-center space-x-2.5 px-6 py-2.5 rounded-full border border-blue-500/10 bg-[#0a1122]/60 backdrop-blur-md shadow-lg">
+            <svg className="w-4 h-4 text-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.5)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-[9px] font-black text-slate-400 tracking-[0.25em] uppercase">
+              GESTÃO INTELIGENTE. DECISÕES ASSERTIVAS.
+            </span>
           </div>
         </div>
       </div>
