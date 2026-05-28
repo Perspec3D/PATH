@@ -238,35 +238,6 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const todayStr = new Date().toDateString();
 
   if (viewMode === 'selector') {
-    // Preview para o card "Fluxo Geral": pegar os 3 projetos mais recentes com datas válidas
-    const activeProjectsPreview = activeProjects.slice(0, 3);
-
-    // Preview para o card "Time & Carga": pegar os 3 usuários ativos com mais atribuições
-    const teamLoadPreview = allUsers
-      .filter(u => u.isActive)
-      .map(user => {
-        const userTasks = activeProjects.filter(p => p.assigneeId === user.id);
-        const userSubtasks = activeProjects.flatMap(p =>
-          (p.subtasks || []).filter(st => st.assigneeId === user.id)
-        );
-        const userActivities = (db.tasks || [])
-          .filter(t => (t.assigneeId === user.id || (t.invitedUsers && t.invitedUsers.includes(user.id))) && t.status !== ProjectStatus.DONE && t.status !== ProjectStatus.CANCELED);
-        
-        const totalCount = userTasks.length + userSubtasks.length + userActivities.length;
-        const projectsCount = new Set([
-          ...userTasks.map(p => p.id),
-          ...userSubtasks.map(st => st.projectId)
-        ]).size;
-
-        return {
-          user,
-          taskCount: totalCount,
-          projectCount: projectsCount
-        };
-      })
-      .sort((a, b) => b.taskCount - a.taskCount)
-      .slice(0, 3);
-
     return (
       <div className="space-y-8 animate-in fade-in duration-500 pb-12 relative">
         {/* BACKGROUND GLOWING ORBS DISCRETOS */}
@@ -279,7 +250,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
             <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors uppercase">
               Central de Cronogramas
             </h1>
-            <p className="text-slate-500 dark:text-slate-500 text-sm font-medium transition-colors">
+            <p className="text-slate-550 dark:text-slate-400 text-sm font-medium transition-colors">
               Painel integrado para monitoramento de projetos e capacidade da equipe
             </p>
           </div>
@@ -290,7 +261,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
           {/* CARD: FLUXO GERAL */}
           <div
             onClick={() => setViewMode('flow')}
-            className="group cursor-pointer relative transition-all duration-300 transform hover:scale-[1.01] flex flex-col justify-between min-h-[460px] bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl border border-slate-200 dark:border-white/5 rounded-[40px] p-8 shadow-sm dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:border-indigo-500/40 dark:hover:border-indigo-400/40 hover:shadow-md transition-all duration-550"
+            className="group cursor-pointer relative transition-all duration-300 transform hover:scale-[1.01] flex flex-col justify-between min-h-[320px] bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl border border-slate-200 dark:border-white/5 rounded-[40px] p-8 shadow-sm dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:border-indigo-500/40 dark:hover:border-indigo-400/40 hover:shadow-md transition-all duration-550"
           >
             {/* Aura de fundo suave */}
             <div className="absolute -top-12 -right-12 w-48 h-48 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-3xl group-hover:bg-indigo-500/20 transition-all duration-1000" />
@@ -304,63 +275,20 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                   </svg>
                 </div>
                 <div>
-                  <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] block">Visão Cronológica</span>
+                  <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.2em] block">Planejamento Cronológico</span>
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white uppercase tracking-wider mt-0.5">
                     Fluxo <span className="text-indigo-600 dark:text-indigo-400">Geral</span>
                   </h3>
                 </div>
               </div>
 
-              <p className="text-slate-500 dark:text-slate-400 text-sm font-medium leading-relaxed mb-6">
-                Monitore o andamento dos projetos operacionais em uma linha do tempo clara, com datas de início e entrega.
+              <p className="text-slate-500 dark:text-slate-400 text-sm font-medium leading-relaxed mb-8">
+                Monitore prazos, entregas e marcos críticos em uma linha do tempo operacional unificada. Acesse o cronograma completo de projetos ativos do sistema.
               </p>
-
-              {/* LISTA DE PROJETOS REAIS (PREVIEW) */}
-              <div className="space-y-3 mb-6">
-                {activeProjectsPreview.length > 0 ? (
-                  activeProjectsPreview.map(project => {
-                    const client = allClients.find(c => c.id === project.clientId);
-                    const start = project.startDate ? new Date(project.startDate + 'T12:00:00') : null;
-                    const end = project.deliveryDate ? new Date(project.deliveryDate + 'T12:00:00') : null;
-                    
-                    let barPercent = 'w-1/2';
-                    if (project.status === ProjectStatus.IN_PROGRESS) barPercent = 'w-2/3';
-                    else if (project.status === ProjectStatus.DONE) barPercent = 'w-full';
-                    else if (project.status === ProjectStatus.QUEUE) barPercent = 'w-1/4';
-                    else if (project.status === ProjectStatus.PAUSED) barPercent = 'w-1/3';
-
-                    return (
-                      <div key={project.id} className="bg-slate-50 dark:bg-slate-800/20 border border-slate-100 dark:border-white/5 rounded-2xl p-4 transition-colors">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex flex-col">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white uppercase truncate max-w-[280px]">{project.name}</span>
-                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">{project.code} {client ? `• ${client.name}` : ''}</span>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>
-                            {project.status}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between space-x-3 mt-2">
-                          <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-full overflow-hidden">
-                            <div className={`h-full ${getStatusColor(project.status)} ${barPercent} rounded-full`} />
-                          </div>
-                          <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter">
-                            {start?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} → {end?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center text-slate-400 dark:text-slate-500 text-xs italic">
-                    Nenhum projeto ativo em andamento.
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* Ações */}
-            <div className="px-6 py-3 rounded-2xl border border-indigo-500/20 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-extrabold text-xs uppercase tracking-widest bg-indigo-500/5 group-hover:bg-indigo-650 dark:group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300 flex items-center justify-center space-x-2">
+            <div className="px-6 py-3.5 rounded-2xl border border-indigo-500/20 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-extrabold text-xs uppercase tracking-widest bg-indigo-500/5 group-hover:bg-indigo-650 dark:group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300 flex items-center justify-center space-x-2">
               <span>Acessar Cronograma</span>
               <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
@@ -371,7 +299,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
           {/* CARD: TIME & CARGA */}
           <div
             onClick={() => setViewMode('assignments')}
-            className="group cursor-pointer relative transition-all duration-300 transform hover:scale-[1.01] flex flex-col justify-between min-h-[460px] bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl border border-slate-200 dark:border-white/5 rounded-[40px] p-8 shadow-sm dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:border-emerald-500/40 dark:hover:border-emerald-400/40 hover:shadow-md transition-all duration-300"
+            className="group cursor-pointer relative transition-all duration-300 transform hover:scale-[1.01] flex flex-col justify-between min-h-[320px] bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl border border-slate-200 dark:border-white/5 rounded-[40px] p-8 shadow-sm dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:border-emerald-500/40 dark:hover:border-emerald-400/40 hover:shadow-md transition-all duration-300"
           >
             {/* Aura de fundo suave */}
             <div className="absolute -top-12 -right-12 w-48 h-48 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all duration-1000" />
@@ -385,62 +313,20 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                   </svg>
                 </div>
                 <div>
-                  <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] block">Visão de Equipe</span>
+                  <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-[0.2em] block">Capacidade da Equipe</span>
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white uppercase tracking-wider mt-0.5">
                     Time <span className="text-emerald-600 dark:text-emerald-400">& Carga</span>
                   </h3>
                 </div>
               </div>
 
-              <p className="text-slate-550 dark:text-slate-400 text-sm font-medium leading-relaxed mb-6">
-                Analise e balanceie a carga de trabalho de cada membro do time para otimizar prazos e evitar gargalos.
+              <p className="text-slate-555 dark:text-slate-400 text-sm font-medium leading-relaxed mb-8">
+                Gerencie a alocação de atividades, identifique sobreposições de prazos e otimize a capacidade produtiva de cada profissional da equipe.
               </p>
-
-              {/* LISTA DE USUÁRIOS REAIS (PREVIEW) */}
-              <div className="space-y-3 mb-6">
-                {teamLoadPreview.length > 0 ? (
-                  teamLoadPreview.map(({ user, taskCount, projectCount }) => {
-                    const maxCapacityTasks = 6;
-                    const loadPct = Math.min(100, Math.round((taskCount / maxCapacityTasks) * 100));
-                    
-                    let loadColor = 'bg-emerald-500';
-                    if (loadPct > 80) loadColor = 'bg-rose-500';
-                    else if (loadPct > 50) loadColor = 'bg-amber-500';
-
-                    return (
-                      <div key={user.id} className="bg-slate-50 dark:bg-slate-800/20 border border-slate-100 dark:border-white/5 rounded-2xl p-4 transition-colors flex items-center justify-between">
-                        <div className="flex items-center space-x-3 flex-1 min-w-0">
-                          <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500 font-black text-xs uppercase overflow-hidden shrink-0">
-                            {user.username.charAt(0)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-tight truncate block">{user.username}</span>
-                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-black uppercase mt-0.5 tracking-wider block">
-                              {projectCount} {projectCount === 1 ? 'Projeto' : 'Projetos'} • {taskCount} {taskCount === 1 ? 'Atribuição' : 'Atribuições'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="w-24 shrink-0 flex items-center space-x-2">
-                          <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-full overflow-hidden">
-                            <div className={`h-full ${loadColor} rounded-full`} style={{ width: `${loadPct}%` }} />
-                          </div>
-                          <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 w-6 text-right">
-                            {loadPct}%
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center text-slate-400 dark:text-slate-500 text-xs italic">
-                    Nenhum colaborador ativo alocado.
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* Ações */}
-            <div className="px-6 py-3 rounded-2xl border border-emerald-500/20 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-extrabold text-xs uppercase tracking-widest bg-emerald-500/5 group-hover:bg-emerald-650 dark:group-hover:bg-emerald-600 group-hover:text-white transition-all duration-300 flex items-center justify-center space-x-2">
+            <div className="px-6 py-3.5 rounded-2xl border border-emerald-500/20 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-extrabold text-xs uppercase tracking-widest bg-emerald-500/5 group-hover:bg-emerald-655 dark:group-hover:bg-emerald-600 group-hover:text-white transition-all duration-300 flex items-center justify-center space-x-2">
               <span>Acessar Atribuições</span>
               <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
