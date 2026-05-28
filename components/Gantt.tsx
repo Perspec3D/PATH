@@ -238,321 +238,214 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const todayStr = new Date().toDateString();
 
   if (viewMode === 'selector') {
+    // Preview para o card "Fluxo Geral": pegar os 3 projetos mais recentes com datas válidas
+    const activeProjectsPreview = activeProjects.slice(0, 3);
+
+    // Preview para o card "Time & Carga": pegar os 3 usuários ativos com mais atribuições
+    const teamLoadPreview = allUsers
+      .filter(u => u.isActive)
+      .map(user => {
+        const userTasks = activeProjects.filter(p => p.assigneeId === user.id);
+        const userSubtasks = activeProjects.flatMap(p =>
+          (p.subtasks || []).filter(st => st.assigneeId === user.id)
+        );
+        const userActivities = (db.tasks || [])
+          .filter(t => (t.assigneeId === user.id || (t.invitedUsers && t.invitedUsers.includes(user.id))) && t.status !== ProjectStatus.DONE && t.status !== ProjectStatus.CANCELED);
+        
+        const totalCount = userTasks.length + userSubtasks.length + userActivities.length;
+        const projectsCount = new Set([
+          ...userTasks.map(p => p.id),
+          ...userSubtasks.map(st => st.projectId)
+        ]).size;
+
+        return {
+          user,
+          taskCount: totalCount,
+          projectCount: projectsCount
+        };
+      })
+      .sort((a, b) => b.taskCount - a.taskCount)
+      .slice(0, 3);
+
     return (
-      <div className="-m-8 p-8 min-h-[calc(100vh-4rem)] bg-[#081120] text-slate-100 flex flex-col items-center justify-between relative overflow-hidden transition-all duration-500 hud-grid">
-        {/* ESTILOS INLINE PARA ANIMAÇÕES E EFEITOS HUD */}
-        <style dangerouslySetInnerHTML={{__html: `
-          .hud-grid {
-            background-size: 40px 40px;
-            background-image: 
-              linear-gradient(to right, rgba(99, 102, 241, 0.03) 1px, transparent 1px),
-              linear-gradient(to bottom, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
-          }
-          .glow-purple {
-            box-shadow: 0 0 25px rgba(139, 92, 246, 0.15);
-          }
-          .glow-purple:hover {
-            box-shadow: 0 0 35px rgba(139, 92, 246, 0.35);
-          }
-          .glow-green {
-            box-shadow: 0 0 25px rgba(16, 185, 129, 0.15);
-          }
-          .glow-green:hover {
-            box-shadow: 0 0 35px rgba(16, 185, 129, 0.35);
-          }
-        `}} />
+      <div className="space-y-8 animate-in fade-in duration-500 pb-12 relative">
+        {/* BACKGROUND GLOWING ORBS DISCRETOS */}
+        <div className="absolute top-1/4 -left-20 w-96 h-96 bg-indigo-600/5 dark:bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none animate-pulse" />
+        <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-emerald-600/5 dark:bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none animate-pulse delay-1000" />
 
-        {/* BACKGROUND GLOWING ORBS */}
-        <div className="absolute top-1/4 -left-20 w-96 h-96 bg-indigo-600/10 rounded-full blur-[120px] animate-pulse pointer-events-none" />
-        <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-emerald-600/10 rounded-full blur-[120px] animate-pulse pointer-events-none delay-1000" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/[0.03] rounded-full blur-[150px] pointer-events-none" />
-
-        {/* CABEÇALHO FUTURISTA HUD */}
-        <div className="text-center relative z-10 w-full max-w-2xl mt-4 mb-10 animate-in fade-in slide-in-from-top-10 duration-1000">
-          <div className="relative inline-block px-12 py-5 border border-blue-500/20 bg-[#0b1426]/80 backdrop-blur-md rounded-2xl shadow-[0_0_40px_rgba(59,130,246,0.1)]">
-            {/* Cantos chanfrados HUD */}
-            <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-cyan-400 -translate-x-[1px] -translate-y-[1px]" />
-            <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-cyan-400 translate-x-[1px] -translate-y-[1px]" />
-            <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-cyan-400 -translate-x-[1px] translate-y-[1px]" />
-            <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-cyan-400 translate-x-[1px] translate-y-[1px]" />
-            
-            {/* Linhas brilhantes superior/inferior */}
-            <div className="absolute top-0 left-12 right-12 h-[1px] bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
-            <div className="absolute bottom-0 left-12 right-12 h-[1px] bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
-            
-            {/* Detalhes de nós laterais */}
-            <div className="absolute -left-[4px] top-1/2 -translate-y-1/2 w-[7px] h-6 bg-cyan-500 rounded-full shadow-[0_0_10px_rgba(34,211,238,0.7)]" />
-            <div className="absolute -right-[4px] top-1/2 -translate-y-1/2 w-[7px] h-6 bg-cyan-500 rounded-full shadow-[0_0_10px_rgba(34,211,238,0.7)]" />
-
-            <span className="text-[10px] font-black tracking-[0.4em] text-cyan-400/80 uppercase block mb-1.5 animate-pulse">PERSPECPATH OPERATIONAL</span>
-            
-            <h1 className="text-4xl font-extrabold text-white tracking-[0.18em] uppercase mb-1 drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
-              CENTRAL DE <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.2)]">CRONOGRAMAS</span>
+        {/* CABEÇALHO PADRÃO DO SAAS */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors uppercase">
+              Central de Cronogramas
             </h1>
+            <p className="text-slate-500 dark:text-slate-500 text-sm font-medium transition-colors">
+              Painel integrado para monitoramento de projetos e capacidade da equipe
+            </p>
           </div>
-
-          <p className="text-slate-400 dark:text-slate-400 font-medium text-xs tracking-[0.22em] uppercase mt-4 transition-colors">
-            “Monitoramento operacional inteligente da equipe e projetos”
-          </p>
         </div>
 
         {/* CARDS PRINCIPAIS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 w-full max-w-5xl relative z-10 my-4 flex-1">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full max-w-7xl relative z-10">
           {/* CARD: FLUXO GERAL */}
           <div
             onClick={() => setViewMode('flow')}
-            className="group cursor-pointer relative transition-all duration-300 transform hover:scale-[1.01] flex"
+            className="group cursor-pointer relative transition-all duration-300 transform hover:scale-[1.01] flex flex-col justify-between min-h-[460px] bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl border border-slate-200 dark:border-white/5 rounded-[40px] p-8 shadow-sm dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:border-indigo-500/40 dark:hover:border-indigo-400/40 hover:shadow-md transition-all duration-550"
           >
-            {/* Glow de fundo */}
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-purple-500/5 to-transparent rounded-[32px] opacity-60 group-hover:opacity-100 transition-opacity duration-500 blur-xl" />
-            
-            <div className="relative flex flex-col justify-between w-full bg-[#0a1122]/70 backdrop-blur-xl border border-indigo-500/25 rounded-[32px] p-8 hover:border-indigo-400/60 transition-all duration-500 glow-purple">
-              {/* Moldura HUD interna */}
-              <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-indigo-500/20 rounded-tr-[32px] pointer-events-none" />
-              <div className="absolute bottom-0 left-0 w-8 h-8 border-b border-l border-indigo-500/20 rounded-bl-[32px] pointer-events-none" />
+            {/* Aura de fundo suave */}
+            <div className="absolute -top-12 -right-12 w-48 h-48 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-full blur-3xl group-hover:bg-indigo-500/20 transition-all duration-1000" />
 
-              <div>
-                {/* Header Card */}
-                <div className="flex items-center space-x-4 mb-6">
-                  <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center border border-indigo-500/30 group-hover:bg-indigo-500/20 group-hover:scale-105 transition-all duration-500">
-                    <svg className="w-7 h-7 text-indigo-400 drop-shadow-[0_0_6px_rgba(129,140,248,0.5)]" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white uppercase tracking-wider">
-                      Fluxo <span className="text-indigo-400">Geral</span>
-                    </h3>
-                    <div className="h-[2px] w-8 bg-indigo-500/60 rounded-full mt-1" />
-                  </div>
-                </div>
-
-                <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8 min-h-[40px]">
-                  Visualize o fluxo operacional dos projetos, prazos e entregas em uma visão cronológica clara.
-                </p>
-
-                {/* ILUSTRAÇÃO ABSTRATA TIMELINE */}
-                <div className="bg-[#050a14]/40 border border-indigo-500/10 rounded-2xl p-6 mb-6 relative overflow-hidden h-[180px] flex flex-col justify-between">
-                  {/* Fine HUD Grid lines */}
-                  <div className="absolute inset-0 opacity-15 pointer-events-none" style={{
-                    backgroundImage: `linear-gradient(to right, rgba(99, 102, 241, 0.1) 1px, transparent 1px),
-                                      linear-gradient(to bottom, rgba(99, 102, 241, 0.1) 1px, transparent 1px)`,
-                    backgroundSize: '20px 20px'
-                  }} />
-
-                  {/* Dotted helper grid background */}
-                  <div className="absolute inset-0 flex justify-between px-6 pointer-events-none opacity-5">
-                    <div className="border-r border-dashed border-indigo-400 h-full" />
-                    <div className="border-r border-dashed border-indigo-400 h-full" />
-                    <div className="border-r border-dashed border-indigo-400 h-full" />
-                    <div className="border-r border-dashed border-indigo-400 h-full" />
-                    <div className="border-r border-dashed border-indigo-400 h-full" />
-                  </div>
-
-                  {/* Main Timeline Line and Nodes */}
-                  <div className="relative w-full my-auto">
-                    {/* Horizontal Line */}
-                    <div className="w-full h-[2px] bg-gradient-to-r from-indigo-500/10 via-indigo-500/50 to-indigo-500/10 relative">
-                      {/* Glow path */}
-                      <div className="absolute inset-0 bg-indigo-500/30 blur-[2px]" />
-                    </div>
-                    
-                    {/* Connected Nodes */}
-                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
-                      <div className="w-3.5 h-3.5 rounded-full bg-indigo-400 border-2 border-indigo-300 shadow-[0_0_12px_#818cf8] -translate-y-[2px] relative">
-                        <div className="absolute inset-0.5 rounded-full bg-white animate-ping opacity-75" />
-                      </div>
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
-                      <div className="w-3.5 h-3.5 rounded-full bg-purple-500 border-2 border-purple-400 shadow-[0_0_12px_#a78bfa] -translate-y-[2px]" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#081120] border-2 border-indigo-400 shadow-[0_0_8px_#818cf8]" />
-                    </div>
-                  </div>
-
-                  {/* Floating Bars below the line */}
-                  <div className="space-y-3 relative z-10 w-full">
-                    {/* Bar 1 */}
-                    <div className="flex items-center w-full">
-                      <div className="w-[10%] shrink-0" />
-                      <div className="w-[30%] h-3 rounded-full bg-gradient-to-r from-blue-600 via-indigo-500 to-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.3)] relative">
-                        <div className="absolute inset-0 bg-white/10 rounded-full" />
-                      </div>
-                    </div>
-                    
-                    {/* Bar 2 */}
-                    <div className="flex items-center w-full">
-                      <div className="w-[35%] shrink-0" />
-                      <div className="w-[45%] h-3 rounded-full bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-500 shadow-[0_0_15px_rgba(139,92,246,0.3)] relative">
-                        <div className="absolute inset-0 bg-white/10 rounded-full" />
-                      </div>
-                    </div>
-                    
-                    {/* Bar 3 */}
-                    <div className="flex items-center w-full">
-                      <div className="w-[20%] shrink-0" />
-                      <div className="w-[25%] h-3 rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 shadow-[0_0_15px_rgba(6,182,212,0.3)] relative">
-                        <div className="absolute inset-0 bg-white/10 rounded-full" />
-                      </div>
-                    </div>
-
-                    {/* Bar 4 */}
-                    <div className="flex items-center w-full">
-                      <div className="w-[50%] shrink-0" />
-                      <div className="w-[40%] h-3 rounded-full bg-gradient-to-r from-indigo-500 via-purple-600 to-pink-500 shadow-[0_0_15px_rgba(236,72,153,0.2)] relative">
-                        <div className="absolute inset-0 bg-white/10 rounded-full" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Botão Explorar Visão */}
-              <div className="flex justify-center mt-4">
-                <div className="px-8 py-3 rounded-full border border-indigo-500/30 text-white font-extrabold text-xs uppercase tracking-widest bg-indigo-500/5 group-hover:bg-indigo-500/15 group-hover:border-indigo-400/60 group-hover:shadow-[0_0_20px_rgba(99,102,241,0.3)] transition-all duration-300 flex items-center space-x-2">
-                  <span>Explorar Visão</span>
-                  <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            <div>
+              {/* Header Card */}
+              <div className="flex items-center space-x-4 mb-6">
+                <div className="w-12 h-12 bg-indigo-500/10 rounded-2xl flex items-center justify-center border border-indigo-500/20 group-hover:bg-indigo-500/20 transition-all duration-500">
+                  <svg className="w-6 h-6 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
                   </svg>
                 </div>
+                <div>
+                  <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] block">Visão Cronológica</span>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white uppercase tracking-wider mt-0.5">
+                    Fluxo <span className="text-indigo-600 dark:text-indigo-400">Geral</span>
+                  </h3>
+                </div>
               </div>
+
+              <p className="text-slate-500 dark:text-slate-400 text-sm font-medium leading-relaxed mb-6">
+                Monitore o andamento dos projetos operacionais em uma linha do tempo clara, com datas de início e entrega.
+              </p>
+
+              {/* LISTA DE PROJETOS REAIS (PREVIEW) */}
+              <div className="space-y-3 mb-6">
+                {activeProjectsPreview.length > 0 ? (
+                  activeProjectsPreview.map(project => {
+                    const client = allClients.find(c => c.id === project.clientId);
+                    const start = project.startDate ? new Date(project.startDate + 'T12:00:00') : null;
+                    const end = project.deliveryDate ? new Date(project.deliveryDate + 'T12:00:00') : null;
+                    
+                    let barPercent = 'w-1/2';
+                    if (project.status === ProjectStatus.IN_PROGRESS) barPercent = 'w-2/3';
+                    else if (project.status === ProjectStatus.DONE) barPercent = 'w-full';
+                    else if (project.status === ProjectStatus.QUEUE) barPercent = 'w-1/4';
+                    else if (project.status === ProjectStatus.PAUSED) barPercent = 'w-1/3';
+
+                    return (
+                      <div key={project.id} className="bg-slate-50 dark:bg-slate-800/20 border border-slate-100 dark:border-white/5 rounded-2xl p-4 transition-colors">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-900 dark:text-white uppercase truncate max-w-[280px]">{project.name}</span>
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">{project.code} {client ? `• ${client.name}` : ''}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>
+                            {project.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between space-x-3 mt-2">
+                          <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-full overflow-hidden">
+                            <div className={`h-full ${getStatusColor(project.status)} ${barPercent} rounded-full`} />
+                          </div>
+                          <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter">
+                            {start?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} → {end?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center text-slate-400 dark:text-slate-500 text-xs italic">
+                    Nenhum projeto ativo em andamento.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Ações */}
+            <div className="px-6 py-3 rounded-2xl border border-indigo-500/20 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-extrabold text-xs uppercase tracking-widest bg-indigo-500/5 group-hover:bg-indigo-650 dark:group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300 flex items-center justify-center space-x-2">
+              <span>Acessar Cronograma</span>
+              <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+              </svg>
             </div>
           </div>
 
           {/* CARD: TIME & CARGA */}
           <div
             onClick={() => setViewMode('assignments')}
-            className="group cursor-pointer relative transition-all duration-300 transform hover:scale-[1.01] flex"
+            className="group cursor-pointer relative transition-all duration-300 transform hover:scale-[1.01] flex flex-col justify-between min-h-[460px] bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl border border-slate-200 dark:border-white/5 rounded-[40px] p-8 shadow-sm dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:border-emerald-500/40 dark:hover:border-emerald-400/40 hover:shadow-md transition-all duration-300"
           >
-            {/* Glow de fundo */}
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent rounded-[32px] opacity-60 group-hover:opacity-100 transition-opacity duration-500 blur-xl" />
-            
-            <div className="relative flex flex-col justify-between w-full bg-[#0a1122]/70 backdrop-blur-xl border border-emerald-500/25 rounded-[32px] p-8 hover:border-emerald-400/60 transition-all duration-500 glow-green">
-              {/* Moldura HUD interna */}
-              <div className="absolute top-0 right-0 w-8 h-8 border-t border-r border-emerald-500/20 rounded-tr-[32px] pointer-events-none" />
-              <div className="absolute bottom-0 left-0 w-8 h-8 border-b border-l border-emerald-500/20 rounded-bl-[32px] pointer-events-none" />
+            {/* Aura de fundo suave */}
+            <div className="absolute -top-12 -right-12 w-48 h-48 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all duration-1000" />
 
-              <div>
-                {/* Header Card */}
-                <div className="flex items-center space-x-4 mb-6">
-                  <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center border border-emerald-500/30 group-hover:bg-emerald-500/20 group-hover:scale-105 transition-all duration-500">
-                    <svg className="w-7 h-7 text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white uppercase tracking-wider">
-                      Time <span className="text-emerald-400">& Carga</span>
-                    </h3>
-                    <div className="h-[2px] w-8 bg-emerald-500/60 rounded-full mt-1" />
-                  </div>
-                </div>
-
-                <p className="text-slate-400 text-sm font-medium leading-relaxed mb-8 min-h-[40px]">
-                  Analise a distribuição de atividades por profissional e identifique sobreposições de prazos no cronograma real.
-                </p>
-
-                {/* ILUSTRAÇÃO ABSTRATA CARGA */}
-                <div className="bg-[#050a14]/40 border border-emerald-500/10 rounded-2xl p-6 mb-6 relative overflow-hidden h-[180px] flex flex-col justify-between">
-                  {/* Fine HUD Grid lines */}
-                  <div className="absolute inset-0 opacity-15 pointer-events-none" style={{
-                    backgroundImage: `linear-gradient(to right, rgba(16, 185, 129, 0.1) 1px, transparent 1px),
-                                      linear-gradient(to bottom, rgba(16, 185, 129, 0.1) 1px, transparent 1px)`,
-                    backgroundSize: '20px 20px'
-                  }} />
-
-                  {/* Dotted helper grid background */}
-                  <div className="absolute inset-0 flex justify-between px-6 pointer-events-none opacity-5">
-                    <div className="border-r border-dashed border-emerald-400 h-full" />
-                    <div className="border-r border-dashed border-emerald-400 h-full" />
-                    <div className="border-r border-dashed border-emerald-400 h-full" />
-                    <div className="border-r border-dashed border-emerald-400 h-full" />
-                  </div>
-
-                  <div className="space-y-3 relative z-10 w-full my-auto">
-                    {/* Row 1 */}
-                    <div className="flex items-center space-x-4">
-                      {/* Abstract User Avatar */}
-                      <div className="w-7 h-7 rounded-full border border-emerald-500/30 flex items-center justify-center bg-[#081120] text-emerald-400/60 shadow-[0_0_8px_rgba(16,185,129,0.1)] shrink-0">
-                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                        </svg>
-                      </div>
-                      {/* Abstract bar */}
-                      <div className="flex-1 h-3 bg-slate-950/40 rounded-full border border-emerald-500/[0.05] overflow-hidden relative">
-                        <div className="absolute left-[5%] w-[45%] h-full rounded-full bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.2)]" />
-                      </div>
-                    </div>
-
-                    {/* Row 2 */}
-                    <div className="flex items-center space-x-4">
-                      {/* Abstract User Avatar */}
-                      <div className="w-7 h-7 rounded-full border border-cyan-500/30 flex items-center justify-center bg-[#081120] text-cyan-400/60 shadow-[0_0_8px_rgba(34,211,238,0.1)] shrink-0">
-                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                        </svg>
-                      </div>
-                      {/* Abstract bar */}
-                      <div className="flex-1 h-3 bg-slate-950/40 rounded-full border border-cyan-500/[0.05] overflow-hidden relative">
-                        <div className="absolute left-[15%] w-[70%] h-full rounded-full bg-gradient-to-r from-cyan-600 via-emerald-500 to-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.3)]" />
-                      </div>
-                    </div>
-
-                    {/* Row 3 */}
-                    <div className="flex items-center space-x-4">
-                      {/* Abstract User Avatar */}
-                      <div className="w-7 h-7 rounded-full border border-emerald-500/30 flex items-center justify-center bg-[#081120] text-emerald-400/60 shadow-[0_0_8px_rgba(16,185,129,0.1)] shrink-0">
-                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                        </svg>
-                      </div>
-                      {/* Abstract bar */}
-                      <div className="flex-1 h-3 bg-slate-950/40 rounded-full border border-emerald-500/[0.05] overflow-hidden relative">
-                        <div className="absolute left-[2%] w-[28%] h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-teal-500 shadow-[0_0_10px_rgba(16,185,129,0.15)]" />
-                      </div>
-                    </div>
-
-                    {/* Row 4 */}
-                    <div className="flex items-center space-x-4">
-                      {/* Abstract User Avatar */}
-                      <div className="w-7 h-7 rounded-full border border-cyan-500/30 flex items-center justify-center bg-[#081120] text-cyan-400/60 shadow-[0_0_8px_rgba(34,211,238,0.1)] shrink-0">
-                        <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                        </svg>
-                      </div>
-                      {/* Abstract bar */}
-                      <div className="flex-1 h-3 bg-slate-950/40 rounded-full border border-cyan-500/[0.05] overflow-hidden relative">
-                        <div className="absolute left-[20%] w-[55%] h-full rounded-full bg-gradient-to-r from-teal-600 via-cyan-500 to-emerald-500 shadow-[0_0_12px_rgba(20,184,166,0.2)]" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Botão Explorar Visão */}
-              <div className="flex justify-center mt-4">
-                <div className="px-8 py-3 rounded-full border border-emerald-500/30 text-white font-extrabold text-xs uppercase tracking-widest bg-emerald-500/5 group-hover:bg-emerald-500/15 group-hover:border-emerald-400/60 group-hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300 flex items-center space-x-2">
-                  <span>Explorar Visão</span>
-                  <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            <div>
+              {/* Header Card */}
+              <div className="flex items-center space-x-4 mb-6">
+                <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center border border-emerald-500/20 group-hover:bg-emerald-500/20 transition-all duration-500">
+                  <svg className="w-6 h-6 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
                   </svg>
                 </div>
+                <div>
+                  <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] block">Visão de Equipe</span>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white uppercase tracking-wider mt-0.5">
+                    Time <span className="text-emerald-600 dark:text-emerald-400">& Carga</span>
+                  </h3>
+                </div>
+              </div>
+
+              <p className="text-slate-550 dark:text-slate-400 text-sm font-medium leading-relaxed mb-6">
+                Analise e balanceie a carga de trabalho de cada membro do time para otimizar prazos e evitar gargalos.
+              </p>
+
+              {/* LISTA DE USUÁRIOS REAIS (PREVIEW) */}
+              <div className="space-y-3 mb-6">
+                {teamLoadPreview.length > 0 ? (
+                  teamLoadPreview.map(({ user, taskCount, projectCount }) => {
+                    const maxCapacityTasks = 6;
+                    const loadPct = Math.min(100, Math.round((taskCount / maxCapacityTasks) * 100));
+                    
+                    let loadColor = 'bg-emerald-500';
+                    if (loadPct > 80) loadColor = 'bg-rose-500';
+                    else if (loadPct > 50) loadColor = 'bg-amber-500';
+
+                    return (
+                      <div key={user.id} className="bg-slate-50 dark:bg-slate-800/20 border border-slate-100 dark:border-white/5 rounded-2xl p-4 transition-colors flex items-center justify-between">
+                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 dark:text-slate-500 font-black text-xs uppercase overflow-hidden shrink-0">
+                            {user.username.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-tight truncate block">{user.username}</span>
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-black uppercase mt-0.5 tracking-wider block">
+                              {projectCount} {projectCount === 1 ? 'Projeto' : 'Projetos'} • {taskCount} {taskCount === 1 ? 'Atribuição' : 'Atribuições'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-24 shrink-0 flex items-center space-x-2">
+                          <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-full overflow-hidden">
+                            <div className={`h-full ${loadColor} rounded-full`} style={{ width: `${loadPct}%` }} />
+                          </div>
+                          <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 w-6 text-right">
+                            {loadPct}%
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center text-slate-400 dark:text-slate-500 text-xs italic">
+                    Nenhum colaborador ativo alocado.
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* RODAPÉ MÍNIMO */}
-        <div className="w-full flex justify-center mt-12 mb-4 relative z-10">
-          <div className="inline-flex items-center space-x-2.5 px-6 py-2.5 rounded-full border border-blue-500/10 bg-[#0a1122]/60 backdrop-blur-md shadow-lg">
-            <svg className="w-4 h-4 text-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.5)]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-[9px] font-black text-slate-400 tracking-[0.25em] uppercase">
-              GESTÃO INTELIGENTE. DECISÕES ASSERTIVAS.
-            </span>
+            {/* Ações */}
+            <div className="px-6 py-3 rounded-2xl border border-emerald-500/20 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-extrabold text-xs uppercase tracking-widest bg-emerald-500/5 group-hover:bg-emerald-650 dark:group-hover:bg-emerald-600 group-hover:text-white transition-all duration-300 flex items-center justify-center space-x-2">
+              <span>Acessar Atribuições</span>
+              <svg className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+              </svg>
+            </div>
           </div>
         </div>
       </div>
