@@ -14,6 +14,12 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TeamTask | null>(null);
 
+  // Filter states
+  const [filterText, setFilterText] = useState('');
+  const [selectedType, setSelectedType] = useState<string>('all');
+  const [selectedAssignee, setSelectedAssignee] = useState<string>('all');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
+
   // Form states
   const [title, setTitle] = useState('');
   const [type, setType] = useState<TaskType>(TaskType.REUNIAO);
@@ -189,6 +195,67 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
     }
   };
 
+  // Filter and sort logic
+  const todayStr = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+
+  const filteredAndSortedTasks = [...db.tasks]
+    .filter(task => {
+      // 1. Text Search (title, description, assignee name, invited users names)
+      if (filterText.trim()) {
+        const text = filterText.toLowerCase();
+        const assignee = db.users.find(u => u.id === task.assigneeId);
+        const matchTitle = task.title.toLowerCase().includes(text);
+        const matchDesc = task.description?.toLowerCase().includes(text) || false;
+        const matchAssignee = assignee?.username.toLowerCase().includes(text) || false;
+        const matchInvited = task.invitedUsers?.some(id => 
+          db.users.find(u => u.id === id)?.username.toLowerCase().includes(text)
+        ) || false;
+        
+        if (!matchTitle && !matchDesc && !matchAssignee && !matchInvited) {
+          return false;
+        }
+      }
+      
+      // 2. Filter by Type
+      if (selectedType !== 'all' && task.type !== selectedType) {
+        return false;
+      }
+      
+      // 3. Filter by Assignee
+      if (selectedAssignee !== 'all') {
+        const isAssignee = task.assigneeId === selectedAssignee;
+        const isInvited = task.invitedUsers?.includes(selectedAssignee) || false;
+        if (!isAssignee && !isInvited) {
+          return false;
+        }
+      }
+      
+      // 4. Filter by Period (today, upcoming, past)
+      if (selectedPeriod === 'today') {
+        return task.startDate <= todayStr && task.endDate >= todayStr;
+      } else if (selectedPeriod === 'upcoming') {
+        return task.endDate >= todayStr;
+      } else if (selectedPeriod === 'past') {
+        return task.endDate < todayStr;
+      }
+      
+      return true;
+    })
+    .sort((a, b) => {
+      if (a.startDate !== b.startDate) {
+        return a.startDate.localeCompare(b.startDate);
+      }
+      const timeA = a.startTime || '00:00';
+      const timeB = b.startTime || '00:00';
+      if (timeA !== timeB) {
+        return timeA.localeCompare(timeB);
+      }
+      return a.title.localeCompare(b.title);
+    });
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -208,6 +275,82 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
       </div>
 
       <div className="bg-white dark:bg-[#1e293b] rounded-[32px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors duration-500">
+        {/* Painel de Filtros */}
+        <div className="p-6 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/20 dark:bg-slate-900/10 flex flex-col xl:flex-row gap-4 items-stretch xl:items-center justify-between">
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Campo de Busca */}
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              </span>
+              <input
+                type="text"
+                value={filterText}
+                onChange={e => setFilterText(e.target.value)}
+                placeholder="Buscar tarefa..."
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              />
+            </div>
+
+            {/* Filtro por Tipo */}
+            <div>
+              <select
+                value={selectedType}
+                onChange={e => setSelectedType(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              >
+                <option value="all">Todos os Tipos</option>
+                {Object.values(TaskType).map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro por Responsável */}
+            <div>
+              <select
+                value={selectedAssignee}
+                onChange={e => setSelectedAssignee(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              >
+                <option value="all">Qualquer Responsável</option>
+                {activeUsers.map(u => (
+                  <option key={u.id} value={u.id}>{u.username}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro por Período */}
+            <div>
+              <select
+                value={selectedPeriod}
+                onChange={e => setSelectedPeriod(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
+              >
+                <option value="all">Qualquer Período</option>
+                <option value="today">Hoje</option>
+                <option value="upcoming">Ativos / Próximos</option>
+                <option value="past">Passados</option>
+              </select>
+            </div>
+          </div>
+
+          {(filterText || selectedType !== 'all' || selectedAssignee !== 'all' || selectedPeriod !== 'all') && (
+            <button
+              onClick={() => {
+                setFilterText('');
+                setSelectedType('all');
+                setSelectedAssignee('all');
+                setSelectedPeriod('all');
+              }}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 transition-all flex items-center justify-center space-x-1.5 shrink-0 shadow-sm active:scale-95"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              <span>Limpar Filtros</span>
+            </button>
+          )}
+        </div>
+
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -215,19 +358,25 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                 <th className="p-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Título / Tipo</th>
                 <th className="p-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Responsável</th>
                 <th className="p-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Período</th>
+                <th className="p-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Horário</th>
                 <th className="p-5 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors">
-              {db.tasks.map(task => {
+              {filteredAndSortedTasks.map(task => {
                 const assignee = db.users.find(u => u.id === task.assigneeId);
                 return (
                   <tr key={task.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors group">
                     <td className="p-5">
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-slate-900 dark:text-white mb-1 transition-colors">
-                          {task.startTime ? `${task.startTime} - ` : ''}{task.title}
+                          {task.title}
                         </span>
+                        {task.description && (
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5 line-clamp-1 max-w-[240px]" title={task.description}>
+                            {task.description}
+                          </span>
+                        )}
                         <span className={`self-start px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${getTaskTypeBadgeColor(task.type)}`}>
                           {task.type}
                         </span>
@@ -272,6 +421,23 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                         </div>
                       </div>
                     </td>
+                    <td className="p-5">
+                      <div className="flex flex-col text-xs font-semibold text-slate-600 dark:text-slate-300 transition-colors">
+                        {task.startTime || task.endTime ? (
+                          <div className="flex items-center space-x-1">
+                            <svg className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <span>{task.startTime || '--:--'}</span>
+                            <span className="text-slate-400 dark:text-slate-500 text-[10px] font-normal">às</span>
+                            <span>{task.endTime || '--:--'}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500 font-medium text-[11px] uppercase tracking-wider flex items-center">
+                            <svg className="w-3.5 h-3.5 text-slate-400/50 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            Período Integral
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="p-5 text-right">
                       {currentUser.role !== UserRole.VIEWER && (
                         <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -295,10 +461,10 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                   </tr>
                 );
               })}
-              {db.tasks.length === 0 && (
+              {filteredAndSortedTasks.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm">
-                    Nenhuma tarefa cadastrada.
+                  <td colSpan={5} className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm font-medium">
+                    {db.tasks.length === 0 ? 'Nenhuma tarefa cadastrada.' : 'Nenhuma tarefa encontrada para os filtros selecionados.'}
                   </td>
                 </tr>
               )}
