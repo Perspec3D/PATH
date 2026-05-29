@@ -19,7 +19,7 @@ export enum TaskType {
   FOLGA = 'Folga',
   FERIAS = 'Férias',
   TREINAMENTO = 'Treinamento',
-  OBSERVACAO = 'Observação',
+  VISITA_TECNICA = 'Visita Técnica',
   OUTROS = 'Outros'
 }
 
