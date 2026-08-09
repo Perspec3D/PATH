@@ -15,6 +15,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const allClients = db.clients || [];
   const allUsers = db.users || [];
 
+  const [viewMode, setViewMode] = useState<'selector' | 'flow' | 'assignments'>('selector');
   const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
 
@@ -34,7 +35,6 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
     loadProjectActivitiesConsolidated();
   }, [currentUser.workspaceId, viewMode]);
 
-  const [viewMode, setViewMode] = useState<'selector' | 'flow' | 'assignments'>('selector');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [viewingUserCarga, setViewingUserCarga] = useState<any | null>(null);
 
