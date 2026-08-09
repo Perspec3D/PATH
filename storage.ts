@@ -241,6 +241,10 @@ export const syncCompany = async (company: Company) => {
     work_days: company.workDays
   }).eq('id', company.id);
   if (error) throw error;
+
+  if (memoryCache.data && memoryCache.data.company && memoryCache.data.company.id === company.id) {
+    memoryCache.data.company = { ...company };
+  }
 };
 
 // --- Helper Functions ---

@@ -50,6 +50,18 @@ const App: React.FC = () => {
     }
   }, [db.users]);
 
+  const companySessionRef = useRef(companySession);
+  useEffect(() => {
+    companySessionRef.current = companySession;
+  }, [companySession]);
+
+  // Keep companySession in sync with db.company changes
+  useEffect(() => {
+    if (db.company && JSON.stringify(db.company) !== JSON.stringify(companySession)) {
+      setCompanySession(db.company);
+    }
+  }, [db.company]);
+
   // Sync with Supabase on Login
   useEffect(() => {
     if (companySession) {
@@ -114,7 +126,7 @@ const App: React.FC = () => {
         setIsEmailConfirmed(!!session.user.email_confirmed_at);
 
         // Guard: Avoid unnecessary state updates if it's the same user
-        if (companySession?.id === session.user.id) {
+        if (companySessionRef.current?.id === session.user.id) {
           return;
         }
 
@@ -143,7 +155,7 @@ const App: React.FC = () => {
         setIsEmailConfirmed(!!session.user.email_confirmed_at);
 
         // Guard: Avoid unnecessary state updates if it's the same user
-        if (companySession?.id === session.user.id) {
+        if (companySessionRef.current?.id === session.user.id) {
           setIsLoading(false);
           return;
         }
