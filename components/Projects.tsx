@@ -65,6 +65,151 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [actStartDate, setActStartDate] = useState('');
   const [actDeliveryDate, setActDeliveryDate] = useState('');
   const [actNotes, setActNotes] = useState('');
+  const [allWorkspaceActivities, setAllWorkspaceActivities] = useState<ProjectActivity[]>([]);
+
+  useEffect(() => {
+    if (showActivityModal) {
+      const loadAllActs = async () => {
+        try {
+          const acts = await fetchProjectActivities(currentUser.workspaceId);
+          setAllWorkspaceActivities(acts);
+        } catch (e) {
+          console.error("Erro ao carregar atividades do workspace", e);
+        }
+      };
+      loadAllActs();
+    }
+  }, [showActivityModal, currentUser.workspaceId]);
+
+  const formatDecimalHours = (hours: number): string => {
+    const isNegative = hours < 0;
+    const absHours = Math.abs(hours);
+    const h = Math.floor(absHours);
+    const m = Math.round((absHours - h) * 60);
+    const formatted = m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+    return isNegative ? `-${formatted}` : formatted;
+  };
+
+  const capacityAnalysis = useMemo(() => {
+    const company = db.company;
+    const workDays = company?.workDays || [1, 2, 3, 4, 5];
+    
+    const start = company?.workStartTime || '08:00';
+    const end = company?.workEndTime || '18:00';
+    const lunch = company?.lunchDurationMinutes || 60;
+    const [startH, startM] = start.split(':').map(Number);
+    const [endH, endM] = end.split(':').map(Number);
+    const totalMin = (endH * 60 + endM) - (startH * 60 + startM);
+    const dailyHours = Math.max(0, (totalMin - lunch) / 60);
+
+    let businessDays = 0;
+    let windowCapacity = 0;
+    if (actStartDate && actDeliveryDate) {
+      const s = new Date(actStartDate + 'T12:00:00');
+      const e = new Date(actDeliveryDate + 'T12:00:00');
+      if (s <= e) {
+        const curr = new Date(s);
+        while (curr <= e) {
+          const dow = curr.getDay();
+          if (workDays.includes(dow)) {
+            businessDays++;
+          }
+          curr.setDate(curr.getDate() + 1);
+        }
+      }
+    }
+    windowCapacity = businessDays * dailyHours;
+
+    const estimate = parseFloat(actEstimatedDuration) || 0;
+    const balance = windowCapacity - estimate;
+    const isOverallocated = estimate > windowCapacity;
+
+    let assigneeOccupiedHours = 0;
+    let assigneeAvailableHours = 0;
+    let deficitReal = 0;
+    let hasRealCapacityIssue = false;
+
+    if (actAssigneeId && actStartDate && actDeliveryDate && businessDays > 0) {
+      const s = new Date(actStartDate + 'T12:00:00');
+      const e = new Date(actDeliveryDate + 'T12:00:00');
+
+      const targetDays = new Set<string>();
+      const curr = new Date(s);
+      while (curr <= e) {
+        const dow = curr.getDay();
+        if (workDays.includes(dow)) {
+          const yyyymmdd = curr.toISOString().split('T')[0];
+          targetDays.add(yyyymmdd);
+        }
+        curr.setDate(curr.getDate() + 1);
+      }
+
+      const otherActs = allWorkspaceActivities.filter(pa => 
+        pa.assigneeId === actAssigneeId &&
+        pa.id !== editingActivity?.id &&
+        pa.status !== ProjectStatus.DONE &&
+        pa.status !== ProjectStatus.CANCELED &&
+        pa.startDate &&
+        pa.deliveryDate
+      );
+
+      const occupiedPerDay: Record<string, number> = {};
+      targetDays.forEach(day => occupiedPerDay[day] = 0);
+
+      otherActs.forEach(pa => {
+        const paStart = new Date(pa.startDate! + 'T12:00:00');
+        const paEnd = new Date(pa.deliveryDate! + 'T12:00:00');
+        
+        let paBusinessDays = 0;
+        const paRunner = new Date(paStart);
+        while (paRunner <= paEnd) {
+          const dow = paRunner.getDay();
+          if (workDays.includes(dow)) {
+            paBusinessDays++;
+          }
+          paRunner.setDate(paRunner.getDate() + 1);
+        }
+
+        if (paBusinessDays === 0 || !pa.estimatedDurationHours) return;
+        const paDailyLoad = pa.estimatedDurationHours / paBusinessDays;
+
+        const paOverlapRunner = new Date(paStart);
+        while (paOverlapRunner <= paEnd) {
+          const dow = paOverlapRunner.getDay();
+          if (workDays.includes(dow)) {
+            const yyyymmdd = paOverlapRunner.toISOString().split('T')[0];
+            if (targetDays.has(yyyymmdd)) {
+              occupiedPerDay[yyyymmdd] = (occupiedPerDay[yyyymmdd] || 0) + paDailyLoad;
+            }
+          }
+          paOverlapRunner.setDate(paOverlapRunner.getDate() + 1);
+        }
+      });
+
+      let totalOccupiedInPeriod = 0;
+      targetDays.forEach(day => {
+        totalOccupiedInPeriod += occupiedPerDay[day] || 0;
+      });
+
+      assigneeOccupiedHours = totalOccupiedInPeriod;
+      assigneeAvailableHours = Math.max(0, windowCapacity - totalOccupiedInPeriod);
+      deficitReal = Math.max(0, estimate - assigneeAvailableHours);
+      hasRealCapacityIssue = estimate > assigneeAvailableHours;
+    }
+
+    return {
+      dailyHours,
+      businessDays,
+      windowCapacity,
+      estimate,
+      balance,
+      isOverallocated,
+      assigneeOccupiedHours,
+      assigneeAvailableHours,
+      deficitReal,
+      hasRealCapacityIssue
+    };
+  }, [actStartDate, actDeliveryDate, actEstimatedDuration, actAssigneeId, db.company, allWorkspaceActivities, editingActivity]);
   const [showOvertimeModal, setShowOvertimeModal] = useState(false);
   const [overtimeActivity, setOvertimeActivity] = useState<ProjectActivity | null>(null);
   const [editingOvertimeEntry, setEditingOvertimeEntry] = useState<ActivityOvertimeEntry | null>(null);
@@ -287,6 +432,17 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       editingProject.deliveryDate
     )) {
       alert(`Esta atividade deve estar dentro do período do projeto.\n${getProjectPeriodLabel(editingProject)}`);
+      return;
+    }
+
+    if (capacityAnalysis.isOverallocated) {
+      alert(
+        `Esta atividade exige mais horas do que o período planejado comporta.\n\n` +
+        `Estimativa: ${formatDecimalHours(capacityAnalysis.estimate)}\n` +
+        `Capacidade regular da janela: ${formatDecimalHours(capacityAnalysis.windowCapacity)}\n` +
+        `Déficit: ${formatDecimalHours(Math.abs(capacityAnalysis.balance))}\n\n` +
+        `Orientação: Amplie o período da atividade ou revise a duração estimada.`
+      );
       return;
     }
 
@@ -1966,6 +2122,76 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 px-1">
                   {getProjectPeriodLabel(editingProject)}
                 </p>
+              )}
+
+              {/* BLOCO COMPACTO DE ANÁLISE DE CAPACIDADE */}
+              {actStartDate && actDeliveryDate && (
+                <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/50 dark:border-white/5 p-4 rounded-2xl space-y-3 transition-colors text-xs">
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                      <span className="block text-[8px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Capacidade Janela</span>
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-100">
+                        {formatDecimalHours(capacityAnalysis.windowCapacity)}
+                      </span>
+                    </div>
+                    <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                      <span className="block text-[8px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Estimativa</span>
+                      <span className="text-xs font-black text-slate-800 dark:text-slate-100">
+                        {formatDecimalHours(capacityAnalysis.estimate)}
+                      </span>
+                    </div>
+                    <div className={`p-2 rounded-xl border ${
+                      capacityAnalysis.isOverallocated 
+                        ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' 
+                        : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
+                    }`}>
+                      <span className="block text-[8px] font-black uppercase tracking-widest mb-1 opacity-70">
+                        {capacityAnalysis.isOverallocated ? 'Déficit' : 'Margem'}
+                      </span>
+                      <span className="text-xs font-black">
+                        {formatDecimalHours(Math.abs(capacityAnalysis.balance))}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Alerta de excede capacidade regular (Erro) */}
+                  {capacityAnalysis.isOverallocated && (
+                    <div className="bg-rose-500/10 text-rose-500 border border-rose-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
+                      <span className="mt-0.5">⚠️</span>
+                      <div>
+                        <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Erro de Planejamento</p>
+                        <p>Esta atividade exige mais horas do que o período planejado comporta. Amplie o período ou revise a duração estimada.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Alerta de janela muito ampla (Aviso) */}
+                  {!capacityAnalysis.isOverallocated && capacityAnalysis.estimate > 0 && capacityAnalysis.windowCapacity > capacityAnalysis.estimate * 3 && (
+                    <div className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
+                      <span className="mt-0.5">ℹ️</span>
+                      <div>
+                        <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Aviso de Dimensionamento</p>
+                        <p>Esta atividade possui uma janela significativamente maior que a duração estimada.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Alerta de capacidade real do responsável */}
+                  {actAssigneeId && capacityAnalysis.hasRealCapacityIssue && !capacityAnalysis.isOverallocated && (
+                    <div className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
+                      <span className="mt-0.5">⚠️</span>
+                      <div>
+                        <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Sobrecarga do Responsável</p>
+                        <p>ATENÇÃO: o responsável não possui capacidade disponível suficiente neste período.</p>
+                        <div className="mt-1 flex flex-wrap gap-x-3 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400">
+                          <span>Necessário: {formatDecimalHours(capacityAnalysis.estimate)}</span>
+                          <span>Disponível: {formatDecimalHours(capacityAnalysis.assigneeAvailableHours)}</span>
+                          <span>Déficit: {formatDecimalHours(capacityAnalysis.deficitReal)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               <div>
