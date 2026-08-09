@@ -1,4 +1,4 @@
-import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction } from './types';
+import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity } from './types';
 import { supabase } from './lib/supabase';
 
 export interface AppDB {
@@ -310,3 +310,138 @@ export const fetchLogs = async (workspaceId: string): Promise<SystemLog[]> => {
     ipAddress: l.ip_address
   }));
 };
+
+// --- Activity Types & Project Activities Data Access ---
+
+export const fetchActivityTypes = async (workspaceId: string): Promise<ActivityType[]> => {
+  const { data, error } = await supabase.from('activity_types')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .order('display_order', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+
+  return (data || []).map((at: any) => ({
+    id: at.id,
+    workspaceId: at.workspace_id,
+    name: at.name,
+    description: at.description || undefined,
+    category: at.category || undefined,
+    isActive: at.is_active,
+    displayOrder: at.display_order,
+    createdAt: new Date(at.created_at).getTime(),
+    updatedAt: new Date(at.updated_at).getTime()
+  }));
+};
+
+export const syncActivityType = async (activityType: ActivityType) => {
+  const { error } = await supabase.from('activity_types').upsert({
+    id: activityType.id,
+    workspace_id: activityType.workspaceId,
+    name: activityType.name,
+    description: activityType.description || null,
+    category: activityType.category || null,
+    is_active: activityType.isActive,
+    display_order: activityType.displayOrder,
+    created_at: activityType.createdAt ? new Date(activityType.createdAt).toISOString() : new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
+  if (error) throw error;
+};
+
+export const deleteOrDeactivateActivityType = async (typeId: string): Promise<{ deleted: boolean }> => {
+  // Check if there are any project activities referencing this activity type
+  const { count, error: countError } = await supabase.from('project_activities')
+    .select('*', { count: 'exact', head: true })
+    .eq('activity_type_id', typeId);
+
+  if (countError) throw countError;
+
+  if (count && count > 0) {
+    // If used, just deactivate
+    const { error: updateError } = await supabase.from('activity_types')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', typeId);
+    if (updateError) throw updateError;
+    return { deleted: false };
+  } else {
+    // If never used, delete physically
+    const { error: deleteError } = await supabase.from('activity_types')
+      .delete()
+      .eq('id', typeId);
+    if (deleteError) throw deleteError;
+    return { deleted: true };
+  }
+};
+
+export const fetchProjectActivities = async (workspaceId: string, projectId?: string): Promise<ProjectActivity[]> => {
+  let query = supabase.from('project_activities')
+    .select('*')
+    .eq('workspace_id', workspaceId);
+
+  if (projectId) {
+    query = query.eq('project_id', projectId);
+  }
+
+  const { data, error } = await query
+    .order('order_index', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+
+  return (data || []).map((pa: any) => ({
+    id: pa.id,
+    workspaceId: pa.workspace_id,
+    projectId: pa.project_id,
+    activityTypeId: pa.activity_type_id || undefined,
+    name: pa.name,
+    assigneeId: pa.assignee_id || undefined,
+    status: pa.status,
+    startDate: pa.start_date || undefined,
+    deliveryDate: pa.delivery_date || undefined,
+    notes: pa.notes || undefined,
+    estimatedDurationHours: pa.estimated_duration_hours !== null ? Number(pa.estimated_duration_hours) : undefined,
+    orderIndex: pa.order_index,
+    actualStartDate: pa.actual_start_date || undefined,
+    actualEndDate: pa.actual_end_date || undefined,
+    conclusionResponsibleId: pa.conclusion_responsible_id || undefined,
+    deadlineChangesCount: pa.deadline_changes_count,
+    deadlineAtConclusion: pa.deadline_at_conclusion || undefined,
+    createdAt: new Date(pa.created_at).getTime(),
+    updatedAt: new Date(pa.updated_at).getTime()
+  }));
+};
+
+export const syncProjectActivity = async (activity: ProjectActivity) => {
+  const { error } = await supabase.from('project_activities').upsert({
+    id: activity.id,
+    workspace_id: activity.workspaceId,
+    project_id: activity.projectId,
+    activity_type_id: activity.activityTypeId || null,
+    name: activity.name,
+    assignee_id: activity.assigneeId || null,
+    status: activity.status,
+    start_date: activity.startDate || null,
+    delivery_date: activity.deliveryDate || null,
+    notes: activity.notes || null,
+    estimated_duration_hours: activity.estimatedDurationHours !== undefined ? activity.estimatedDurationHours : null,
+    order_index: activity.orderIndex,
+    actual_start_date: activity.actualStartDate || null,
+    actual_end_date: activity.actualEndDate || null,
+    conclusion_responsible_id: activity.conclusionResponsibleId || null,
+    deadline_changes_count: activity.deadlineChangesCount,
+    deadline_at_conclusion: activity.deadlineAtConclusion || null,
+    created_at: activity.createdAt ? new Date(activity.createdAt).toISOString() : new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
+  if (error) throw error;
+};
+
+export const deleteProjectActivity = async (activityId: string) => {
+  const { error } = await supabase.from('project_activities')
+    .delete()
+    .eq('id', activityId);
+  if (error) throw error;
+};
+

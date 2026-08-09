@@ -179,3 +179,38 @@ export interface SystemLog {
   details: string;
   ipAddress?: string;
 }
+
+export interface ActivityType {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description?: string;
+  category?: string;
+  isActive: boolean;
+  displayOrder: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProjectActivity {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  activityTypeId?: string;
+  name: string;
+  assigneeId?: string;
+  status: string;
+  startDate?: string;
+  deliveryDate?: string;
+  notes?: string;
+  estimatedDurationHours?: number;
+  orderIndex: number;
+  actualStartDate?: string;
+  actualEndDate?: string;
+  conclusionResponsibleId?: string;
+  deadlineChangesCount: number;
+  deadlineAtConclusion?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
