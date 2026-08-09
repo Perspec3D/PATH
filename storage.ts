@@ -9,6 +9,13 @@ export interface AppDB {
   tasks: TeamTask[];
 }
 
+export interface OperationalMetricsDataset {
+  activities: ProjectActivity[];
+  executions: ActivityExecution[];
+  sessions: WorkSession[];
+  overtimeEntries: ActivityOvertimeEntry[];
+}
+
 export { supabase };
 
 // --- Supabase Sync Functions ---
@@ -633,6 +640,26 @@ export const fetchActivityOvertimeEntries = async (
   const { data, error } = await query.order('date', { ascending: false });
   if (error) throw error;
   return (data || []).map(mapActivityOvertimeEntry);
+};
+
+export const fetchOperationalMetricsDataset = async (workspaceId: string): Promise<OperationalMetricsDataset> => {
+  const activities = await fetchProjectActivities(workspaceId);
+  const projectActivityIds = activities.map(activity => activity.id);
+
+  if (projectActivityIds.length === 0) {
+    return { activities, executions: [], sessions: [], overtimeEntries: [] };
+  }
+
+  const [executions, overtimeEntries] = await Promise.all([
+    fetchActivityExecutions(workspaceId, { projectActivityIds }),
+    fetchActivityOvertimeEntries(workspaceId, { projectActivityIds })
+  ]);
+  const activityExecutionIds = executions.map(execution => execution.id);
+  const sessions = activityExecutionIds.length > 0
+    ? await fetchWorkSessions(workspaceId, { activityExecutionIds })
+    : [];
+
+  return { activities, executions, sessions, overtimeEntries };
 };
 
 export const syncWorkSession = async (session: WorkSession) => {

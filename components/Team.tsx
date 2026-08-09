@@ -1,12 +1,34 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { UserRole, ProjectStatus, Project } from '../types';
-import { AppDB } from '../storage';
+import { AppDB, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, Legend } from 'recharts';
+import { aggregateOperationalMetricsByProfessional, buildActivityOperationalMetrics } from '../utils/operationalMetrics';
 
 interface TeamProps {
   db: AppDB;
   theme: 'dark' | 'light';
 }
+
+const formatOperationalDuration = (durationMs: number | null, signed = false): string => {
+  if (durationMs === null || !Number.isFinite(durationMs)) return 'SEM ESTIMATIVA';
+
+  const absoluteMinutes = Math.round(Math.abs(durationMs) / 60_000);
+  const hours = Math.floor(absoluteMinutes / 60);
+  const minutes = absoluteMinutes % 60;
+  const sign = signed && durationMs !== 0 ? (durationMs > 0 ? '+' : '-') : '';
+  return `${sign}${hours}h ${String(minutes).padStart(2, '0')}m`;
+};
+
+const formatOperationalPercent = (value: number | null): string => {
+  if (value === null || !Number.isFinite(value)) return 'SEM ESTIMATIVA';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+};
+
+const getCurrentMonthValue = () => {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+};
 
 const InfoIcon = ({ tooltip }: { tooltip: string }) => (
   <div className="relative group ml-2 inline-flex items-center justify-center">
@@ -44,6 +66,71 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
     user: any;
     items: Array<any>;
   } | null>(null);
+  const [operationalDataset, setOperationalDataset] = useState<OperationalMetricsDataset | null>(null);
+  const [operationalLoading, setOperationalLoading] = useState(false);
+  const [operationalError, setOperationalError] = useState<string | null>(null);
+  const [operationalMonth, setOperationalMonth] = useState(getCurrentMonthValue);
+  const [operationalUserId, setOperationalUserId] = useState('');
+  const [operationalNowMs, setOperationalNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const workspaceId = db.company?.id;
+    if (!workspaceId) {
+      setOperationalDataset(null);
+      return;
+    }
+
+    let cancelled = false;
+    setOperationalLoading(true);
+    setOperationalError(null);
+
+    fetchOperationalMetricsDataset(workspaceId)
+      .then(dataset => {
+        if (!cancelled) setOperationalDataset(dataset);
+      })
+      .catch(error => {
+        console.error('Erro ao carregar métricas operacionais:', error);
+        if (!cancelled) setOperationalError('Não foi possível carregar as métricas operacionais.');
+      })
+      .finally(() => {
+        if (!cancelled) setOperationalLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [db.company?.id]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setOperationalNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const operationalPeriod = useMemo(() => {
+    if (!operationalMonth) {
+      return { internalUserId: operationalUserId || undefined };
+    }
+
+    const [year, month] = operationalMonth.split('-').map(Number);
+    return {
+      startMs: new Date(year, month - 1, 1).getTime(),
+      endMs: new Date(year, month, 1).getTime() - 1,
+      internalUserId: operationalUserId || undefined
+    };
+  }, [operationalMonth, operationalUserId]);
+
+  const operationalTeamMetrics = useMemo(() => {
+    if (!operationalDataset || !db.company) return [];
+
+    const activityMetrics = buildActivityOperationalMetrics({
+      ...operationalDataset,
+      company: db.company,
+      nowMs: operationalNowMs,
+      period: operationalPeriod
+    });
+    const visibleUsers = db.users.filter(user => user.isActive && (!operationalUserId || user.id === operationalUserId));
+    return aggregateOperationalMetricsByProfessional(activityMetrics, visibleUsers);
+  }, [operationalDataset, db.company, db.users, operationalNowMs, operationalPeriod, operationalUserId]);
 
   const currentMonthWorkingDays = useMemo(() => {
     const today = new Date();
@@ -322,11 +409,124 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center">
-            Eficiência da Equipe
-            <InfoIcon tooltip="Métricas puramente operacionais baseadas em dados históricos documentados. Sem pontuações gamificadas, mensurando apenas carga sob responsabilidade, taxa de conclusão real e ciclo médio comprovável." />
+            Equipe
+            <InfoIcon tooltip="Métricas objetivas de execução das atividades, separadas dos indicadores históricos baseados em projetos e sub-tarefas." />
           </h1>
-          <p className="text-sm font-semibold text-slate-500 uppercase tracking-widest mt-1">Análise Gerencial Oficial</p>
+          <p className="text-sm font-semibold text-slate-500 uppercase tracking-widest mt-1">Execução operacional e histórico</p>
         </div>
+      </div>
+
+      <section className="bg-white dark:bg-[#1e293b] rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Desempenho operacional</h2>
+              <span className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest">Project Activities</span>
+            </div>
+            <p className="text-xs text-slate-500 mt-2 max-w-2xl">
+              Atividades concluídas no período, com tempo regular da jornada e horas extras administrativas. O desvio compara somas equivalentes, sem média de percentuais individuais.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+            <label className="flex flex-col gap-1 min-w-0">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Mês de conclusão</span>
+              <input
+                type="month"
+                value={operationalMonth}
+                onChange={event => setOperationalMonth(event.target.value)}
+                className="h-10 px-3 rounded-xl bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500"
+              />
+            </label>
+            <label className="flex flex-col gap-1 min-w-0 sm:min-w-[190px]">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Profissional</span>
+              <select
+                value={operationalUserId}
+                onChange={event => setOperationalUserId(event.target.value)}
+                className="h-10 px-3 rounded-xl bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500"
+              >
+                <option value="">Todos</option>
+                {db.users.filter(user => user.isActive).map(user => (
+                  <option key={user.id} value={user.id}>{user.username}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="p-6">
+          {operationalLoading ? (
+            <div className="py-10 text-center text-xs font-bold text-slate-500 uppercase tracking-widest">Carregando métricas operacionais...</div>
+          ) : operationalError ? (
+            <div className="py-10 text-center text-xs font-bold text-rose-500">{operationalError}</div>
+          ) : operationalTeamMetrics.length === 0 ? (
+            <div className="py-10 text-center text-xs font-bold text-slate-500">Nenhum profissional ativo encontrado para o filtro.</div>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {operationalTeamMetrics.map(metric => {
+                const user = db.users.find(item => item.id === metric.internalUserId);
+                return (
+                  <article key={metric.internalUserId} className="p-5 rounded-2xl bg-slate-50 dark:bg-[#0f172a]/70 border border-slate-200 dark:border-slate-700/70">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 shrink-0 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black">
+                          {(user?.username || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="font-black text-sm text-slate-900 dark:text-white truncate">{user?.username || 'Profissional não encontrado'}</h3>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                            {metric.completedActivities} concluída(s) · {metric.inProgressActivities} em andamento
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        {metric.completedWithinEstimatePercent === null
+                          ? 'Sem estimativa comparável'
+                          : `${metric.completedWithinEstimate}/${metric.completedWithEstimate} dentro da estimativa`}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Estimado</p>
+                        <p className="mt-1 text-base font-black text-slate-700 dark:text-slate-200">
+                          {metric.completedWithEstimate > 0 ? formatOperationalDuration(metric.completedEstimatedMs) : 'SEM ESTIMATIVA'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Regular</p>
+                        <p className="mt-1 text-base font-black text-sky-600 dark:text-sky-400">{formatOperationalDuration(metric.completedRegularMs)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Horas extras</p>
+                        <p className="mt-1 text-base font-black text-amber-600 dark:text-amber-400">{formatOperationalDuration(metric.completedOvertimeMs)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Contabilizado</p>
+                        <p className="mt-1 text-base font-black text-emerald-600 dark:text-emerald-400">{formatOperationalDuration(metric.completedAccountedMs)}</p>
+                      </div>
+                      <div className="col-span-2 sm:col-span-2">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Desvio da estimativa</p>
+                        <p className={`mt-1 text-base font-black ${metric.aggregateDeviationMs === null ? 'text-slate-500' : metric.aggregateDeviationMs > 0 ? 'text-rose-500' : 'text-indigo-500'}`}>
+                          {metric.aggregateDeviationMs === null
+                            ? 'SEM ESTIMATIVA'
+                            : `${formatOperationalDuration(metric.aggregateDeviationMs, true)} / ${formatOperationalPercent(metric.aggregateDeviationPercent)}`}
+                        </p>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1 pt-2">
+        <div>
+          <h2 className="text-xs font-black text-slate-500 uppercase tracking-widest">Indicadores legados</h2>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">Baseados em projects e projects.subtasks; não compõem as métricas operacionais acima.</p>
+        </div>
+        <span className="self-start sm:self-auto px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-black uppercase tracking-widest">Legado</span>
       </div>
 
       {/* Global KPIs */}
