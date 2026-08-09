@@ -1,4 +1,4 @@
-import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity } from './types';
+import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, WorkSession } from './types';
 import { supabase } from './lib/supabase';
 
 export interface AppDB {
@@ -494,3 +494,125 @@ export const reorderUserQueue = async (workspaceId: string, assigneeId: string) 
   }
 };
 
+// --- Activity Executions & Work Sessions Data Access ---
+
+const mapActivityExecution = (execution: any): ActivityExecution => ({
+  id: execution.id,
+  workspaceId: execution.workspace_id,
+  projectActivityId: execution.project_activity_id,
+  internalUserId: execution.internal_user_id,
+  status: execution.status,
+  startedAt: new Date(execution.started_at).getTime(),
+  completedAt: execution.completed_at ? new Date(execution.completed_at).getTime() : undefined,
+  createdAt: new Date(execution.created_at).getTime(),
+  updatedAt: new Date(execution.updated_at).getTime()
+});
+
+const mapWorkSession = (session: any): WorkSession => ({
+  id: session.id,
+  workspaceId: session.workspace_id,
+  activityExecutionId: session.activity_execution_id,
+  internalUserId: session.internal_user_id,
+  startedAt: new Date(session.started_at).getTime(),
+  endedAt: session.ended_at ? new Date(session.ended_at).getTime() : undefined,
+  createdAt: new Date(session.created_at).getTime(),
+  updatedAt: new Date(session.updated_at).getTime()
+});
+
+export const fetchActivityExecutions = async (
+  workspaceId: string,
+  filters: { projectActivityId?: string; internalUserId?: string } = {}
+): Promise<ActivityExecution[]> => {
+  let query = supabase.from('activity_executions')
+    .select('id, workspace_id, project_activity_id, internal_user_id, status, started_at, completed_at, created_at, updated_at')
+    .eq('workspace_id', workspaceId);
+
+  if (filters.projectActivityId) {
+    query = query.eq('project_activity_id', filters.projectActivityId);
+  }
+  if (filters.internalUserId) {
+    query = query.eq('internal_user_id', filters.internalUserId);
+  }
+
+  const { data, error } = await query.order('started_at', { ascending: false });
+  if (error) throw error;
+
+  return (data || []).map(mapActivityExecution);
+};
+
+export const syncActivityExecution = async (execution: ActivityExecution) => {
+  const { error } = await supabase.from('activity_executions').upsert({
+    id: execution.id,
+    workspace_id: execution.workspaceId,
+    project_activity_id: execution.projectActivityId,
+    internal_user_id: execution.internalUserId,
+    status: execution.status,
+    started_at: new Date(execution.startedAt).toISOString(),
+    completed_at: execution.completedAt !== undefined ? new Date(execution.completedAt).toISOString() : null,
+    created_at: new Date(execution.createdAt).toISOString()
+  });
+  if (error) throw error;
+};
+
+export const deleteActivityExecution = async (executionId: string) => {
+  const { error } = await supabase.from('activity_executions')
+    .delete()
+    .eq('id', executionId);
+  if (error) throw error;
+};
+
+export const fetchWorkSessions = async (
+  workspaceId: string,
+  filters: { activityExecutionId?: string; internalUserId?: string } = {}
+): Promise<WorkSession[]> => {
+  let query = supabase.from('work_sessions')
+    .select('id, workspace_id, activity_execution_id, internal_user_id, started_at, ended_at, created_at, updated_at')
+    .eq('workspace_id', workspaceId);
+
+  if (filters.activityExecutionId) {
+    query = query.eq('activity_execution_id', filters.activityExecutionId);
+  }
+  if (filters.internalUserId) {
+    query = query.eq('internal_user_id', filters.internalUserId);
+  }
+
+  const { data, error } = await query.order('started_at', { ascending: false });
+  if (error) throw error;
+
+  return (data || []).map(mapWorkSession);
+};
+
+export const fetchActiveWorkSession = async (
+  workspaceId: string,
+  internalUserId: string
+): Promise<WorkSession | null> => {
+  const { data, error } = await supabase.from('work_sessions')
+    .select('id, workspace_id, activity_execution_id, internal_user_id, started_at, ended_at, created_at, updated_at')
+    .eq('workspace_id', workspaceId)
+    .eq('internal_user_id', internalUserId)
+    .is('ended_at', null)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapWorkSession(data) : null;
+};
+
+export const syncWorkSession = async (session: WorkSession) => {
+  const { error } = await supabase.from('work_sessions').upsert({
+    id: session.id,
+    workspace_id: session.workspaceId,
+    activity_execution_id: session.activityExecutionId,
+    internal_user_id: session.internalUserId,
+    started_at: new Date(session.startedAt).toISOString(),
+    ended_at: session.endedAt !== undefined ? new Date(session.endedAt).toISOString() : null,
+    created_at: new Date(session.createdAt).toISOString()
+  });
+  if (error) throw error;
+};
+
+export const deleteWorkSession = async (sessionId: string) => {
+  const { error } = await supabase.from('work_sessions')
+    .delete()
+    .eq('id', sessionId);
+  if (error) throw error;
+};

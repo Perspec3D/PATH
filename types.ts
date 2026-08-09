@@ -218,3 +218,32 @@ export interface ProjectActivity {
   updatedAt: number;
 }
 
+export enum ActivityExecutionStatus {
+  IN_PROGRESS = 'IN_PROGRESS',
+  PAUSED = 'PAUSED',
+  COMPLETED = 'COMPLETED',
+  CANCELED = 'CANCELED'
+}
+
+export interface ActivityExecution {
+  id: string;
+  workspaceId: string;
+  projectActivityId: string;
+  internalUserId: string;
+  status: ActivityExecutionStatus;
+  startedAt: number;
+  completedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface WorkSession {
+  id: string;
+  workspaceId: string;
+  activityExecutionId: string;
+  internalUserId: string;
+  startedAt: number;
+  endedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
