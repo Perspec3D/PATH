@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry } from '../types';
+import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry } from '../types';
 import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs } from '../utils/operationalTime';
@@ -34,7 +34,6 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [photoUrl, setPhotoUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [customCode, setCustomCode] = useState('');
-  const [subtasks, setSubtasks] = useState<ProjectSubTask[]>([]);
 
   // Project Activities States
   const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
@@ -79,7 +78,6 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setPhotoUrl('');
     setNotes('');
     setCustomCode('');
-    setSubtasks([]);
     setProjectActivities([]);
     setActivityExecutions([]);
     setWorkSessions([]);
@@ -668,7 +666,6 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setDeliveryDate(project.deliveryDate || '');
     setPhotoUrl(project.photoUrl || '');
     setNotes(project.notes || '');
-    setSubtasks(project.subtasks || []);
     loadProjectActivities(project.id);
     // Extrai a sequência central se seguir o padrão [PREFIXO-][CLI]-[SEQ]-[YY]
     const parts = project.code.split('-');
@@ -725,7 +722,6 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       deliveryDate,
       photoUrl,
       notes,
-      subtasks,
       createdAt: editingProject?.createdAt || Date.now(),
     };
 
@@ -852,44 +848,6 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     if (diffDays === 2) return 'text-amber-400 font-black';
 
     return 'text-slate-500 font-black';
-  };
-
-  const handleAddSubTask = () => {
-    setSubtasks([...subtasks, {
-      id: crypto.randomUUID(),
-      name: '',
-      status: ProjectStatus.QUEUE,
-      startDate: startDate || '',
-      deliveryDate: deliveryDate || ''
-    }]);
-  };
-
-  const handleUpdateSubTask = (id: string, field: keyof ProjectSubTask, value: any) => {
-    setSubtasks(current => current.map(st => {
-      if (st.id !== id) return st;
-      const updated = { ...st, [field]: value };
-
-      // Validação de Datas
-      if (field === 'startDate' && startDate && value < startDate) updated.startDate = startDate;
-      if (field === 'deliveryDate' && deliveryDate && value > deliveryDate) updated.deliveryDate = deliveryDate;
-      if (field === 'startDate' && updated.deliveryDate && value > updated.deliveryDate) updated.startDate = updated.deliveryDate;
-
-      // Data Warehouse Tracking for Subtasks
-      if (field === 'status' && st.status !== ProjectStatus.DONE && value === ProjectStatus.DONE) {
-         updated.actualEndDate = new Date().toISOString().split('T')[0];
-         updated.conclusionResponsibleId = currentUser.id;
-         updated.deadlineAtConclusion = updated.deliveryDate;
-      }
-      if (field === 'status' && st.status === ProjectStatus.QUEUE && value !== ProjectStatus.QUEUE) {
-         updated.actualStartDate = new Date().toISOString().split('T')[0];
-      }
-
-      return updated;
-    }));
-  };
-
-  const handleRemoveSubTask = (id: string) => {
-    setSubtasks(subtasks.filter(st => st.id !== id));
   };
 
   const filteredProjects = useMemo(() => {
@@ -1471,87 +1429,6 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   </div>
                 )}
               </div>
-
-              {/* HISTÓRICO DE SUBTAREFAS - MODELO LEGADO ANTERIOR */}
-              {subtasks.length > 0 && (
-                <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800/50 transition-colors">
-                  <div className="flex items-center justify-between px-1">
-                    <h4 className="text-[10px] font-black text-rose-500/80 dark:text-rose-400/60 uppercase tracking-[0.2em] flex items-center transition-colors">
-                      <svg className="w-4 h-4 mr-2 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                      Histórico de Subtarefas — Modelo Anterior
-                    </h4>
-                    <span className="px-2 py-0.5 bg-rose-500/10 text-rose-500 text-[8px] font-black rounded uppercase tracking-wider border border-rose-500/20">Somente Leitura</span>
-                  </div>
-
-                  <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar transition-colors">
-                    {subtasks.map((st) => (
-                      <div key={st.id} className="bg-slate-50 dark:bg-slate-900/40 p-5 rounded-2xl border border-slate-100 dark:border-slate-800/50 opacity-80">
-                        <div className="flex flex-col space-y-4">
-                          <div className="flex items-center space-x-3">
-                            <input
-                              type="text"
-                              value={st.name}
-                              disabled={true}
-                              className="flex-1 bg-transparent border-none text-sm font-bold text-slate-500 dark:text-slate-400 focus:ring-0 p-0"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
-                            <div className="col-span-1 md:col-span-1">
-                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5">Responsável</label>
-                              <select
-                                value={st.assigneeId || ''}
-                                disabled={true}
-                                className="w-full bg-white dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/30 rounded-lg py-1.5 px-2 text-[10px] text-slate-500 font-bold outline-none"
-                              >
-                                <option value="">Sem Resp.</option>
-                                {db.users.map(u => (
-                                  <option key={u.id} value={u.id}>{u.username}</option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="col-span-1 md:col-span-1">
-                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5">Status</label>
-                              <select
-                                value={st.status}
-                                disabled={true}
-                                className="w-full bg-white dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/30 rounded-lg py-1.5 px-2 text-[10px] font-black uppercase tracking-tighter outline-none"
-                              >
-                                {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                              </select>
-                            </div>
-
-                            <div className="col-span-1 md:col-span-1">
-                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5">Início</label>
-                              <input
-                                type="date"
-                                value={st.startDate}
-                                disabled={true}
-                                className="w-full bg-white dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/30 rounded-lg py-1.5 px-2 text-[10px] text-slate-500 outline-none"
-                              />
-                            </div>
-
-                            <div className="col-span-1 md:col-span-1">
-                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5">Entrega</label>
-                              <input
-                                type="date"
-                                value={st.deliveryDate}
-                                disabled={true}
-                                className="w-full bg-white dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/30 rounded-lg py-1.5 px-2 text-[10px] text-slate-500 outline-none"
-                              />
-                            </div>
-                          </div>
-
-                          {st.notes && (
-                            <p className="text-[10px] text-slate-400 italic">Obs: {st.notes}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div>
                 <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Anotações do Projeto</label>

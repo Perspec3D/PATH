@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskType, ProjectActivity } from '../types';
 import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivities } from '../storage';
+import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 
 interface GanttProps {
   db: AppDB;
@@ -46,7 +47,6 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const [revision, setRevision] = useState('');
   const [startDate, setStartDate] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
-  const [subtasks, setSubtasks] = useState<any[]>([]); // Para edição no modal
 
   const [editingTeamTask, setEditingTeamTask] = useState<TeamTask | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
@@ -79,7 +79,6 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
     setRevision(project.revision);
     setStartDate(project.startDate || '');
     setDeliveryDate(project.deliveryDate || '');
-    setSubtasks(project.subtasks || []);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -95,8 +94,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
       revision,
       startDate,
       deliveryDate,
-      dueDate: deliveryDate,
-      subtasks // Persistir as sub-tarefas editadas
+      dueDate: deliveryDate
     };
 
     try {
@@ -426,7 +424,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                 activeProjects.map((project: Project) => {
                   const client = allClients.find((c: Client) => c.id === project.clientId);
                   const isExpanded = expandedProjects.includes(project.id);
-                  const hasSubtasks = projectActivities.some(pa => pa.projectId === project.id);
+                  const hasActivities = projectActivities.some(pa => pa.projectId === project.id);
 
                   const start = project.startDate ? new Date(project.startDate + 'T12:00:00') : null;
                   const end = project.deliveryDate ? new Date(project.deliveryDate + 'T12:00:00') : null;
@@ -443,7 +441,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                       <div className="flex group/row hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors relative hover:z-[60]">
                         {/* Sidebar Projeto: FIXO NA ESQUERDA */}
                         <div className="w-80 px-6 h-20 flex items-center border-r border-slate-100 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-sm group hover:bg-slate-50 dark:hover:bg-slate-800 transition-all border-l-4 border-transparent">
-                          {hasSubtasks ? (
+                          {hasActivities ? (
                             <button
                               onClick={() => toggleExpand(project.id)}
                               className={`w-6 h-6 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 mr-3 transition-colors ${isExpanded ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-white hover:border-indigo-200 dark:hover:border-slate-500'}`}
@@ -455,7 +453,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                               )}
                             </button>
                           ) : (
-                            <div className="w-9" /> // Espaço vazio para alinhar se não tiver subtasks
+                            <div className="w-9" />
                           )}
 
                           <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openEdit(project)}>
@@ -509,7 +507,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                         .map((pa) => {
                           const st = {
                             ...pa,
-                            type: 'subtask',
+                            type: 'projectActivity',
                             parentProject: project
                           };
                           const stStart = st.startDate ? new Date(st.startDate + 'T12:00:00') : null;
@@ -523,7 +521,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
 
                           return (
                             <div key={st.id} className="flex group/sub hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors relative hover:z-[55] bg-slate-100/30 dark:bg-slate-900/20">
-                              {/* Sidebar Sub-tarefa */}
+                              {/* Sidebar da atividade do projeto */}
                               <div className="w-80 pl-16 pr-6 h-12 flex flex-col justify-center border-r border-slate-100 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-sm border-l-4 border-indigo-500/10 transition-colors">
                                 <h5 className="text-[11px] font-bold text-slate-600 dark:text-slate-400 truncate leading-tight transition-colors">{st.name}</h5>
                                 <p className="text-[8px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest mt-0.5 transition-colors">
@@ -531,7 +529,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                 </p>
                               </div>
 
-                              {/* Timeline Sub-tarefa */}
+                              {/* Timeline da atividade do projeto */}
                               <div className="flex-1 h-12 relative bg-slate-50/5 dark:bg-slate-900/5 overflow-visible transition-colors">
                                 <div className="absolute inset-0 flex pointer-events-none z-10">
                                   {timelineDates.map((date, i) => {
@@ -579,12 +577,12 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
               ) : (
                 // --- VISÃO DE ATRIBUIÇÕES (TEAM LOAD) ---
                 allUsers.map((user) => {
-                  const userSubtasks = projectActivities
+                  const userProjectActivities = projectActivities
                     .filter(pa => 
                       pa.assigneeId === user.id && 
                       pa.startDate && 
                       pa.deliveryDate && 
-                      pa.status !== 'Cancelada'
+                      !isProjectActivityClosed(pa.status)
                     )
                     .map(pa => {
                       const parent = allProjects.find(p => p.id === pa.projectId);
@@ -593,13 +591,13 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                       if (![ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(parent.status)) return null;
                       return {
                         ...pa,
-                        type: 'subtask' as const,
+                        type: 'projectActivity' as const,
                         parentProject: parent
                       };
                     })
                     .filter((item): item is NonNullable<typeof item> => item !== null);
 
-                  const userActivities = (db.tasks || [])
+                  const userTeamTasks = (db.tasks || [])
                     .filter(t => 
                       (t.assigneeId === user.id || (t.invitedUsers && t.invitedUsers.includes(user.id))) &&
                       t.startDate &&
@@ -607,16 +605,16 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                     )
                     .map(t => ({
                       ...t,
-                      type: 'activity',
+                      type: 'teamTask',
                       activityType: t.type,
                       deliveryDate: t.endDate,
                       name: t.title,
                       status: 'ACTIVITY'
                     }));
 
-                  const allAssignments = [...userSubtasks, ...userActivities];
-                  const distinctProjectsCount = new Set(userSubtasks.map(st => st.parentProject?.id).filter(Boolean)).size;
-                  const activitiesCount = userActivities.length;
+                  const allAssignments = [...userProjectActivities, ...userTeamTasks];
+                  const distinctProjectsCount = new Set(userProjectActivities.map(activity => activity.parentProject?.id).filter(Boolean)).size;
+                  const teamTasksCount = userTeamTasks.length;
 
                   if (allAssignments.length === 0) return null;
 
@@ -652,8 +650,8 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                     let activeActivitiesCount = 0;
 
                     allAssignments.forEach((t: any) => {
-                      if (t.type === 'activity') return; // Ignorar team_tasks para conflito
-                      if (t.status === 'Concluída' || t.status === 'Cancelada' || t.status === ProjectStatus.DONE || t.status === ProjectStatus.CANCELED) return;
+                      if (t.type === 'teamTask') return;
+                      if (isProjectActivityClosed(t.status)) return;
 
                       const s = new Date(t.startDate + 'T12:00:00');
                       const e = new Date(t.deliveryDate + 'T12:00:00');
@@ -689,10 +687,10 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                               <span className="w-1 h-1 rounded-full bg-emerald-500 mr-1.5" />
                               {distinctProjectsCount} {distinctProjectsCount === 1 ? 'Projeto' : 'Projetos'}
                             </p>
-                            {activitiesCount > 0 && (
+                            {teamTasksCount > 0 && (
                               <p className="text-[9px] text-indigo-500/60 font-black uppercase tracking-widest flex items-center">
                                 <span className="w-1 h-1 rounded-full bg-indigo-500 mr-1.5" />
-                                {activitiesCount} {activitiesCount === 1 ? 'Atividade' : 'Atividades'}
+                                {teamTasksCount} {teamTasksCount === 1 ? 'Tarefa avulsa' : 'Tarefas avulsas'}
                               </p>
                             )}
                           </div>
@@ -727,9 +725,9 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                           const diffDuration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
                           const offset = diffStart * dayWidth;
                           const width = diffDuration * dayWidth;
-                          const isSubtask = task.type === 'subtask';
-                          const barHeight = isSubtask ? 'h-5' : 'h-8';
-                          const topPos = 16 + (task.laneIndex * 42) + (isSubtask ? 6 : 0);
+                          const isProjectActivity = task.type === 'projectActivity';
+                          const barHeight = isProjectActivity ? 'h-5' : 'h-8';
+                          const topPos = 16 + (task.laneIndex * 42) + (isProjectActivity ? 6 : 0);
                           return (
                             <div
                               key={task.id}
@@ -737,21 +735,21 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                               className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 hover:z-50 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
                               onClick={() => {
                                 if (task.type === 'project') openEdit(task);
-                                else if (task.type === 'subtask' && task.parentProject) openEdit(task.parentProject);
-                                else if (task.type === 'activity') openEditTeamTask(task);
+                                else if (task.type === 'projectActivity' && task.parentProject) openEdit(task.parentProject);
+                                else if (task.type === 'teamTask') openEditTeamTask(task);
                               }}
                             >
-                               <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.type === 'subtask' ? task.parentProject?.id : task.id)}`} />
+                               <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.type === 'projectActivity' ? task.parentProject?.id : task.id)}`} />
                               <span className="text-[8px] font-black text-white/90 truncate uppercase tracking-tighter flex items-center gap-1.5">
-                                {task.type === 'activity' && (
+                                {task.type === 'teamTask' && (
                                   <span className="px-1 py-0.2 bg-white/20 text-white rounded-[4px] text-[7px] font-black uppercase tracking-wider shrink-0 border border-white/10">
                                     TAREFA
                                   </span>
                                 )}
                                 <span className="truncate">
-                                  {task.type === 'subtask' 
-                                    ? `[ST] ${task.name}` 
-                                    : task.type === 'activity'
+                                  {task.type === 'projectActivity'
+                                    ? `[ATIVIDADE] ${task.name}`
+                                    : task.type === 'teamTask'
                                       ? (task.startTime ? `${task.startTime} - ${task.name}` : task.name)
                                       : task.name}
                                 </span>
@@ -762,17 +760,17 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="flex flex-col">
                                     <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">
-                                      {task.type === 'project' ? 'PROJETO PAI' : task.type === 'subtask' ? 'SUB-TAREFA' : 'TAREFA / BLOQUEIO'}
+                                      {task.type === 'project' ? 'PROJETO PAI' : task.type === 'projectActivity' ? 'ATIVIDADE DO PROJETO' : 'TAREFA / BLOQUEIO'}
                                     </p>
                                     <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">
-                                      {task.type === 'project' ? (task as any).code : task.type === 'subtask' ? (task as any).parentProject?.code : (task as any).activityType || task.type}
+                                      {task.type === 'project' ? (task as any).code : task.type === 'projectActivity' ? (task as any).parentProject?.code : (task as any).activityType || task.type}
                                     </p>
                                   </div>
                                   <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(task.status)} text-white`}>{task.status === 'ACTIVITY' ? 'AVULSA' : task.status}</span>
                                 </div>
                                 <p className="text-xs font-bold text-white mb-1 leading-tight whitespace-normal">{task.name}</p>
-                                {task.type === 'subtask' && <p className="text-[9px] text-slate-500 font-black uppercase mb-3 truncate">Ref: {task.parentProject?.name}</p>}
-                                {task.type === 'activity' && (
+                                {task.type === 'projectActivity' && <p className="text-[9px] text-slate-500 font-black uppercase mb-3 truncate">Ref: {task.parentProject?.name}</p>}
+                                {task.type === 'teamTask' && (
                                   <div className="text-[10px] text-slate-400 font-medium mb-3 whitespace-normal break-words space-y-1">
                                     {task.description && <p className="text-xs text-slate-300 mb-2 italic">"{task.description}"</p>}
                                     <p><strong className="text-slate-500 uppercase text-[8px] tracking-wider">Responsável:</strong> {allUsers.find(u => u.id === task.assigneeId)?.username || 'Desconhecido'}</p>
@@ -785,14 +783,14 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                   <div>
                                     <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p>
                                     <p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p>
-                                    {task.type === 'activity' && task.startTime && (
+                                    {task.type === 'teamTask' && task.startTime && (
                                       <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.startTime}</p>
                                     )}
                                   </div>
                                   <div>
                                     <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p>
                                     <p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p>
-                                    {task.type === 'activity' && task.endTime && (
+                                    {task.type === 'teamTask' && task.endTime && (
                                       <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.endTime}</p>
                                     )}
                                   </div>
@@ -855,64 +853,6 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                   </div>
                 </div>
 
-                {/* EDIÇÃO DE SUB-TAREFAS */}
-                {subtasks.length > 0 && (
-                  <div className="pt-6 border-t border-slate-100 dark:border-slate-800 transition-colors">
-                    <h4 className="text-[10px] font-black text-rose-500/80 dark:text-rose-400/60 uppercase tracking-widest mb-4 transition-colors">Histórico de Subtarefas — Modelo Anterior</h4>
-                    <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar transition-colors">
-                      {subtasks.map((st) => (
-                        <div key={st.id} className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700/50 p-4 rounded-2xl transition-colors opacity-80">
-                          <div className="flex items-center justify-between mb-4">
-                            <span className="text-[10px] font-bold text-slate-500 truncate flex-1 mr-4 transition-colors">{st.name}</span>
-                            <div className="flex items-center space-x-3">
-                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest hidden md:block">Status Etapa</label>
-                              <select
-                                value={st.status}
-                                disabled={true}
-                                className={`px-2 py-1 rounded-[6px] text-[8px] font-black uppercase text-white outline-none shadow-sm ${getStatusColor(st.status)} border border-white/10`}
-                              >
-                                {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                              </select>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div>
-                              <label className="text-[8px] font-black text-slate-500 uppercase mb-1 block">Início ST</label>
-                              <input
-                                type="date"
-                                value={st.startDate || ''}
-                                disabled={true}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-500 outline-none"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[8px] font-black text-slate-500 uppercase mb-1 block">Entrega ST</label>
-                              <input
-                                type="date"
-                                value={st.deliveryDate || ''}
-                                disabled={true}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-500 outline-none"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[8px] font-black text-slate-500 uppercase mb-1 block">Responsável ST</label>
-                              <select
-                                value={st.assigneeId || ''}
-                                disabled={true}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-500 outline-none"
-                              >
-                                <option value="">Sem responsável</option>
-                                {allUsers.map(u => (
-                                  <option key={u.id} value={u.id}>{u.username}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 <div className="flex space-x-3 pt-6 border-t border-slate-100 dark:border-slate-800 transition-colors">
                   <button type="button" onClick={() => setEditingProject(null)} className="flex-1 bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">
                     {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
@@ -1065,10 +1005,10 @@ const UserCargaModal: React.FC<{
 }> = ({ data, onClose, getStatusColor, getProjectMarkerColor }) => {
   // Agrupar tarefas por projeto pai
   const groupedTasks = data.assignments.reduce((acc: any, task: any) => {
-    const parentId = task.type === 'project' ? task.id : task.type === 'subtask' ? (task.parentProject?.id || 'unknown') : 'activities';
+    const parentId = task.type === 'project' ? task.id : task.type === 'projectActivity' ? (task.parentProject?.id || 'unknown') : 'activities';
     if (!acc[parentId]) {
       acc[parentId] = {
-        project: task.type === 'project' ? task : task.type === 'subtask' ? (task.parentProject || { id: 'unknown', name: 'Projeto não encontrado', code: 'PROJETO', status: 'UNKNOWN' }) : { id: 'activities', name: 'Tarefas / Bloqueios Avulsos', code: 'ATIVIDADES', status: 'ACTIVITY' },
+        project: task.type === 'project' ? task : task.type === 'projectActivity' ? (task.parentProject || { id: 'unknown', name: 'Projeto não encontrado', code: 'PROJETO', status: 'UNKNOWN' }) : { id: 'activities', name: 'Tarefas / Bloqueios Avulsos', code: 'ATIVIDADES', status: 'ACTIVITY' },
         tasks: []
       };
     }

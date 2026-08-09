@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { InternalUser, UserRole } from '../types';
-import { AppDB } from '../storage';
+import { AppDB, fetchProjectActivities } from '../storage';
 import { exportProjectsToExcel, exportClientsToExcel, exportDashboardToPDF } from '../utils/exportUtils';
 
 interface LayoutProps {
@@ -256,10 +256,20 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="flex items-center space-x-2 ml-4">
               {(currentPage === 'projects' || currentPage === 'clients') && (
                 <button
-                  onClick={() => currentPage === 'projects'
-                    ? exportProjectsToExcel(db.projects, db.clients, db.users)
-                    : exportClientsToExcel(db.clients)
-                  }
+                  onClick={async () => {
+                    try {
+                      if (currentPage === 'projects') {
+                        if (!db.company?.id) return;
+                        const activities = await fetchProjectActivities(db.company.id);
+                        exportProjectsToExcel(db.projects, db.clients, db.users, activities);
+                        return;
+                      }
+                      exportClientsToExcel(db.clients);
+                    } catch (error) {
+                      console.error('Erro ao exportar dados:', error);
+                      alert('Não foi possível gerar a exportação.');
+                    }
+                  }}
                   className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition border border-slate-200 dark:border-slate-700 flex items-center space-x-2 group active:scale-95 shadow-sm"
                   title={`Exportar ${currentPage === 'projects' ? 'Projetos' : 'Clientes'} para Excel (XLSX)`}
                 >

@@ -3,7 +3,7 @@ import { ProjectStatus, Project, InternalUser, Client, ProjectActivity } from '.
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 import { AppDB, fetchProjectActivities } from '../storage';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { Info, CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar, Trophy, Medal, Eye, ArrowRight, Search } from 'lucide-react';
@@ -231,18 +231,24 @@ const UserDetailModal: React.FC<{
   userId: string;
   userName: string;
   projects: Project[];
+  projectActivities: ProjectActivity[];
   clients: Client[];
   onClose: () => void;
-}> = ({ userId, userName, projects, clients, onClose }) => {
+}> = ({ userId, userName, projects, projectActivities, clients, onClose }) => {
   const titularProjects = projects.filter(p =>
     p.assigneeId === userId && [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status)
   );
 
-  const userSubtasks = projects.flatMap(p =>
-    (p.subtasks || [])
-      .filter(st => st.assigneeId === userId && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED)
-      .map(st => ({ ...st, parentProjectName: p.name, parentProjectCode: p.code }))
-  );
+  const userActivities = projectActivities
+    .filter(activity => activity.assigneeId === userId && !isProjectActivityClosed(activity.status))
+    .map(activity => {
+      const parent = projects.find(project => project.id === activity.projectId);
+      return {
+        ...activity,
+        parentProjectName: parent?.name || 'Projeto não encontrado',
+        parentProjectCode: parent?.code || '—'
+      };
+    });
 
   const getClientName = (clientId: string) => {
     return clients.find(c => c.id === clientId)?.name || 'Cliente não encontrado';
@@ -314,38 +320,38 @@ const UserDetailModal: React.FC<{
             </div>
           </div>
 
-          {/* Subtarefas Designadas */}
+          {/* Atividades do projeto designadas */}
           <div className="space-y-4">
-            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Subtarefas em Execução ({userSubtasks.length})</h4>
+            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] px-2">Atividades em execução ({userActivities.length})</h4>
             <div className="grid gap-3">
-              {userSubtasks.map(st => (
-                <div key={st.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[32px] flex flex-col group hover:border-emerald-500/30 transition-all">
+              {userActivities.map(activity => (
+                <div key={activity.id} className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800 p-5 rounded-[32px] flex flex-col group hover:border-emerald-500/30 transition-all">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{st.name}</span>
-                      {st.deliveryDate && (
+                      <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{activity.name}</span>
+                      {activity.deliveryDate && (
                         <div className="flex items-center space-x-1.5 text-emerald-600/60 dark:text-emerald-400/40 mt-1">
                           <Calendar size={10} />
-                          <span className="text-[9px] font-black uppercase tracking-tighter">Entrega: {formatDate(st.deliveryDate)}</span>
+                          <span className="text-[9px] font-black uppercase tracking-tighter">Entrega: {formatDate(activity.deliveryDate)}</span>
                         </div>
                       )}
                     </div>
-                    <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${st.status === ProjectStatus.IN_PROGRESS ? 'bg-emerald-500/10 text-emerald-500' :
-                      st.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${activity.status === ProjectStatus.IN_PROGRESS ? 'bg-emerald-500/10 text-emerald-500' :
+                      activity.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
                         'bg-purple-500/10 text-purple-500'
                       }`}>
-                      {st.status}
+                      {activity.status}
                     </span>
                   </div>
                   <div className="flex items-center space-x-2 bg-white/40 dark:bg-white/5 p-2 rounded-xl border border-slate-200/50 dark:border-white/5">
                     <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Projeto:</span>
-                    <span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 uppercase truncate">{st.parentProjectName}</span>
-                    <span className="text-[9px] font-mono font-black text-indigo-500/40 dark:text-indigo-400/30">({st.parentProjectCode})</span>
+                    <span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 uppercase truncate">{activity.parentProjectName}</span>
+                    <span className="text-[9px] font-mono font-black text-indigo-500/40 dark:text-indigo-400/30">({activity.parentProjectCode})</span>
                   </div>
                 </div>
               ))}
-              {userSubtasks.length === 0 && (
-                <div className="text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Nenhuma subtarefa designada</div>
+              {userActivities.length === 0 && (
+                <div className="text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Nenhuma atividade designada</div>
               )}
             </div>
           </div>
@@ -532,59 +538,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     return due >= now && due <= next7Days;
   });
 
-  // 3. Eficiência por Usuário (Acumulativa: Projetos + Sub-tarefas)
-  const userEfficiencyData = useMemo(() => {
-    const data: Record<string, {
-      name: string;
-      projectsDone: number;
-      subtasksDone: number;
-      totalAssigned: number;
-      efficiency: number;
-    }> = {};
-
-    users.forEach(u => {
-      data[u.id] = {
-        name: u.username,
-        projectsDone: 0,
-        subtasksDone: 0,
-        totalAssigned: 0,
-        efficiency: 0
-      };
-    });
-
-    projects.forEach(p => {
-      if (p.status === ProjectStatus.CANCELED) return;
-
-      const projectUsers = new Set<string>();
-      if (p.assigneeId) projectUsers.add(p.assigneeId);
-      p.subtasks?.forEach(st => {
-        if (st.assigneeId && st.status !== ProjectStatus.CANCELED) {
-          projectUsers.add(st.assigneeId);
-        }
-      });
-
-      projectUsers.forEach(userId => {
-        if (data[userId]) {
-          data[userId].totalAssigned++;
-          // Consideramos "concluído" para o usuário se o projeto pai está concluído
-          // OU se todas as subtarefas dele naquele projeto estão concluídas (lógica simplificada: projeto pai DONE)
-          if (p.status === ProjectStatus.DONE) {
-            data[userId].projectsDone++;
-          }
-        }
-      });
-    });
-
-    return Object.values(data).map(d => {
-      const totalDone = d.projectsDone + d.subtasksDone;
-      return {
-        ...d,
-        totalDone,
-        efficiency: d.totalAssigned > 0 ? Math.round((totalDone / d.totalAssigned) * 100) : 0
-      };
-    }).sort((a, b) => b.totalDone - a.totalDone);
-  }, [projects, users]);
-
   // 4. Tendência Mensal (Criados vs Concluídos)
   const monthlyTimeline = useMemo(() => {
     const months: Record<string, { month: string; created: number; done: number }> = {};
@@ -614,16 +567,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     return last6Months.map(key => months[key]);
   }, [projects]);
 
-  // 5. Matriz de Carga Estratégica (Acumulativa: Titularidade + Sub-tarefas)
+  // 5. Matriz de carga das atividades abertas
   const userStatusMatrix = useMemo(() => {
-    const matrix: Record<string, { id: string; name: string; mainProjects: number; subtasks: number; stats: Record<string, number> }> = {};
+    const matrix: Record<string, { id: string; name: string; activities: number; stats: Record<string, number> }> = {};
 
     users.forEach(u => {
       matrix[u.username] = {
         id: u.id,
         name: u.username,
-        mainProjects: 0,
-        subtasks: 0,
+        activities: 0,
         stats: {
           [ProjectStatus.QUEUE]: 0,
           [ProjectStatus.IN_PROGRESS]: 0,
@@ -632,31 +584,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       };
     });
 
-    activeProjects.forEach((p: Project) => {
-      const projectUsers = new Set<string>();
-      if (p.assigneeId) projectUsers.add(p.assigneeId);
-      p.subtasks?.forEach(st => {
-        if (st.assigneeId && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
-          projectUsers.add(st.assigneeId);
-        }
-      });
-
-      projectUsers.forEach(userId => {
-        const user = users.find(u => u.id === userId);
-        if (user && matrix[user.username]) {
-          // Se o usuário é o responsável principal, conta como mainProject, caso contrário subtasks (participação)
-          if (p.assigneeId === userId) {
-            matrix[user.username].mainProjects++;
-          } else {
-            matrix[user.username].subtasks++;
-          }
-          matrix[user.username].stats[p.status]++;
-        }
-      });
+    projectActivities.filter(activity => !isProjectActivityClosed(activity.status)).forEach(activity => {
+      const user = users.find(item => item.id === activity.assigneeId);
+      if (user && matrix[user.username]) {
+        matrix[user.username].activities++;
+        matrix[user.username].stats[activity.status]++;
+      }
     });
 
-    return Object.entries(matrix).filter(([_, data]) => data.mainProjects > 0 || data.subtasks > 0);
-  }, [activeProjects, users]);
+    return Object.entries(matrix).filter(([_, data]) => data.activities > 0);
+  }, [projectActivities, users]);
 
   // 6. Média de Tempo de Execução (Dias Úteis)
   const avgExecutionTime = useMemo(() => {
@@ -734,42 +671,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       }
     });
 
-    // 4. Métrica de Carga Unificada (Projetos + Sub-tarefas)
+    // 4. Carga operacional por atividades abertas
     const userWorkloadSummary = users.map(u => {
       const projectsOnRadar = new Set<string>();
       const userProjects: Project[] = [];
       const userTasks: any[] = [];
-      let activeTasksCount = 0;
+      const userOpenActivities = projectActivities.filter(activity => (
+        activity.assigneeId === u.id && !isProjectActivityClosed(activity.status)
+      ));
 
-      activeProjects.forEach(p => {
-        let isUserInvolved = false;
-
-        // Verifica se o usuário é o dono ou tem subtarefa ativa no projeto
-        if (p.assigneeId === u.id) {
-          isUserInvolved = true;
-          userTasks.push({ type: 'PROJETO', name: p.name, status: p.status, deadline: p.deliveryDate });
+      userOpenActivities.forEach(activity => {
+        const parent = projects.find(project => project.id === activity.projectId);
+        if (parent && !projectsOnRadar.has(parent.id)) {
+          projectsOnRadar.add(parent.id);
+          userProjects.push(parent);
         }
-
-        p.subtasks?.forEach(st => {
-          if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
-            isUserInvolved = true;
-            userTasks.push({ type: 'SUB-TAREFA', name: st.name, status: st.status, deadline: st.deliveryDate, parentName: p.name });
-          }
+        userTasks.push({
+          type: 'ATIVIDADE',
+          name: activity.name,
+          status: activity.status,
+          deadline: activity.deliveryDate,
+          parentName: parent?.name
         });
-
-        if (isUserInvolved) {
-          projectsOnRadar.add(p.id);
-          userProjects.push(p);
-          // Cada envolvimento em projeto ativo conta como apenas 1 tarefa para capacidade/carga
-          activeTasksCount++;
-        }
       });
 
       const summary = {
         userId: u.id,
         userName: u.username,
         projectsCount: projectsOnRadar.size,
-        tasksCount: activeTasksCount,
+        tasksCount: userOpenActivities.length,
         projects: userProjects,
         tasks: userTasks
       };
@@ -780,29 +710,34 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       return summary;
     });
 
-    // Conflitos de Escala (Sobreposição temporal de projetos diferentes para o mesmo usuário)
+    // Conflitos: mesma regra do Cronograma, baseada em atividades e intervalos planejados.
     users.forEach(u => {
-      const uAssignments: any[] = [];
-      projects.forEach(p => {
-        if (p.assigneeId === u.id && p.startDate && p.deliveryDate && p.status !== ProjectStatus.DONE && p.status !== ProjectStatus.CANCELED) {
-          uAssignments.push({ id: p.id, name: p.name, start: new Date(p.startDate + 'T12:00:00'), end: new Date(p.deliveryDate + 'T12:00:00'), rootId: p.id });
-        }
-        p.subtasks?.forEach(st => {
-          if (st.assigneeId === u.id && st.startDate && st.deliveryDate && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED) {
-            uAssignments.push({ id: st.id, name: st.name, start: new Date(st.startDate + 'T12:00:00'), end: new Date(st.deliveryDate + 'T12:00:00'), rootId: p.id, parentName: p.name });
-          }
+      const uAssignments = projectActivities
+        .filter(activity => (
+          activity.assigneeId === u.id
+          && activity.startDate
+          && activity.deliveryDate
+          && !isProjectActivityClosed(activity.status)
+          && activeProjects.some(project => project.id === activity.projectId)
+        ))
+        .map(activity => {
+          const parent = projects.find(project => project.id === activity.projectId);
+          return {
+            id: activity.id,
+            name: activity.name,
+            start: new Date(`${activity.startDate}T12:00:00`),
+            end: new Date(`${activity.deliveryDate}T12:00:00`),
+            parentName: parent?.name
+          };
         });
-      });
 
       const conflicts: any[] = [];
       for (let i = 0; i < uAssignments.length; i++) {
         for (let j = i + 1; j < uAssignments.length; j++) {
           const a = uAssignments[i];
           const b = uAssignments[j];
-          if (a.rootId !== b.rootId) {
-            if (a.start <= b.end && b.start <= a.end) {
-              conflicts.push({ a, b });
-            }
+          if (a.start <= b.end && b.start <= a.end) {
+            conflicts.push({ a, b });
           }
         }
       }
@@ -1453,61 +1388,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* EFICIÊNCIA DO TIME - NOVO (BarChart Recharts) */}
-        <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 min-h-[450px] flex flex-col transition-all duration-500">
-          <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
-            <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
-              Eficiência Operacional
-              <InfoTooltip
-                title="Sincronia de Entregas"
-                content="Mede a taxa de conclusão comparando tudo o que foi atribuído (Projetos + Subtarefas) com o que foi efetivamente entregue."
-                calculation="(Projetos_Done + Subtarefas_Done) / Total_Atribuído * 100"
-              />
-            </h3>
-            <CheckCircle2 size={20} className="text-emerald-500" />
-          </div>
-          <div className="p-8 flex-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={userEfficiencyData} layout="vertical" margin={{ left: 40, right: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2a374a' : '#e2e8f0'} horizontal={true} vertical={false} />
-                <XAxis type="number" hide domain={[0, 'dataMax + 2']} />
-                <YAxis
-                  dataKey="name"
-                  type="category"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={(props) => {
-                    const { x, y, payload } = props;
-                    const userData = userEfficiencyData.find(d => d.name === payload.value);
-                    return (
-                      <g transform={`translate(${x},${y})`}>
-                        <text x={-10} y={0} dy={4} textAnchor="end" fill={theme === 'dark' ? '#94a3b8' : '#64748b'} fontSize={10} fontWeight={900}>
-                          {payload.value}
-                        </text>
-                        <text x={-10} y={12} dy={4} textAnchor="end" fill={theme === 'dark' ? '#6366f1' : '#4f46e5'} fontSize={9} fontWeight={900} opacity={0.6}>
-                          {userData?.efficiency}% EFF
-                        </text>
-                      </g>
-                    );
-                  }}
-                  width={100}
-                />
-                <RechartsTooltip
-                  cursor={{ fill: theme === 'dark' ? '#334155' : '#f1f5f9', opacity: 0.1 }}
-                  contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px' }}
-                  itemStyle={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}
-                  labelStyle={{ fontSize: '11px', fontWeight: 900, marginBottom: '8px', color: theme === 'dark' ? '#fff' : '#000' }}
-                />
-                <Bar dataKey="totalAssigned" name="Atribuído Total" fill={theme === 'dark' ? '#ffffff' : '#000000'} opacity={0.03} barSize={20} radius={[0, 10, 10, 0]} isAnimationActive={false} />
-                <Bar dataKey="projectsDone" name="Projetos" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} barSize={20} />
-                <Bar dataKey="subtasksDone" name="Subtarefas" stackId="a" fill="#10b981" opacity={0.4} radius={[0, 10, 10, 0]} barSize={20} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* CARGA ATIVA POR USUÁRIO (Melhorado com Stacked Bar) */}
+      <div className="grid grid-cols-1 gap-8">
+        {/* CARGA ATIVA POR USUÁRIO */}
         <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-white/5 flex flex-col transition-all duration-500">
           <div className="px-10 py-8 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px] transition-colors">
             <h3 className="font-black text-[12px] uppercase tracking-[0.25em] text-slate-900 dark:text-white flex items-center transition-colors">
@@ -1523,9 +1405,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           <div className="p-10 flex-1 overflow-y-auto max-h-[400px] custom-scrollbar">
             <div className="space-y-10">
               {userStatusMatrix.map(([name, data]) => {
-                const projectCount = data.mainProjects;
-                const subtaskCount = data.subtasks;
-                const totalItems = projectCount + subtaskCount;
+                const totalItems = data.activities;
 
                 return (
                   <div key={name} className="group">
@@ -1542,12 +1422,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                         </div>
                         <div className="flex items-center space-x-3 mt-3">
                           <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-100 dark:border-indigo-500/20">
-                            <span className="text-[11px] font-black text-indigo-700 dark:text-indigo-300">{projectCount}</span>
-                            <span className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400/70 uppercase tracking-widest">{projectCount === 1 ? 'Projeto' : 'Projetos'}</span>
-                          </div>
-                          <div className="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg border border-emerald-100 dark:border-emerald-500/20">
-                            <span className="text-[11px] font-black text-emerald-700 dark:text-emerald-300">{subtaskCount}</span>
-                            <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400/70 uppercase tracking-widest">{subtaskCount === 1 ? 'Subtarefa' : 'Subtarefas'}</span>
+                            <span className="text-[11px] font-black text-indigo-700 dark:text-indigo-300">{totalItems}</span>
+                            <span className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400/70 uppercase tracking-widest">{totalItems === 1 ? 'Atividade' : 'Atividades'}</span>
                           </div>
                         </div>
                       </div>
@@ -1712,6 +1588,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             userId={viewingUser.id}
             userName={viewingUser.name}
             projects={projects}
+            projectActivities={projectActivities}
             clients={clients}
             onClose={() => setViewingUser(null)}
           />

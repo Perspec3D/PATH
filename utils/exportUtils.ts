@@ -1,12 +1,19 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
-import { Client, Project, InternalUser } from '../types';
+import { Client, Project, InternalUser, ProjectActivity, ProjectStatus } from '../types';
 
-export const exportProjectsToExcel = (projects: Project[], clients: Client[], users: InternalUser[]) => {
+export const exportProjectsToExcel = (
+    projects: Project[],
+    clients: Client[],
+    users: InternalUser[],
+    activities: ProjectActivity[]
+) => {
     const data = projects.map(p => {
         const client = clients.find(c => c.id === p.clientId);
         const assignee = users.find(u => u.id === p.assigneeId);
+        const projectActivities = activities.filter(activity => activity.projectId === p.id);
+        const completedActivities = projectActivities.filter(activity => activity.status === ProjectStatus.DONE).length;
 
         return {
             'Código': p.code,
@@ -18,9 +25,10 @@ export const exportProjectsToExcel = (projects: Project[], clients: Client[], us
             'Início': p.startDate ? new Date(p.startDate).toLocaleDateString('pt-BR') : '',
             'Entrega': p.deliveryDate ? new Date(p.deliveryDate).toLocaleDateString('pt-BR') : '',
             'Prazo Final': p.dueDate ? new Date(p.dueDate).toLocaleDateString('pt-BR') : '',
-            'Subtarefas': p.subtasks.length,
-            'Progresso (%)': p.subtasks && p.subtasks.length > 0
-                ? Math.round((p.subtasks.filter(s => s.status === 'Concluído').length / p.subtasks.length) * 100)
+            'Atividades': projectActivities.length,
+            'Atividades concluídas': completedActivities,
+            'Progresso (%)': projectActivities.length > 0
+                ? Math.round((completedActivities / projectActivities.length) * 100)
                 : 0
         };
     });

@@ -34,7 +34,7 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
     .eq('workspace_id', companyId);
 
   const { data: projects } = await supabase.from('projects')
-    .select('id, workspace_id, client_id, assignee_id, code, name, photo_url, revision, status, start_date, delivery_date, due_date, notes, subtasks, created_at')
+    .select('id, workspace_id, client_id, assignee_id, code, name, photo_url, revision, status, start_date, delivery_date, due_date, notes, created_at')
     .eq('workspace_id', companyId);
 
   const { data: teamTasks } = await supabase.from('team_tasks')
@@ -89,7 +89,6 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
       deliveryDate: p.delivery_date,
       dueDate: p.due_date,
       notes: p.notes,
-      subtasks: p.subtasks || [],
       createdAt: new Date(p.created_at).getTime()
     })),
     tasks: (teamTasks || []).map((t: any) => ({
@@ -186,7 +185,6 @@ export const syncProject = async (project: Project) => {
     delivery_date: project.deliveryDate || null,
     due_date: project.dueDate || null,
     notes: project.notes,
-    subtasks: project.subtasks || [],
     created_at: new Date(project.createdAt).toISOString()
   });
   if (error) throw error;
