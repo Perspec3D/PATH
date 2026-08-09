@@ -1289,9 +1289,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                         || overtimeEntries.some(entry => entry.projectActivityId === activity.id);
                       const activityOvertimeMs = getActivityOvertimeMs(activity.id);
                       return (
-                        <div key={activity.id} className="bg-slate-50 dark:bg-slate-900/80 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 transition-all group/task">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div className="flex items-center space-x-3 flex-1">
+                        <div key={activity.id} className="min-w-0 bg-slate-50 dark:bg-slate-900/80 p-4 sm:p-5 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 transition-all group/task">
+                          <div className="flex min-w-0 flex-col gap-4">
+                            <div className="flex min-w-0 items-start gap-3">
                               <div className="flex flex-col items-center space-y-0.5 mr-2">
                                 <button
                                   type="button"
@@ -1314,9 +1314,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                                 </button>
                               </div>
 
-                              <div className="flex-1">
-                                <div className="flex items-center space-x-2">
-                                  <span className="font-bold text-sm text-slate-900 dark:text-slate-100">{activity.name}</span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                  <span className="min-w-0 break-words font-bold text-sm text-slate-900 dark:text-slate-100">{activity.name}</span>
                                   {actType?.category && (
                                     <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-800 text-[9px] font-black text-slate-500 dark:text-slate-400 rounded-md uppercase tracking-wider">
                                       {actType.category}
@@ -1336,18 +1336,18 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                                   )}
                                 </div>
                                 {activity.notes && (
-                                  <p className="text-[10px] text-slate-400 italic mt-1.5 max-w-lg truncate" title={activity.notes}>
+                                  <p className="mt-1.5 break-words text-[10px] italic text-slate-400" title={activity.notes}>
                                     Obs: {activity.notes}
                                   </p>
                                 )}
                                 {isActiveForCurrentUser && activeWorkContext && (
-                                  <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                                  <div className="mt-3 flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 sm:inline-flex">
                                     <span className="relative flex h-2 w-2">
                                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                                       <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                                     </span>
                                     <span className="text-[9px] font-black uppercase tracking-widest">Tempo contabilizado</span>
-                                    <span className="font-mono text-[11px] font-bold">{formatElapsedTime(getAccountedOperationalMs(activity.id))}</span>
+                                    <span className="whitespace-nowrap font-mono text-[11px] font-bold">{formatElapsedTime(getAccountedOperationalMs(activity.id))}</span>
                                   </div>
                                 )}
                                 {!isActiveForCurrentUser && hasOperationalTime && (
@@ -1355,15 +1355,15 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                                   || isPaused
                                   || activity.status === ProjectStatus.DONE
                                 ) && (
-                                  <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200/60 dark:bg-slate-800/70 border border-slate-300/60 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+                                  <div className="mt-3 flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 rounded-lg bg-slate-200/60 dark:bg-slate-800/70 border border-slate-300/60 dark:border-slate-700 text-slate-600 dark:text-slate-300 sm:inline-flex">
                                     <span className="text-[9px] font-black uppercase tracking-widest">Tempo contabilizado</span>
-                                    <span className="font-mono text-[11px] font-bold">{formatElapsedTime(getAccountedOperationalMs(activity.id))}</span>
+                                    <span className="whitespace-nowrap font-mono text-[11px] font-bold">{formatElapsedTime(getAccountedOperationalMs(activity.id))}</span>
                                   </div>
                                 )}
                               </div>
                             </div>
 
-                            <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                            <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-slate-200/70 pt-3 dark:border-slate-800">
                               {currentUser.role === UserRole.ADMIN && (
                                 <button
                                   type="button"
@@ -1374,7 +1374,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                                 </button>
                               )}
                               {!isClosed && (
-                                <div className="flex items-center gap-2">
+                                <div className="flex min-w-0 flex-wrap items-center gap-2">
                                   {isActiveForCurrentUser ? (
                                     <>
                                       <button
