@@ -579,23 +579,32 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
               ) : (
                 // --- VISÃO DE ATRIBUIÇÕES (TEAM LOAD) ---
                 allUsers.map((user) => {
-                  const activeProjectIds = new Set(activeProjects.map(p => p.id));
                   const userSubtasks = projectActivities
                     .filter(pa => 
                       pa.assigneeId === user.id && 
                       pa.startDate && 
                       pa.deliveryDate && 
-                      pa.status !== 'Cancelada' &&
-                      activeProjectIds.has(pa.projectId)
+                      pa.status !== 'Cancelada'
                     )
-                    .map(pa => ({
-                      ...pa,
-                      type: 'subtask',
-                      parentProject: allProjects.find(p => p.id === pa.projectId)
-                    }));
+                    .map(pa => {
+                      const parent = allProjects.find(p => p.id === pa.projectId);
+                      if (!parent) return null;
+                      // Garantir que o projeto pai está ativo
+                      if (![ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(parent.status)) return null;
+                      return {
+                        ...pa,
+                        type: 'subtask' as const,
+                        parentProject: parent
+                      };
+                    })
+                    .filter((item): item is NonNullable<typeof item> => item !== null);
 
                   const userActivities = (db.tasks || [])
-                    .filter(t => t.assigneeId === user.id || (t.invitedUsers && t.invitedUsers.includes(user.id)))
+                    .filter(t => 
+                      (t.assigneeId === user.id || (t.invitedUsers && t.invitedUsers.includes(user.id))) &&
+                      t.startDate &&
+                      t.endDate
+                    )
                     .map(t => ({
                       ...t,
                       type: 'activity',
@@ -728,11 +737,11 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                               className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 hover:z-50 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
                               onClick={() => {
                                 if (task.type === 'project') openEdit(task);
-                                else if (task.type === 'subtask') openEdit(task.parentProject);
+                                else if (task.type === 'subtask' && task.parentProject) openEdit(task.parentProject);
                                 else if (task.type === 'activity') openEditTeamTask(task);
                               }}
                             >
-                               <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.type === 'subtask' ? task.parentProject.id : task.id)}`} />
+                               <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.type === 'subtask' ? task.parentProject?.id : task.id)}`} />
                               <span className="text-[8px] font-black text-white/90 truncate uppercase tracking-tighter flex items-center gap-1.5">
                                 {task.type === 'activity' && (
                                   <span className="px-1 py-0.2 bg-white/20 text-white rounded-[4px] text-[7px] font-black uppercase tracking-wider shrink-0 border border-white/10">
@@ -1056,10 +1065,10 @@ const UserCargaModal: React.FC<{
 }> = ({ data, onClose, getStatusColor, getProjectMarkerColor }) => {
   // Agrupar tarefas por projeto pai
   const groupedTasks = data.assignments.reduce((acc: any, task: any) => {
-    const parentId = task.type === 'project' ? task.id : task.type === 'subtask' ? task.parentProject.id : 'activities';
+    const parentId = task.type === 'project' ? task.id : task.type === 'subtask' ? (task.parentProject?.id || 'unknown') : 'activities';
     if (!acc[parentId]) {
       acc[parentId] = {
-        project: task.type === 'project' ? task : task.type === 'subtask' ? task.parentProject : { id: 'activities', name: 'Tarefas / Bloqueios Avulsos', code: 'ATIVIDADES', status: 'ACTIVITY' },
+        project: task.type === 'project' ? task : task.type === 'subtask' ? (task.parentProject || { id: 'unknown', name: 'Projeto não encontrado', code: 'PROJETO', status: 'UNKNOWN' }) : { id: 'activities', name: 'Tarefas / Bloqueios Avulsos', code: 'ATIVIDADES', status: 'ACTIVITY' },
         tasks: []
       };
     }
