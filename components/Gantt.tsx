@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskType } from '../types';
-import { syncProject, AppDB, syncTeamTask, deleteTeamTask } from '../storage';
+import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskType, ProjectActivity } from '../types';
+import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivities } from '../storage';
 
 interface GanttProps {
   db: AppDB;
@@ -14,6 +14,25 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const allProjects = db.projects || [];
   const allClients = db.clients || [];
   const allUsers = db.users || [];
+
+  const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+
+  const loadProjectActivitiesConsolidated = async () => {
+    setIsLoadingActivities(true);
+    try {
+      const data = await fetchProjectActivities(currentUser.workspaceId);
+      setProjectActivities(data);
+    } catch (err) {
+      console.error("Erro ao carregar atividades no Gantt:", err);
+    } finally {
+      setIsLoadingActivities(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProjectActivitiesConsolidated();
+  }, [currentUser.workspaceId, viewMode]);
 
   const [viewMode, setViewMode] = useState<'selector' | 'flow' | 'assignments'>('selector');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -407,7 +426,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                 activeProjects.map((project: Project) => {
                   const client = allClients.find((c: Client) => c.id === project.clientId);
                   const isExpanded = expandedProjects.includes(project.id);
-                  const hasSubtasks = project.subtasks && project.subtasks.length > 0;
+                  const hasSubtasks = projectActivities.some(pa => pa.projectId === project.id);
 
                   const start = project.startDate ? new Date(project.startDate + 'T12:00:00') : null;
                   const end = project.deliveryDate ? new Date(project.deliveryDate + 'T12:00:00') : null;
@@ -484,81 +503,97 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                         </div>
                       </div>
 
-                      {/* RENDERIZAÇÃO DAS SUB-TAREFAS SE EXPANDIDO */}
-                      {isExpanded && project.subtasks?.map((st) => {
-                        const stStart = st.startDate ? new Date(st.startDate + 'T12:00:00') : null;
-                        const stEnd = st.deliveryDate ? new Date(st.deliveryDate + 'T12:00:00') : null;
-                        let stOffset = 0; let stWidth = 0;
-                        if (stStart && stEnd) {
-                          const diffStart = Math.floor((stStart.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
-                          const diffDuration = Math.ceil((stEnd.getTime() - stStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                          stOffset = diffStart * dayWidth; stWidth = diffDuration * dayWidth;
-                        }
+                      {/* RENDERIZAÇÃO DAS NOVAS ATIVIDADES DO PROJETO SE EXPANDIDO */}
+                      {isExpanded && projectActivities
+                        .filter(pa => pa.projectId === project.id)
+                        .map((pa) => {
+                          const st = {
+                            ...pa,
+                            type: 'subtask',
+                            parentProject: project
+                          };
+                          const stStart = st.startDate ? new Date(st.startDate + 'T12:00:00') : null;
+                          const stEnd = st.deliveryDate ? new Date(st.deliveryDate + 'T12:00:00') : null;
+                          let stOffset = 0; let stWidth = 0;
+                          if (stStart && stEnd) {
+                            const diffStart = Math.floor((stStart.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
+                            const diffDuration = Math.ceil((stEnd.getTime() - stStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                            stOffset = diffStart * dayWidth; stWidth = diffDuration * dayWidth;
+                          }
 
-                        return (
-                          <div key={st.id} className="flex group/sub hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors relative hover:z-[55] bg-slate-100/30 dark:bg-slate-900/20">
-                            {/* Sidebar Sub-tarefa */}
-                            <div className="w-80 pl-16 pr-6 h-12 flex flex-col justify-center border-r border-slate-100 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-sm border-l-4 border-indigo-500/10 transition-colors">
-                              <h5 className="text-[11px] font-bold text-slate-600 dark:text-slate-400 truncate leading-tight transition-colors">{st.name}</h5>
-                              <p className="text-[8px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest mt-0.5 transition-colors">
-                                {allUsers.find(u => u.id === st.assigneeId)?.username.split(' ')[0] || 'S/ RESP.'}
-                              </p>
-                            </div>
-
-                            {/* Timeline Sub-tarefa */}
-                            <div className="flex-1 h-12 relative bg-slate-50/5 dark:bg-slate-900/5 overflow-visible transition-colors">
-                              <div className="absolute inset-0 flex pointer-events-none z-10">
-                                {timelineDates.map((date, i) => {
-                                  const isToday = date.toDateString() === todayStr;
-                                  const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-                                  return (
-                                    <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/40 shrink-0 ${isToday ? 'bg-orange-500/5 transition-colors' : isWeekend ? 'bg-indigo-50/10 dark:bg-indigo-500/[0.01]' : ''}`}></div>
-                                  );
-                                })}
+                          return (
+                            <div key={st.id} className="flex group/sub hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors relative hover:z-[55] bg-slate-100/30 dark:bg-slate-900/20">
+                              {/* Sidebar Sub-tarefa */}
+                              <div className="w-80 pl-16 pr-6 h-12 flex flex-col justify-center border-r border-slate-100 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-sm border-l-4 border-indigo-500/10 transition-colors">
+                                <h5 className="text-[11px] font-bold text-slate-600 dark:text-slate-400 truncate leading-tight transition-colors">{st.name}</h5>
+                                <p className="text-[8px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest mt-0.5 transition-colors">
+                                  {allUsers.find(u => u.id === st.assigneeId)?.username.split(' ')[0] || 'S/ RESP.'}
+                                </p>
                               </div>
 
-                              {stWidth > 0 && (
-                                <div
-                                  style={{ left: `${stOffset}px`, width: `${stWidth}px` }}
-                                  className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm transition-all duration-300 hover:brightness-125 z-20 ${getStatusColor(st.status)} opacity-80 hover:opacity-100 flex items-center px-2`}
-                                >
-                                  <div className={`w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 ${getProjectMarkerColor(project.id)}`} />
-                                  <span className="text-[7px] font-black text-white/90 truncate uppercase tracking-tighter">
-                                    {st.name}
-                                  </span>
-                                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl opacity-0 group-hover/sub:opacity-100 transition-all transform translate-y-1 group-hover/sub:translate-y-0 z-[100] pointer-events-none shadow-2xl min-w-[180px] ring-1 ring-white/5">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                      <div className="flex flex-col">
-                                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">SUB-TAREFA</p>
-                                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">{project.code}</p>
+                              {/* Timeline Sub-tarefa */}
+                              <div className="flex-1 h-12 relative bg-slate-50/5 dark:bg-slate-900/5 overflow-visible transition-colors">
+                                <div className="absolute inset-0 flex pointer-events-none z-10">
+                                  {timelineDates.map((date, i) => {
+                                    const isToday = date.toDateString() === todayStr;
+                                    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                                    return (
+                                      <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/40 shrink-0 ${isToday ? 'bg-orange-500/5 transition-colors' : isWeekend ? 'bg-indigo-50/10 dark:bg-indigo-500/[0.01]' : ''}`}></div>
+                                    );
+                                  })}
+                                </div>
+
+                                {stWidth > 0 && (
+                                  <div
+                                    style={{ left: `${stOffset}px`, width: `${stWidth}px` }}
+                                    className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm transition-all duration-300 hover:brightness-125 z-20 ${getStatusColor(st.status)} opacity-80 hover:opacity-100 flex items-center px-2`}
+                                  >
+                                    <div className={`w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 ${getProjectMarkerColor(project.id)}`} />
+                                    <span className="text-[7px] font-black text-white/90 truncate uppercase tracking-tighter">
+                                      {st.name}
+                                    </span>
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl opacity-0 group-hover/sub:opacity-100 transition-all transform translate-y-1 group-hover/sub:translate-y-0 z-[100] pointer-events-none shadow-2xl min-w-[180px] ring-1 ring-white/5">
+                                      <div className="flex items-center justify-between mb-1.5">
+                                        <div className="flex flex-col">
+                                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">ATIVIDADE DO PROJETO</p>
+                                          <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">{project.code}</p>
+                                        </div>
+                                        <span className={`px-1.5 py-0.5 rounded-[4px] text-[7px] font-black uppercase tracking-widest ${getStatusColor(st.status)} text-white`}>{st.status}</span>
                                       </div>
-                                      <span className={`px-1.5 py-0.5 rounded-[4px] text-[7px] font-black uppercase tracking-widest ${getStatusColor(st.status)} text-white`}>{st.status}</span>
-                                    </div>
-                                    <p className="text-[10px] font-bold text-white mb-2 leading-tight">{st.name}</p>
-                                    <div className="flex justify-between items-center text-[9px] font-medium text-slate-400">
-                                      <span>{stStart?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
-                                      <svg className="w-2 h-2 mx-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                      <span>{stEnd?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                                      <p className="text-[10px] font-bold text-white mb-2 leading-tight">{st.name}</p>
+                                      <div className="flex justify-between items-center text-[9px] font-medium text-slate-400">
+                                        <span>{stStart?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                                        <svg className="w-2 h-2 mx-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                        <span>{stEnd?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
                     </React.Fragment>
                   );
                 })
               ) : (
                 // --- VISÃO DE ATRIBUIÇÕES (TEAM LOAD) ---
                 allUsers.map((user) => {
-                  const userTasks = activeProjects.filter(p => p.assigneeId === user.id).map(p => ({ ...p, type: 'project' }));
-                  const userSubtasks = activeProjects.flatMap(p =>
-                    (p.subtasks || [])
-                      .filter(st => st.assigneeId === user.id)
-                      .map(st => ({ ...st, type: 'subtask', parentProject: p }))
-                  );
+                  const activeProjectIds = new Set(activeProjects.map(p => p.id));
+                  const userSubtasks = projectActivities
+                    .filter(pa => 
+                      pa.assigneeId === user.id && 
+                      pa.startDate && 
+                      pa.deliveryDate && 
+                      pa.status !== 'Cancelada' &&
+                      activeProjectIds.has(pa.projectId)
+                    )
+                    .map(pa => ({
+                      ...pa,
+                      type: 'subtask',
+                      parentProject: allProjects.find(p => p.id === pa.projectId)
+                    }));
+
                   const userActivities = (db.tasks || [])
                     .filter(t => t.assigneeId === user.id || (t.invitedUsers && t.invitedUsers.includes(user.id)))
                     .map(t => ({
@@ -569,9 +604,9 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                       name: t.title,
                       status: 'ACTIVITY'
                     }));
-                  const allAssignments = [...userTasks, ...userSubtasks, ...userActivities];
-                  const projectsAndSubtasks = [...userTasks, ...userSubtasks];
-                  const distinctProjectsCount = new Set(projectsAndSubtasks.map(a => a.type === 'project' ? a.id : a.parentProject?.id)).size;
+
+                  const allAssignments = [...userSubtasks, ...userActivities];
+                  const distinctProjectsCount = new Set(userSubtasks.map(st => st.parentProject?.id).filter(Boolean)).size;
                   const activitiesCount = userActivities.length;
 
                   if (allAssignments.length === 0) return null;
@@ -602,24 +637,23 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                     tasksWithLanes.push({ ...task, laneIndex });
                   });
 
-                  // Detectar conflitos por dia (Apenas entre PROJETOS DISTINTOS)
+                  // Detectar conflitos por dia (2 ou mais atividades operacionais no mesmo dia)
                   const conflictMap = new Map();
                   timelineDates.forEach(date => {
-                    const distinctRootProjectIds = new Set();
+                    let activeActivitiesCount = 0;
 
                     allAssignments.forEach((t: any) => {
-                      if (t.type === 'activity') return; // Ignorar atividades para conflitos
-                      if (t.status === ProjectStatus.DONE || t.status === ProjectStatus.CANCELED) return;
+                      if (t.type === 'activity') return; // Ignorar team_tasks para conflito
+                      if (t.status === 'Concluída' || t.status === 'Cancelada' || t.status === ProjectStatus.DONE || t.status === ProjectStatus.CANCELED) return;
 
                       const s = new Date(t.startDate + 'T12:00:00');
                       const e = new Date(t.deliveryDate + 'T12:00:00');
                       if (date >= s && date <= e) {
-                        const rootId = t.type === 'subtask' ? t.parentProject.id : t.id;
-                        distinctRootProjectIds.add(rootId);
+                        activeActivitiesCount++;
                       }
                     });
 
-                    if (distinctRootProjectIds.size > 1) {
+                    if (activeActivitiesCount > 1) {
                       conflictMap.set(date.toDateString(), true);
                     }
                   });
@@ -815,72 +849,48 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                 {/* EDIÇÃO DE SUB-TAREFAS */}
                 {subtasks.length > 0 && (
                   <div className="pt-6 border-t border-slate-100 dark:border-slate-800 transition-colors">
-                    <h4 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-4 transition-colors">Cronograma de Sub-tarefas</h4>
+                    <h4 className="text-[10px] font-black text-rose-500/80 dark:text-rose-400/60 uppercase tracking-widest mb-4 transition-colors">Histórico de Subtarefas — Modelo Anterior</h4>
                     <div className="space-y-3 max-h-48 overflow-y-auto pr-2 custom-scrollbar transition-colors">
-                      {subtasks.map((st, idx) => (
-                        <div key={st.id} className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700/50 p-4 rounded-2xl transition-colors">
+                      {subtasks.map((st) => (
+                        <div key={st.id} className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700/50 p-4 rounded-2xl transition-colors opacity-80">
                           <div className="flex items-center justify-between mb-4">
-                            <span className="text-[10px] font-bold text-slate-900 dark:text-white uppercase truncate flex-1 mr-4 transition-colors">{st.name}</span>
+                            <span className="text-[10px] font-bold text-slate-500 truncate flex-1 mr-4 transition-colors">{st.name}</span>
                             <div className="flex items-center space-x-3">
-                              <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest hidden md:block">Status Etapa</label>
+                              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest hidden md:block">Status Etapa</label>
                               <select
                                 value={st.status}
-                                disabled={currentUser.role === UserRole.VIEWER}
-                                onChange={e => {
-                                  const newSts = [...subtasks];
-                                  newSts[idx] = { ...st, status: e.target.value as ProjectStatus };
-                                  setSubtasks(newSts);
-                                }}
-                                className={`px-2 py-1 rounded-[6px] text-[8px] font-black uppercase text-white outline-none cursor-pointer transition-all hover:brightness-110 shadow-sm ${getStatusColor(st.status)} border border-white/10 disabled:opacity-60`}
+                                disabled={true}
+                                className={`px-2 py-1 rounded-[6px] text-[8px] font-black uppercase text-white outline-none shadow-sm ${getStatusColor(st.status)} border border-white/10`}
                               >
-                                {Object.values(ProjectStatus).map(s => <option key={s} value={s} className="bg-slate-900 dark:bg-slate-900 border-none">{s}</option>)}
+                                {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
                               </select>
                             </div>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
-                              <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Início ST</label>
+                              <label className="text-[8px] font-black text-slate-500 uppercase mb-1 block">Início ST</label>
                               <input
                                 type="date"
-                                min={startDate}
-                                max={deliveryDate}
                                 value={st.startDate || ''}
-                                disabled={currentUser.role === UserRole.VIEWER}
-                                onChange={e => {
-                                  const newSts = [...subtasks];
-                                  newSts[idx] = { ...st, startDate: e.target.value };
-                                  setSubtasks(newSts);
-                                }}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors disabled:opacity-60"
+                                disabled={true}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-500 outline-none"
                               />
                             </div>
                             <div>
-                              <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Entrega ST</label>
+                              <label className="text-[8px] font-black text-slate-500 uppercase mb-1 block">Entrega ST</label>
                               <input
                                 type="date"
-                                min={st.startDate || startDate}
-                                max={deliveryDate}
                                 value={st.deliveryDate || ''}
-                                disabled={currentUser.role === UserRole.VIEWER}
-                                onChange={e => {
-                                  const newSts = [...subtasks];
-                                  newSts[idx] = { ...st, deliveryDate: e.target.value };
-                                  setSubtasks(newSts);
-                                }}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors disabled:opacity-60"
+                                disabled={true}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-500 outline-none"
                               />
                             </div>
                             <div>
-                              <label className="text-[8px] font-black text-slate-600 uppercase mb-1 block">Responsável ST</label>
+                              <label className="text-[8px] font-black text-slate-500 uppercase mb-1 block">Responsável ST</label>
                               <select
                                 value={st.assigneeId || ''}
-                                disabled={currentUser.role === UserRole.VIEWER}
-                                onChange={e => {
-                                  const newSts = [...subtasks];
-                                  newSts[idx] = { ...st, assigneeId: e.target.value };
-                                  setSubtasks(newSts);
-                                }}
-                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-900 dark:text-white outline-none focus:border-indigo-500 transition-colors disabled:opacity-60"
+                                disabled={true}
+                                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-[10px] text-slate-500 outline-none"
                               >
                                 <option value="">Sem responsável</option>
                                 {allUsers.map(u => (
