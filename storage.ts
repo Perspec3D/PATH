@@ -566,7 +566,7 @@ export const deleteActivityExecution = async (executionId: string) => {
 
 export const fetchWorkSessions = async (
   workspaceId: string,
-  filters: { activityExecutionId?: string; internalUserId?: string } = {}
+  filters: { activityExecutionId?: string; activityExecutionIds?: string[]; internalUserId?: string } = {}
 ): Promise<WorkSession[]> => {
   let query = supabase.from('work_sessions')
     .select('id, workspace_id, activity_execution_id, internal_user_id, started_at, ended_at, created_at, updated_at')
@@ -574,6 +574,9 @@ export const fetchWorkSessions = async (
 
   if (filters.activityExecutionId) {
     query = query.eq('activity_execution_id', filters.activityExecutionId);
+  }
+  if (filters.activityExecutionIds && filters.activityExecutionIds.length > 0) {
+    query = query.in('activity_execution_id', filters.activityExecutionIds);
   }
   if (filters.internalUserId) {
     query = query.eq('internal_user_id', filters.internalUserId);

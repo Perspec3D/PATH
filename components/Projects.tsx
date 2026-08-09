@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext } from '../types';
-import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution } from '../storage';
+import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession } from '../types';
+import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 
 interface ProjectsProps {
@@ -38,6 +38,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   // Project Activities States
   const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
   const [activityExecutions, setActivityExecutions] = useState<ActivityExecution[]>([]);
+  const [workSessions, setWorkSessions] = useState<WorkSession[]>([]);
   const [activeWorkContext, setActiveWorkContext] = useState<ActiveWorkSessionContext | null>(null);
   const [pendingActivity, setPendingActivity] = useState<ProjectActivity | null>(null);
   const [activityActionId, setActivityActionId] = useState<string | null>(null);
@@ -70,6 +71,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setSubtasks([]);
     setProjectActivities([]);
     setActivityExecutions([]);
+    setWorkSessions([]);
     setUsePrefix(false);
     setCodePrefix('');
     setEditingProject(null);
@@ -174,8 +176,16 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
           internalUserId: currentUser.id
         });
         setActivityExecutions(executions);
+        const sessions = executions.length > 0
+          ? await fetchWorkSessions(currentUser.workspaceId, {
+              activityExecutionIds: executions.map(execution => execution.id),
+              internalUserId: currentUser.id
+            })
+          : [];
+        setWorkSessions(sessions);
       } else {
         setActivityExecutions([]);
+        setWorkSessions([]);
       }
     } catch (err) {
       console.error("Erro ao carregar atividades do projeto:", err);
@@ -340,13 +350,20 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     }
   };
 
-  const formatElapsedTime = (startedAt: number) => {
-    const elapsedSeconds = Math.max(0, Math.floor((clockNow - startedAt) / 1000));
+  const formatElapsedTime = (durationMs: number) => {
+    const elapsedSeconds = Math.max(0, Math.floor(durationMs / 1000));
     const hours = Math.floor(elapsedSeconds / 3600);
     const minutes = Math.floor((elapsedSeconds % 3600) / 60);
     const seconds = elapsedSeconds % 60;
     return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
   };
+
+  const getWorkedDurationMs = (activityExecutionId: string) => workSessions
+    .filter(session => session.activityExecutionId === activityExecutionId)
+    .reduce((total, session) => {
+      const sessionEnd = session.endedAt ?? clockNow;
+      return total + Math.max(0, sessionEnd - session.startedAt);
+    }, 0);
 
   const getOpenExecution = (activityId: string) => activityExecutions.find(execution =>
     execution.projectActivityId === activityId &&
@@ -1106,7 +1123,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                       const assignee = db.users.find(u => u.id === activity.assigneeId);
                       const actType = activeActivityTypes.find(t => t.id === activity.activityTypeId);
                       const isActiveForCurrentUser = activeWorkContext?.activity.id === activity.id && activeWorkContext.execution.internalUserId === currentUser.id;
-                      const execution = getOpenExecution(activity.id) || (isActiveForCurrentUser ? activeWorkContext.execution : undefined);
+                      const execution = getOpenExecution(activity.id)
+                        || (isActiveForCurrentUser ? activeWorkContext.execution : undefined)
+                        || activityExecutions.find(item => item.projectActivityId === activity.id && item.internalUserId === currentUser.id);
                       const isClosed = activity.status === ProjectStatus.DONE || activity.status === ProjectStatus.CANCELED;
                       const isPaused = activity.status === ProjectStatus.PAUSED || execution?.status === ActivityExecutionStatus.PAUSED;
                       const isActionLoading = activityActionId === activity.id;
@@ -1166,7 +1185,13 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                                       <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                                     </span>
                                     <span className="text-[9px] font-black uppercase tracking-widest">Em execução</span>
-                                    <span className="font-mono text-[11px] font-bold">{formatElapsedTime(activeWorkContext.session.startedAt)}</span>
+                                    <span className="font-mono text-[11px] font-bold">{formatElapsedTime(getWorkedDurationMs(activeWorkContext.execution.id))}</span>
+                                  </div>
+                                )}
+                                {!isActiveForCurrentUser && execution && (isPaused || activity.status === ProjectStatus.DONE) && (
+                                  <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200/60 dark:bg-slate-800/70 border border-slate-300/60 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Tempo trabalhado</span>
+                                    <span className="font-mono text-[11px] font-bold">{formatElapsedTime(getWorkedDurationMs(execution.id))}</span>
                                   </div>
                                 )}
                               </div>
