@@ -260,6 +260,7 @@ export interface ActivityTransitionResult {
 
 export interface ActiveWorkSessionContext {
   session: WorkSession;
+  sessions: WorkSession[];
   execution: ActivityExecution;
   activity: {
     id: string;

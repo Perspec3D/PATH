@@ -686,6 +686,10 @@ export const fetchActiveWorkSessionContext = async (
 ): Promise<ActiveWorkSessionContext | null> => {
   const session = await fetchActiveWorkSession(workspaceId, internalUserId);
   if (!session) return null;
+  const sessions = await fetchWorkSessions(workspaceId, {
+    activityExecutionId: session.activityExecutionId,
+    internalUserId
+  });
 
   const { data: executionData, error: executionError } = await supabase.from('activity_executions')
     .select('id, workspace_id, project_activity_id, internal_user_id, status, started_at, completed_at, created_at, updated_at')
@@ -717,6 +721,7 @@ export const fetchActiveWorkSessionContext = async (
 
   return {
     session,
+    sessions,
     execution,
     activity: {
       id: activity.id,

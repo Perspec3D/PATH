@@ -350,20 +350,35 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     }
   };
 
-  const formatElapsedTime = (durationMs: number) => {
-    const elapsedSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const isValidTimestamp = (value: number) => Number.isFinite(value) && value > 0;
+
+  const formatElapsedTime = (durationMs: number | null) => {
+    if (durationMs === null || !Number.isFinite(durationMs) || durationMs < 0) {
+      return 'Tempo indisponível';
+    }
+    const elapsedSeconds = Math.floor(durationMs / 1000);
     const hours = Math.floor(elapsedSeconds / 3600);
     const minutes = Math.floor((elapsedSeconds % 3600) / 60);
     const seconds = elapsedSeconds % 60;
     return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
   };
 
-  const getWorkedDurationMs = (activityExecutionId: string) => workSessions
-    .filter(session => session.activityExecutionId === activityExecutionId)
-    .reduce((total, session) => {
+  const getWorkedDurationMs = (activityExecutionId: string): number | null => {
+    const executionSessions = activeWorkContext?.execution.id === activityExecutionId
+      ? activeWorkContext.sessions
+      : workSessions.filter(session => session.activityExecutionId === activityExecutionId);
+
+    return executionSessions.reduce<number | null>((total, session) => {
+      if (total === null || !isValidTimestamp(session.startedAt)) return null;
       const sessionEnd = session.endedAt ?? clockNow;
-      return total + Math.max(0, sessionEnd - session.startedAt);
+      if (!isValidTimestamp(sessionEnd) || sessionEnd < session.startedAt) return null;
+      return total + (sessionEnd - session.startedAt);
     }, 0);
+  };
+
+  const formatSessionStartedAt = (startedAt: number) => isValidTimestamp(startedAt)
+    ? new Date(startedAt).toLocaleString('pt-BR')
+    : 'Horário indisponível';
 
   const getOpenExecution = (activityId: string) => activityExecutions.find(execution =>
     execution.projectActivityId === activityId &&
@@ -1567,11 +1582,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Início</p>
-                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1">{new Date(activeWorkContext.session.startedAt).toLocaleString('pt-BR')}</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1">{formatSessionStartedAt(activeWorkContext.session.startedAt)}</p>
                   </div>
                   <div>
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tempo decorrido</p>
-                    <p className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatElapsedTime(activeWorkContext.session.startedAt)}</p>
+                    <p className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatElapsedTime(getWorkedDurationMs(activeWorkContext.execution.id))}</p>
                   </div>
                 </div>
               </div>
