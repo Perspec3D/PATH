@@ -41,7 +41,7 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
   let profile = null;
   if (companyId) {
     const { data } = await supabase.from('profiles')
-      .select('id, name, email, license_status, trial_start, user_limit, subscription_id, subscription_end, logo_url')
+      .select('id, name, email, license_status, trial_start, user_limit, subscription_id, subscription_end, logo_url, work_start_time, work_end_time, lunch_duration_minutes, work_days')
       .eq('id', companyId).maybeSingle();
     profile = data;
   }
@@ -122,7 +122,11 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
       userLimit: profile.user_limit || 1,
       subscriptionId: profile.subscription_id,
       subscriptionEnd: profile.subscription_end ? new Date(profile.subscription_end).getTime() : undefined,
-      logoUrl: profile.logo_url
+      logoUrl: profile.logo_url,
+      workStartTime: profile.work_start_time || '08:00',
+      workEndTime: profile.work_end_time || '18:00',
+      lunchDurationMinutes: profile.lunch_duration_minutes !== null && profile.lunch_duration_minutes !== undefined ? profile.lunch_duration_minutes : 60,
+      workDays: profile.work_days || [1, 2, 3, 4, 5]
     } : null
   };
 
@@ -230,7 +234,11 @@ export const syncCompany = async (company: Company) => {
   const { error } = await supabase.from('profiles').update({
     name: company.name,
     email: company.email,
-    logo_url: company.logoUrl
+    logo_url: company.logoUrl,
+    work_start_time: company.workStartTime,
+    work_end_time: company.workEndTime,
+    lunch_duration_minutes: company.lunchDurationMinutes,
+    work_days: company.workDays
   }).eq('id', company.id);
   if (error) throw error;
 };

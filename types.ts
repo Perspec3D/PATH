@@ -42,6 +42,10 @@ export interface Company {
   subscriptionId?: string;
   subscriptionEnd?: number;
   logoUrl?: string;
+  workStartTime?: string;
+  workEndTime?: string;
+  lunchDurationMinutes?: number;
+  workDays?: number[];
 }
 
 export interface InternalUser {

@@ -38,6 +38,10 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
   const [returnStatus, setReturnStatus] = useState<'success' | 'pending' | 'failure' | null>(null);
   const [logoUrl, setLogoUrl] = useState(db.company?.logoUrl || '');
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [workStartTime, setWorkStartTime] = useState(db.company?.workStartTime || '08:00');
+  const [workEndTime, setWorkEndTime] = useState(db.company?.workEndTime || '18:00');
+  const [lunchDurationMinutes, setLunchDurationMinutes] = useState(db.company?.lunchDurationMinutes || 60);
+  const [workDays, setWorkDays] = useState<number[]>(db.company?.workDays || [1, 2, 3, 4, 5]);
   const [adminGeneralAlerts, setAdminGeneralAlerts] = useState<boolean>(() => {
     const saved = localStorage.getItem('PATH_ADMIN_GENERAL_ALERTS');
     return saved ? JSON.parse(saved) : false;
@@ -256,7 +260,15 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
 
   const handleSaveCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newCompany = { ...db.company, name: companyName, logoUrl };
+    const newCompany = { 
+      ...db.company, 
+      name: companyName, 
+      logoUrl,
+      workStartTime,
+      workEndTime,
+      lunchDurationMinutes,
+      workDays
+    };
     if (!newCompany.id) return;
 
     try {
@@ -264,7 +276,10 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
       setDb({ ...db, company: newCompany as any });
       
       const diffLogs = generateDiffLogs(db.company, newCompany, {
-        name: { label: 'Nome Fantasia' }
+        name: { label: 'Nome Fantasia' },
+        workStartTime: { label: 'Início da Jornada' },
+        workEndTime: { label: 'Fim da Jornada' },
+        lunchDurationMinutes: { label: 'Duração do Intervalo' }
       }, 'a empresa');
 
       if (diffLogs.length > 0) {
@@ -548,6 +563,76 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
                 <div className="flex items-center space-x-3 px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-indigo-600 dark:text-indigo-400 font-bold transition-colors">
                   <div className={`w-2 h-2 rounded-full ${db.company.licenseStatus === LicenseStatus.ACTIVE ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`}></div>
                   <span className="uppercase tracking-widest">{db.company.licenseStatus}</span>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-slate-100 dark:border-slate-800 pt-6">
+              <div>
+                <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Jornada de Trabalho</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Hora Início</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 08:00"
+                      value={workStartTime}
+                      onChange={(e) => setWorkStartTime(e.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Hora Fim</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 18:00"
+                      value={workEndTime}
+                      onChange={(e) => setWorkEndTime(e.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Intervalo e Dias Úteis</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Intervalo (Minutos)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={lunchDurationMinutes}
+                      onChange={(e) => setLunchDurationMinutes(Number(e.target.value))}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Dias de Trabalho</label>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((dayName, idx) => {
+                        const isSelected = workDays.includes(idx);
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              if (isSelected) {
+                                setWorkDays(workDays.filter(d => d !== idx));
+                              } else {
+                                setWorkDays([...workDays, idx].sort());
+                              }
+                            }}
+                            className={`px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                          >
+                            {dayName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

@@ -436,7 +436,7 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
                 <th className="p-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">Total Atribuído</th>
                 <th className="p-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">Carga Atual (Aberta)</th>
                 <th className="p-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">Volume Concluído</th>
-                <th className="p-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">Capacidade Estimada C/ Base Mês de {currentMonthWorkingDays} Dias Úteis</th>
+                <th className="p-4 text-[10px] font-black tracking-wider text-slate-400 uppercase">Capacidade Estimada (Legado) C/ Base Mês de {currentMonthWorkingDays} Dias Úteis</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -527,7 +527,7 @@ export const Team: React.FC<TeamProps> = ({ db, theme }) => {
                             )}
                             {estCapSub !== null && (
                               <div className="flex items-center justify-between text-xs font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg w-full max-w-[200px]">
-                                <span>Estimativa Sub-tarefas</span>
+                                <span>Sub-tarefas (Legado)</span>
                                 <span>~{estCapSub}/mês</span>
                               </div>
                             )}

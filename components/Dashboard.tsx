@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { ProjectStatus, Project, InternalUser, Client } from '../types';
-import { AppDB } from '../storage';
+import React, { useMemo, useState, useEffect } from 'react';
+import { ProjectStatus, Project, InternalUser, Client, ProjectActivity } from '../types';
+import { AppDB, fetchProjectActivities } from '../storage';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend
@@ -470,12 +470,38 @@ const RiskDetailModal: React.FC<{
 
 
 export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
+  const formatCapacityHours = (hours: number): string => {
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    if (m === 0) return `${h}h`;
+    return `${h}h${m.toString().padStart(2, '0')}`;
+  };
+
   const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
   const [viewingUser, setViewingUser] = useState<any>(null);
   const [viewingRisk, setViewingRisk] = useState<{ type: 'inertia' | 'scale', data: any } | null>(null);
   const projects = db.projects || [];
   const users = db.users || [];
   const clients = db.clients || [];
+  const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+
+  useEffect(() => {
+    const loadActivities = async () => {
+      if (!db.company?.id) return;
+      setIsLoadingActivities(true);
+      try {
+        const data = await fetchProjectActivities(db.company.id);
+        setProjectActivities(data);
+      } catch (err) {
+        console.error("Erro ao carregar atividades no Dashboard:", err);
+      } finally {
+        setIsLoadingActivities(false);
+      }
+    };
+    loadActivities();
+  }, [db.company?.id]);
+
   const now = new Date();
   const next7Days = new Date();
   next7Days.setDate(now.getDate() + 7);
@@ -784,6 +810,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       }
     });
 
+    // Helper to calculate daily hours from company shift settings
+    const getJourneyDailyHours = (company: any): number => {
+      if (!company) return 8;
+      const start = company.workStartTime || '08:00';
+      const end = company.workEndTime || '18:00';
+      const lunch = company.lunchDurationMinutes !== undefined ? company.lunchDurationMinutes : 60;
+      
+      const [sh, sm] = start.split(':').map(Number);
+      const [eh, em] = end.split(':').map(Number);
+      if (isNaN(sh) || isNaN(eh)) return 8;
+      
+      const startMins = sh * 60 + (sm || 0);
+      const endMins = eh * 60 + (em || 0);
+      const totalMins = endMins - startMins;
+      const netMins = totalMins - lunch;
+      return Math.max(0, netMins / 60);
+    };
+
     // 10. Capacidade Operacional da Equipe (Semanal com Previsibilidade)
     const activeUsers_Capacity = users.filter(u => u.isActive);
 
@@ -807,92 +851,142 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       startOfS0.setDate(baseDate.getDate() + diffToMonday);
       startOfS0.setHours(0, 0, 0, 0);
 
-      // Range da semana selecionada (Offset 0 a 4)
+      // Range da semana selecionada (Offset 0 a 4) - cobrindo a semana cheia (Segunda a Domingo)
       const startOfWeek = new Date(startOfS0);
       startOfWeek.setDate(startOfS0.getDate() + (selectedWeekOffset * 7));
+      startOfWeek.setHours(0, 0, 0, 0);
 
       const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 4); // Sexta
+      endOfWeek.setDate(startOfWeek.getDate() + 6); // Domingo
       endOfWeek.setHours(23, 59, 59, 999);
 
       const today = new Date(now);
       today.setHours(0, 0, 0, 0);
 
-      const daysAvailablePerUser = (selectedWeekOffset === 0 && today >= startOfWeek && today <= endOfWeek)
-        ? Math.max(1, 5 - (today.getDay() - 1))
-        : 5;
+      // Configuração de jornada do workspace
+      const companyWorkDays = db.company?.workDays || [1, 2, 3, 4, 5];
+      const dailyHours = getJourneyDailyHours(db.company);
 
-      const totalAvailableDays = activeUsers_Capacity.length * daysAvailablePerUser;
-      let totalOccupiedDays_Backlog = 0; // Soma para o Gauge Global (ex: 310%)
-
-      const userDetails = activeUsers_Capacity.map(u => {
-        const userWorkDaysSet = new Set<string>(); // União para Ocupação de Agenda (Airon 60%)
-        let userBacklogDays = 0; // Soma para Total (Load)
-
-        const getProjectDays = (startStr: string, endStr: string) => {
-          const daysSet = new Set<string>();
-          const start = new Date(startStr + 'T00:00:00');
-          const end = new Date(endStr + 'T23:59:59');
-
-          // Se for a semana atual, começamos a contar a partir de hoje (não retroativo)
-          const effectiveCountStart = (selectedWeekOffset === 0 && today > startOfWeek) ? today : startOfWeek;
-
-          const overlapStart = new Date(Math.max(start.getTime(), effectiveCountStart.getTime()));
-          const overlapEnd = new Date(Math.min(end.getTime(), endOfWeek.getTime()));
-
-          if (overlapStart <= overlapEnd) {
-            const current = new Date(overlapStart);
-            while (current <= overlapEnd) {
-              const dow = current.getDay();
-              if (dow !== 0 && dow !== 6) {
-                daysSet.add(current.toISOString().split('T')[0]);
-              }
-              current.setDate(current.getDate() + 1);
+      // Calcular dias e horas disponíveis para o período
+      let availableDaysInPeriod = 0;
+      let dayCheck = new Date(startOfWeek);
+      while (dayCheck <= endOfWeek) {
+        const dow = dayCheck.getDay();
+        if (companyWorkDays.includes(dow)) {
+          if (selectedWeekOffset > 0) {
+            availableDaysInPeriod++;
+          } else {
+            // Semana atual: apenas dias de hoje em diante (contando hoje por inteiro)
+            if (dayCheck >= today) {
+              availableDaysInPeriod++;
             }
           }
-          return daysSet;
-        };
+        }
+        dayCheck.setDate(dayCheck.getDate() + 1);
+      }
 
-        projects.forEach(p => {
-          const projectUserDays = new Set<string>();
-          let hasSubtasks = false;
+      const userAvailableHours = availableDaysInPeriod * dailyHours;
+      const totalAvailableHoursTeam = activeUsers_Capacity.length * userAvailableHours;
 
-          // 1. Coletar dias de execução (subtarefas) do usuário neste projeto
-          p.subtasks?.forEach(st => {
-            if (st.assigneeId === u.id && st.status !== ProjectStatus.DONE && st.status !== ProjectStatus.CANCELED && st.startDate && st.deliveryDate) {
-              hasSubtasks = true;
-              getProjectDays(st.startDate, st.deliveryDate).forEach(d => {
-                projectUserDays.add(d);
-                userWorkDaysSet.add(d); // Adiciona ao calendário unificado
-              });
+      let totalOccupiedHoursTeam = 0;
+
+      const userDetails = activeUsers_Capacity.map(u => {
+        let userPlannedHours = 0;
+        let unestimatedActivitiesCount = 0;
+
+        // Tooltip detail info collection for this user
+        const detailList: { projectCode: string; activityName: string; hours: number; start: string; end: string }[] = [];
+
+        projectActivities.forEach(pa => {
+          // Filtrar apenas se for do usuário
+          if (pa.assigneeId !== u.id) return;
+          // Ignorar se cancelada ou concluída
+          if (pa.status === 'Cancelada' || pa.status === 'Concluída') return;
+          // Ignorar se não possuir datas planejadas
+          if (!pa.startDate || !pa.deliveryDate) return;
+
+          // Se a estimativa for nula ou indefinida, é sinalizada como Sem Estimativa
+          if (pa.estimatedDurationHours === undefined || pa.estimatedDurationHours === null) {
+            const actStart = new Date(pa.startDate + 'T00:00:00');
+            const actEnd = new Date(pa.deliveryDate + 'T23:59:59');
+            const overlapStart = actStart > startOfWeek ? actStart : startOfWeek;
+            const overlapEnd = actEnd < endOfWeek ? actEnd : endOfWeek;
+            if (overlapStart <= overlapEnd) {
+              unestimatedActivitiesCount++;
             }
-          });
+            return;
+          }
 
-          if (hasSubtasks) {
-            userBacklogDays += projectUserDays.size;
-          } else if (p.assigneeId === u.id && p.status !== ProjectStatus.DONE && p.status !== ProjectStatus.CANCELED && p.startDate && p.deliveryDate) {
-            // Se ele é o dono mas NÃO tem subtarefas atribuídas, a carga é o período total (Gestão/Liderança)
-            const pDays = getProjectDays(p.startDate, p.deliveryDate);
-            userBacklogDays += pDays.size;
-            pDays.forEach(d => userWorkDaysSet.add(d)); // Adiciona ao calendário unificado
+          const estHours = pa.estimatedDurationHours;
+
+          // 1. Encontrar o número total de dias úteis da atividade dentro de seu intervalo planejado
+          const actStart = new Date(pa.startDate + 'T00:00:00');
+          const actEnd = new Date(pa.deliveryDate + 'T23:59:59');
+
+          let totalActivityWorkDays = 0;
+          let tempDay = new Date(actStart);
+          while (tempDay <= actEnd) {
+            const dow = tempDay.getDay();
+            if (companyWorkDays.includes(dow)) {
+              totalActivityWorkDays++;
+            }
+            tempDay.setDate(tempDay.getDate() + 1);
+          }
+
+          if (totalActivityWorkDays === 0) return;
+
+          const dailyLoad = estHours / totalActivityWorkDays;
+
+          // 2. Distribuir a carga pelos dias do intervalo que caem na semana selecionada e que são >= hoje (se for S0)
+          const effectiveCountStart = (selectedWeekOffset === 0 && today > startOfWeek) ? today : startOfWeek;
+          const overlapStart = actStart > effectiveCountStart ? actStart : effectiveCountStart;
+          const overlapEnd = actEnd < endOfWeek ? actEnd : endOfWeek;
+
+          let userActivityDaysInSelectedWeek = 0;
+          if (overlapStart <= overlapEnd) {
+            let dayRunner = new Date(overlapStart);
+            while (dayRunner <= overlapEnd) {
+              const dow = dayRunner.getDay();
+              if (companyWorkDays.includes(dow)) {
+                userActivityDaysInSelectedWeek++;
+              }
+              dayRunner.setDate(dayRunner.getDate() + 1);
+            }
+          }
+
+          const hoursInSelectedWeek = userActivityDaysInSelectedWeek * dailyLoad;
+          userPlannedHours += hoursInSelectedWeek;
+
+          if (hoursInSelectedWeek > 0) {
+            const parentProject = projects.find(p => p.id === pa.projectId);
+            detailList.push({
+              projectCode: parentProject?.code || 'ATIVIDADES',
+              activityName: pa.name,
+              hours: hoursInSelectedWeek,
+              start: pa.startDate,
+              end: pa.deliveryDate
+            });
           }
         });
 
-        totalOccupiedDays_Backlog += userBacklogDays;
-        
+        totalOccupiedHoursTeam += userPlannedHours;
+
         return {
           id: u.id,
           name: u.username,
-          occupied: userBacklogDays, // Alterado para refletir a Carga Acumulada (3+2=5)
-          backlog: userBacklogDays,
-          percentage: Math.round((userBacklogDays / daysAvailablePerUser) * 100) // Percentual baseado na Carga Acumulada (Soma)
+          occupied: userPlannedHours,
+          backlog: userPlannedHours,
+          total: userAvailableHours,
+          percentage: userAvailableHours > 0 ? Math.round((userPlannedHours / userAvailableHours) * 100) : 0,
+          unestimatedCount: unestimatedActivitiesCount,
+          details: detailList
         };
       });
 
       teamCapacity = {
-        percentage: Math.round((totalOccupiedDays_Backlog / totalAvailableDays) * 100), // Percentual baseado na Carga Global (310%)
-        occupied: totalOccupiedDays_Backlog,
-        total: totalAvailableDays,
+        percentage: totalAvailableHoursTeam > 0 ? Math.round((totalOccupiedHoursTeam / totalAvailableHoursTeam) * 100) : 0,
+        occupied: totalOccupiedHoursTeam,
+        total: totalAvailableHoursTeam,
         userDetails,
         weekRange: {
           start: startOfWeek.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
@@ -913,7 +1007,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       throughput: { factor: throughputFactor, created: createdLast7, done: doneLast7 },
       teamCapacity
     };
-  }, [projects, activeProjects, users, selectedWeekOffset]);
+  }, [projects, activeProjects, users, selectedWeekOffset, projectActivities]);
 
   const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f97316', '#10b981'];
 
@@ -1139,14 +1233,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                   Capacidade Operacional da Equipe
                   <InfoTooltip
                     title="Saturação da Equipe"
-                    content="Percentual de ocupação baseado em 5 dias úteis por usuário ativo. Soma o tempo de todos os projetos e subtarefas pendentes alocados na semana selecionada."
-                    calculation="(Dias_Atribuídos_Semana / (Usuários_Ativos * 5)) * 100"
+                    content="Percentual de ocupação baseado na jornada regular configurada para o Workspace. Soma as horas estimadas de todas as atividades ativas alocadas na semana selecionada."
+                    calculation="(Horas_Planejadas_Semana / Horas_Disponíveis_Semana) * 100"
                     position="bottom"
                   />
                 </h3>
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest px-2 transition-colors">Sincronizado com Ciclo Médio de {avgExecutionTime} dias</p>
               </div>
-
+ 
               {/* Seletor de Semanas */}
               <div className="flex bg-slate-100 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/50 shadow-inner transition-colors duration-500">
                 {[0, 1, 2, 3, 4].map(w => (
@@ -1163,7 +1257,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 ))}
               </div>
             </div>
-
+ 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
               {/* Resumo Global */}
               <div className="lg:col-span-5 flex items-center space-x-8 border-r border-slate-100 dark:border-slate-800/50 pr-8 transition-colors duration-500">
@@ -1187,15 +1281,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                     <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter transition-colors">Global</span>
                   </div>
                 </div>
-
+ 
                 <div className="flex-1 space-y-4">
                   <div className="flex justify-between items-baseline">
                     <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Ocupação</span>
-                    <span className="text-xl font-black text-slate-900 dark:text-white transition-colors">{dashboard2Logics.teamCapacity.occupied} <span className="text-[10px] text-slate-400 dark:text-slate-500">dias</span></span>
+                    <span className="text-xl font-black text-slate-900 dark:text-white transition-colors">
+                      {formatCapacityHours(dashboard2Logics.teamCapacity.occupied)}{' '}
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">planejadas</span>
+                    </span>
                   </div>
                   <div className="flex justify-between items-baseline">
                     <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Disponível</span>
-                    <span className="text-xl font-black text-slate-300 dark:text-slate-700 transition-colors">{dashboard2Logics.teamCapacity.total} <span className="text-[10px] opacity-40">dias</span></span>
+                    <span className="text-xl font-black text-slate-300 dark:text-slate-700 transition-colors">
+                      {formatCapacityHours(dashboard2Logics.teamCapacity.total)}{' '}
+                      <span className="text-[10px] opacity-40 font-bold uppercase tracking-wider">regulares</span>
+                    </span>
                   </div>
                   <div className={`text-center py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm transition-all ${dashboard2Logics.teamCapacity.percentage > 100 ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' :
                     dashboard2Logics.teamCapacity.percentage > 95 ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
@@ -1209,7 +1309,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                   </div>
                 </div>
               </div>
-
+ 
               {/* Detalhamento por Usuário */}
               <div className="lg:col-span-7">
                 <div className="flex items-center justify-between mb-6">
@@ -1217,24 +1317,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                   <p className="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest transition-colors">Capacidade / Semana</p>
                 </div>
                 <div className="grid grid-cols-2 gap-x-12 gap-y-6">
-                  {dashboard2Logics.teamCapacity.userDetails.map((u: any) => (
-                    <div key={u.id} className="group/user">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[11px] font-black text-slate-600 dark:text-slate-300 uppercase truncate pr-4 transition-colors">{u.name}</span>
-                        <span className={`text-[10px] font-black ${u.percentage > 100 ? 'text-rose-500' : u.percentage > 80 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'
-                          } transition-colors`}>{u.percentage}%</span>
+                  {dashboard2Logics.teamCapacity.userDetails.map((u: any) => {
+                    const tooltipContent = u.details && u.details.length > 0
+                      ? u.details.map((d: any) => `[${d.projectCode}] ${d.activityName}: ${formatCapacityHours(d.hours)} (${d.start} a ${d.end})`).join('\n')
+                      : 'Sem atividades planejadas';
+                    return (
+                      <div key={u.id} className="group/user" title={tooltipContent}>
+                        <div className="flex justify-between items-end mb-2">
+                          <div className="flex flex-col">
+                            <span className="text-[11px] font-black text-slate-600 dark:text-slate-300 uppercase truncate pr-4 transition-colors">{u.name}</span>
+                            <span className="text-[8px] text-slate-450 dark:text-slate-500 font-bold uppercase mt-0.5 flex flex-wrap gap-2 items-center">
+                              <span>{formatCapacityHours(u.occupied)} / {formatCapacityHours(u.total)}</span>
+                              {u.unestimatedCount > 0 && (
+                                <span className="text-amber-500 font-black flex items-center gap-0.5">
+                                  <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                                  {u.unestimatedCount} sem estimativa
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          <span className={`text-[10px] font-black ${u.percentage > 100 ? 'text-rose-500' : u.percentage > 80 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'
+                            } transition-colors`}>{u.percentage}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-900 rounded-full overflow-hidden border border-slate-200 dark:border-white/5 transition-colors duration-500">
+                          <div
+                            className={`h-full rounded-full transition-all duration-1000 ${u.percentage > 100 ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]' :
+                              u.percentage > 80 ? 'bg-amber-500' :
+                                'bg-slate-300 dark:bg-slate-700 group-hover/user:bg-indigo-500'
+                              }`}
+                            style={{ width: `${Math.min(100, u.percentage)}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-900 rounded-full overflow-hidden border border-slate-200 dark:border-white/5 transition-colors duration-500">
-                        <div
-                          className={`h-full rounded-full transition-all duration-1000 ${u.percentage > 100 ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]' :
-                            u.percentage > 80 ? 'bg-amber-500' :
-                              'bg-slate-300 dark:bg-slate-700 group-hover/user:bg-indigo-500'
-                            }`}
-                          style={{ width: `${Math.min(100, u.percentage)}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {dashboard2Logics.teamCapacity.userDetails.length === 0 && (
                     <div className="col-span-2 text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Sem dados de alocação para este período</div>
                   )}
