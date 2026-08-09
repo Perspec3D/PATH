@@ -4,6 +4,7 @@ import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskT
 import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivities } from '../storage';
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 import { HoverTooltipPortal } from './InfoTooltip';
+import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, isValidDateRange } from '../utils/projectDateIntegrity';
 
 interface GanttProps {
   db: AppDB;
@@ -85,6 +86,26 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProject) return;
+
+    if (!isValidDateRange(startDate, deliveryDate)) {
+      alert("O período do projeto deve possuir início e prazo final válidos.");
+      return;
+    }
+
+    const affectedActivities = findActivitiesOutsideProjectPeriod(
+      projectActivities,
+      editingProject.id,
+      startDate,
+      deliveryDate
+    );
+
+    if (affectedActivities.length > 0) {
+      alert(
+        `Existem atividades fora do novo prazo do projeto.\n\n${getAffectedActivitiesLabel(affectedActivities)}\n\nAjuste manualmente as atividades ou escolha outro prazo para o projeto.`
+      );
+      return;
+    }
+
     const projectData: Project = {
       ...editingProject,
       workspaceId: currentUser.workspaceId,
@@ -104,7 +125,12 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
       setDb({ ...db, projects: newProjects });
       setEditingProject(null);
     } catch (err: any) {
-      alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+      const technicalMessage = `${err?.message || ''} ${err?.details || ''}`;
+      if (technicalMessage.includes('PROJECT_DATE_RANGE_EXCLUDES_ACTIVITIES')) {
+        alert("Existem atividades fora do novo prazo do projeto. Ajuste manualmente as atividades ou escolha outro prazo para o projeto.");
+      } else {
+        alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+      }
     }
   };
 
@@ -847,11 +873,11 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Início</label>
-                    <input type="date" value={startDate} disabled={currentUser.role === UserRole.VIEWER} onChange={e => setStartDate(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors disabled:opacity-60" />
+                    <input type="date" value={startDate} max={deliveryDate || undefined} disabled={currentUser.role === UserRole.VIEWER} onInvalid={(e) => e.currentTarget.setCustomValidity('O período do projeto deve possuir início e prazo final válidos.')} onInput={(e) => e.currentTarget.setCustomValidity('')} onChange={e => setStartDate(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors disabled:opacity-60" />
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Entrega</label>
-                    <input type="date" value={deliveryDate} disabled={currentUser.role === UserRole.VIEWER} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors disabled:opacity-60" />
+                    <input type="date" value={deliveryDate} min={startDate || undefined} disabled={currentUser.role === UserRole.VIEWER} onInvalid={(e) => e.currentTarget.setCustomValidity('O período do projeto deve possuir início e prazo final válidos.')} onInput={(e) => e.currentTarget.setCustomValidity('')} onChange={e => setDeliveryDate(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors disabled:opacity-60" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">

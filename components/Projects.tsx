@@ -5,6 +5,7 @@ import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, 
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs } from '../utils/operationalTime';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
+import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, getProjectPeriodLabel, isActivityWithinProjectPeriod, isValidDateRange } from '../utils/projectDateIntegrity';
 
 interface ProjectsProps {
   db: AppDB;
@@ -259,6 +260,16 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       return;
     }
 
+    if (!isActivityWithinProjectPeriod(
+      actStartDate,
+      actDeliveryDate,
+      editingProject.startDate,
+      editingProject.deliveryDate
+    )) {
+      alert(`Esta atividade deve estar dentro do período do projeto.\n${getProjectPeriodLabel(editingProject)}`);
+      return;
+    }
+
     const selectedType = activeActivityTypes.find(t => t.id === actTypeId);
     if (!selectedType) return;
 
@@ -349,7 +360,12 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       setShowActivityModal(false);
       resetActForm();
     } catch (err: any) {
-      alert("Erro ao salvar atividade: " + err.message);
+      const technicalMessage = `${err?.message || ''} ${err?.details || ''}`;
+      if (technicalMessage.includes('PROJECT_ACTIVITY_OUTSIDE_PROJECT_PERIOD')) {
+        alert(`Esta atividade deve estar dentro do período do projeto.\n${getProjectPeriodLabel(editingProject)}`);
+      } else {
+        alert("Erro ao salvar atividade: " + err.message);
+      }
     }
   };
 
@@ -731,6 +747,27 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     const client = db.clients.find((c: Client) => c.id === clientId);
     if (!client) return;
 
+    if (!isValidDateRange(startDate, deliveryDate)) {
+      alert("O período do projeto deve possuir início e prazo final válidos.");
+      return;
+    }
+
+    if (editingProject) {
+      const affectedActivities = findActivitiesOutsideProjectPeriod(
+        projectActivities,
+        editingProject.id,
+        startDate,
+        deliveryDate
+      );
+
+      if (affectedActivities.length > 0) {
+        alert(
+          `Existem atividades fora do novo prazo do projeto.\n\n${getAffectedActivitiesLabel(affectedActivities)}\n\nAjuste manualmente as atividades ou escolha outro prazo para o projeto.`
+        );
+        return;
+      }
+    }
+
     const yearYY = new Date().getFullYear().toString().slice(-2);
     const seq = (customCode || getNextGlobalProjectSeq(db.projects)).toString().padStart(6, '0');
     const baseCode = `${client.code.padStart(3, '0')}-${seq}-${yearYY}`;
@@ -804,7 +841,12 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       setShowModal(false);
       resetForm();
     } catch (err: any) {
-      alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+      const technicalMessage = `${err?.message || ''} ${err?.details || ''}`;
+      if (technicalMessage.includes('PROJECT_DATE_RANGE_EXCLUDES_ACTIVITIES')) {
+        alert("Existem atividades fora do novo prazo do projeto. Ajuste manualmente as atividades ou escolha outro prazo para o projeto.");
+      } else {
+        alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
+      }
     }
   };
 
@@ -1216,11 +1258,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Data Início</label>
-                      <input type="date" value={startDate} disabled={currentUser.role === UserRole.VIEWER} onChange={(e) => setStartDate(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors disabled:opacity-60" />
+                      <input type="date" value={startDate} max={deliveryDate || undefined} disabled={currentUser.role === UserRole.VIEWER} onInvalid={(e) => e.currentTarget.setCustomValidity('O período do projeto deve possuir início e prazo final válidos.')} onInput={(e) => e.currentTarget.setCustomValidity('')} onChange={(e) => setStartDate(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors disabled:opacity-60" />
                     </div>
                     <div>
                       <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Data Entrega</label>
-                      <input type="date" value={deliveryDate} disabled={currentUser.role === UserRole.VIEWER} onChange={(e) => setDeliveryDate(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors disabled:opacity-60" />
+                      <input type="date" value={deliveryDate} min={startDate || undefined} disabled={currentUser.role === UserRole.VIEWER} onInvalid={(e) => e.currentTarget.setCustomValidity('O período do projeto deve possuir início e prazo final válidos.')} onInput={(e) => e.currentTarget.setCustomValidity('')} onChange={(e) => setDeliveryDate(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors disabled:opacity-60" />
                     </div>
                   </div>
                   <div>
@@ -1687,7 +1729,12 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Início Planejado</label>
                   <input
                     type="date"
+                    required
                     value={actStartDate}
+                    min={editingProject?.startDate}
+                    max={editingProject?.deliveryDate}
+                    onInvalid={(e) => e.currentTarget.setCustomValidity(`Esta atividade deve estar dentro do período do projeto. ${editingProject ? getProjectPeriodLabel(editingProject) : ''}`)}
+                    onInput={(e) => e.currentTarget.setCustomValidity('')}
                     onChange={(e) => setActStartDate(e.target.value)}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
                   />
@@ -1696,12 +1743,23 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Conclusão Planejada</label>
                   <input
                     type="date"
+                    required
                     value={actDeliveryDate}
+                    min={editingProject?.startDate}
+                    max={editingProject?.deliveryDate}
+                    onInvalid={(e) => e.currentTarget.setCustomValidity(`Esta atividade deve estar dentro do período do projeto. ${editingProject ? getProjectPeriodLabel(editingProject) : ''}`)}
+                    onInput={(e) => e.currentTarget.setCustomValidity('')}
                     onChange={(e) => setActDeliveryDate(e.target.value)}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
                   />
                 </div>
               </div>
+
+              {editingProject && (
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 px-1">
+                  {getProjectPeriodLabel(editingProject)}
+                </p>
+              )}
 
               <div>
                 <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Observações</label>
