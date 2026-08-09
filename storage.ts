@@ -445,3 +445,40 @@ export const deleteProjectActivity = async (activityId: string) => {
   if (error) throw error;
 };
 
+export const getNextUserOrderIndex = async (workspaceId: string, assigneeId: string): Promise<number> => {
+  const { data, error } = await supabase.from('project_activities')
+    .select('order_index')
+    .eq('workspace_id', workspaceId)
+    .eq('assignee_id', assigneeId)
+    .order('order_index', { ascending: false })
+    .limit(1);
+  
+  if (error) throw error;
+  if (data && data.length > 0) {
+    return (data[0].order_index || 0) + 1;
+  }
+  return 1;
+};
+
+export const reorderUserQueue = async (workspaceId: string, assigneeId: string) => {
+  const { data, error } = await supabase.from('project_activities')
+    .select('id, order_index, created_at')
+    .eq('workspace_id', workspaceId)
+    .eq('assignee_id', assigneeId)
+    .order('order_index', { ascending: true })
+    .order('created_at', { ascending: true });
+  
+  if (error) throw error;
+  if (!data || data.length === 0) return;
+
+  for (let i = 0; i < data.length; i++) {
+    const item = data[i];
+    const newIdx = i + 1;
+    if (item.order_index !== newIdx) {
+      await supabase.from('project_activities')
+        .update({ order_index: newIdx, updated_at: new Date().toISOString() })
+        .eq('id', item.id);
+    }
+  }
+};
+

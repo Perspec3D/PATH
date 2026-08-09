@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo, useRef } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction } from '../types';
-import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction } from '../storage';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction, ActivityType, ProjectActivity } from '../types';
+import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 
 interface ProjectsProps {
@@ -34,6 +34,20 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [notes, setNotes] = useState('');
   const [customCode, setCustomCode] = useState('');
   const [subtasks, setSubtasks] = useState<ProjectSubTask[]>([]);
+
+  // Project Activities States
+  const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+  const [activeActivityTypes, setActiveActivityTypes] = useState<ActivityType[]>([]);
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<ProjectActivity | null>(null);
+  const [actTypeId, setActTypeId] = useState('');
+  const [actAssigneeId, setActAssigneeId] = useState('');
+  const [actStatus, setActStatus] = useState('Fila de Espera');
+  const [actEstimatedDuration, setActEstimatedDuration] = useState('');
+  const [actStartDate, setActStartDate] = useState('');
+  const [actDeliveryDate, setActDeliveryDate] = useState('');
+  const [actNotes, setActNotes] = useState('');
   const [usePrefix, setUsePrefix] = useState(false);
   const [codePrefix, setCodePrefix] = useState('');
 
@@ -49,6 +63,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setNotes('');
     setCustomCode('');
     setSubtasks([]);
+    setProjectActivities([]);
     setUsePrefix(false);
     setCodePrefix('');
     setEditingProject(null);
@@ -104,6 +119,185 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     }
   };
 
+  // Load active activity types of the workspace
+  useEffect(() => {
+    const loadActiveTypes = async () => {
+      try {
+        const types = await fetchActivityTypes(currentUser.workspaceId);
+        setActiveActivityTypes(types.filter(t => t.isActive));
+      } catch (err) {
+        console.error("Erro ao carregar tipos de atividade:", err);
+      }
+    };
+    loadActiveTypes();
+  }, [currentUser.workspaceId]);
+
+  const loadProjectActivities = async (projectId: string) => {
+    setIsLoadingActivities(true);
+    try {
+      const data = await fetchProjectActivities(currentUser.workspaceId, projectId);
+      setProjectActivities(data.sort((a, b) => a.orderIndex - b.orderIndex));
+    } catch (err) {
+      console.error("Erro ao carregar atividades do projeto:", err);
+    } finally {
+      setIsLoadingActivities(false);
+    }
+  };
+
+  const resetActForm = () => {
+    setActTypeId('');
+    setActAssigneeId('');
+    setActStatus('Fila de Espera');
+    setActEstimatedDuration('');
+    setActStartDate('');
+    setActDeliveryDate('');
+    setActNotes('');
+    setEditingActivity(null);
+  };
+
+  const handleSaveProjectActivity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject) return;
+    if (!actTypeId) {
+      alert("Selecione um tipo de atividade.");
+      return;
+    }
+
+    const selectedType = activeActivityTypes.find(t => t.id === actTypeId);
+    if (!selectedType) return;
+
+    const durationVal = parseFloat(actEstimatedDuration);
+    const duration = isNaN(durationVal) ? undefined : durationVal;
+
+    const originalAssigneeId = editingActivity?.assigneeId;
+    const newAssigneeId = actAssigneeId || undefined;
+
+    // Calculate order_index
+    let orderIdx = editingActivity?.orderIndex || 0;
+
+    if (newAssigneeId !== originalAssigneeId) {
+      if (newAssigneeId) {
+        orderIdx = await getNextUserOrderIndex(currentUser.workspaceId, newAssigneeId);
+      } else {
+        orderIdx = 0;
+      }
+    }
+
+    const activityData: ProjectActivity = {
+      id: editingActivity?.id || crypto.randomUUID(),
+      workspaceId: currentUser.workspaceId,
+      projectId: editingProject.id,
+      activityTypeId: actTypeId,
+      name: selectedType.name,
+      assigneeId: newAssigneeId,
+      status: actStatus,
+      startDate: actStartDate || undefined,
+      deliveryDate: actDeliveryDate || undefined,
+      notes: actNotes || undefined,
+      estimatedDurationHours: duration,
+      orderIndex: orderIdx,
+      createdAt: editingActivity?.createdAt || Date.now(),
+      updatedAt: Date.now()
+    };
+
+    if (editingActivity) {
+      activityData.deadlineChangesCount = editingActivity.deadlineChangesCount || 0;
+      if (actDeliveryDate && editingActivity.deliveryDate && actDeliveryDate !== editingActivity.deliveryDate) {
+        activityData.deadlineChangesCount = (editingActivity.deadlineChangesCount || 0) + 1;
+      }
+      if (editingActivity.status !== 'Concluída' && actStatus === 'Concluída') {
+        activityData.actualEndDate = new Date().toISOString().split('T')[0];
+        activityData.conclusionResponsibleId = currentUser.id;
+        activityData.deadlineAtConclusion = actDeliveryDate || undefined;
+      }
+      if (editingActivity.status === 'Fila de Espera' && actStatus !== 'Fila de Espera') {
+        activityData.actualStartDate = new Date().toISOString().split('T')[0];
+      }
+    } else {
+      activityData.deadlineChangesCount = 0;
+      if (actStatus === 'Concluída') {
+        activityData.actualEndDate = new Date().toISOString().split('T')[0];
+        activityData.conclusionResponsibleId = currentUser.id;
+        activityData.deadlineAtConclusion = actDeliveryDate || undefined;
+      } else if (actStatus !== 'Fila de Espera') {
+        activityData.actualStartDate = new Date().toISOString().split('T')[0];
+      }
+    }
+
+    try {
+      await syncProjectActivity(activityData);
+
+      if (originalAssigneeId && originalAssigneeId !== newAssigneeId) {
+        await reorderUserQueue(currentUser.workspaceId, originalAssigneeId);
+      }
+      if (newAssigneeId && originalAssigneeId !== newAssigneeId) {
+        await reorderUserQueue(currentUser.workspaceId, newAssigneeId);
+      }
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        editingActivity ? LogAction.UPDATE : LogAction.CREATE,
+        `${currentUser.username} ${editingActivity ? 'atualizou' : 'adicionou'} a atividade ${selectedType.name} no projeto ${editingProject.code}`,
+        editingProject.code
+      );
+
+      await loadProjectActivities(editingProject.id);
+      setShowActivityModal(false);
+      resetActForm();
+    } catch (err: any) {
+      alert("Erro ao salvar atividade: " + err.message);
+    }
+  };
+
+  const handleDeleteProjectAct = async (activity: ProjectActivity) => {
+    if (confirm(`Tem certeza que deseja excluir a atividade "${activity.name}"?`)) {
+      try {
+        await deleteProjectActivity(activity.id);
+        if (activity.assigneeId) {
+          await reorderUserQueue(currentUser.workspaceId, activity.assigneeId);
+        }
+        if (editingProject) {
+          await logAction(
+            currentUser.workspaceId,
+            currentUser,
+            LogModule.PROJECTS,
+            LogAction.DELETE,
+            `${currentUser.username} excluiu a atividade ${activity.name} no projeto ${editingProject.code}`,
+            editingProject.code
+          );
+          await loadProjectActivities(editingProject.id);
+        }
+      } catch (err: any) {
+        alert("Erro ao excluir atividade: " + err.message);
+      }
+    }
+  };
+
+  const handleReorderProjectActivity = async (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= projectActivities.length) return;
+
+    const currentItem = projectActivities[index];
+    const swapItem = projectActivities[newIndex];
+
+    const tempIndex = currentItem.orderIndex;
+    currentItem.orderIndex = swapItem.orderIndex;
+    swapItem.orderIndex = tempIndex;
+
+    try {
+      await syncProjectActivity(currentItem);
+      await syncProjectActivity(swapItem);
+      
+      if (editingProject) {
+        await loadProjectActivities(editingProject.id);
+      }
+    } catch (err: any) {
+      alert("Erro ao reordenar atividades: " + err.message);
+    }
+  };
+
   const openEdit = (project: Project) => {
     setEditingProject(project);
     setName(project.name);
@@ -116,6 +310,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setPhotoUrl(project.photoUrl || '');
     setNotes(project.notes || '');
     setSubtasks(project.subtasks || []);
+    loadProjectActivities(project.id);
     // Extrai a sequência central se seguir o padrão [PREFIXO-][CLI]-[SEQ]-[YY]
     const parts = project.code.split('-');
     if (parts.length >= 3) {
@@ -689,123 +884,227 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 </div>
               </div>
 
-              {/* SUB-TAREFAS */}
+              {/* ATIVIDADES */}
               <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800/50 transition-colors">
                 <div className="flex items-center justify-between px-1">
                   <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] flex items-center transition-colors">
                     <svg className="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-                    Sub-tarefas do Projeto
+                    Atividades do Projeto
                   </h4>
-                  {currentUser.role !== UserRole.VIEWER && (
+                  {currentUser.role !== UserRole.VIEWER && editingProject && (
                     <button
                       type="button"
-                      onClick={handleAddSubTask}
+                      onClick={() => {
+                        resetActForm();
+                        setShowActivityModal(true);
+                      }}
                       className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase tracking-widest rounded-lg border border-indigo-100 dark:border-indigo-500/20 hover:bg-indigo-600 hover:text-white transition-all flex items-center"
                     >
                       <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 4v16m8-8H4" /></svg>
-                      Nova Tarefa
+                      Adicionar Atividade
                     </button>
                   )}
                 </div>
 
-                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar transition-colors">
-                  {subtasks.length === 0 ? (
-                    <div className="py-8 text-center bg-slate-50 dark:bg-slate-900/30 rounded-2xl border-2 border-dashed border-slate-100 dark:border-slate-800/50 transition-colors">
-                      <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest leading-loose">Nenhuma sub-tarefa<br />cadastrada</p>
-                    </div>
-                  ) : (
-                    subtasks.map((st) => (
-                      <div key={st.id} className="bg-slate-50 dark:bg-slate-900/80 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 transition-all group/task">
+                {!editingProject ? (
+                  <div className="py-8 text-center bg-slate-50 dark:bg-slate-900/30 rounded-2xl border-2 border-dashed border-slate-100 dark:border-slate-800/50 transition-colors">
+                    <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest leading-loose">Salve o projeto primeiro para poder<br />cadastrar atividades</p>
+                  </div>
+                ) : isLoadingActivities ? (
+                  <div className="py-8 text-center text-slate-400 dark:text-slate-600 text-[10px] font-black uppercase tracking-widest animate-pulse">
+                    Carregando atividades...
+                  </div>
+                ) : projectActivities.length === 0 ? (
+                  <div className="py-8 text-center bg-slate-50 dark:bg-slate-900/30 rounded-2xl border-2 border-dashed border-slate-100 dark:border-slate-800/50 transition-colors">
+                    <p className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest leading-loose">Nenhuma atividade cadastrada</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar transition-colors">
+                    {projectActivities.map((activity, index) => {
+                      const assignee = db.users.find(u => u.id === activity.assigneeId);
+                      const actType = activeActivityTypes.find(t => t.id === activity.activityTypeId);
+                      return (
+                        <div key={activity.id} className="bg-slate-50 dark:bg-slate-900/80 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 transition-all group/task">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-center space-x-3 flex-1">
+                              <div className="flex flex-col items-center space-y-0.5 mr-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleReorderProjectActivity(index, 'up')}
+                                  disabled={index === 0}
+                                  className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition ${index === 0 ? 'opacity-20 cursor-not-allowed' : 'text-slate-500 hover:text-indigo-600'}`}
+                                  title="Subir prioridade"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 15l7-7 7 7" /></svg>
+                                </button>
+                                <span className="text-[9px] font-black text-slate-400">{activity.orderIndex}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReorderProjectActivity(index, 'down')}
+                                  disabled={index === projectActivities.length - 1}
+                                  className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition ${index === projectActivities.length - 1 ? 'opacity-20 cursor-not-allowed' : 'text-slate-500 hover:text-indigo-600'}`}
+                                  title="Descer prioridade"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" /></svg>
+                                </button>
+                              </div>
+
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-bold text-sm text-slate-900 dark:text-slate-100">{activity.name}</span>
+                                  {actType?.category && (
+                                    <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-800 text-[9px] font-black text-slate-500 dark:text-slate-400 rounded-md uppercase tracking-wider">
+                                      {actType.category}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                                  <span>Responsável: <strong className="text-slate-700 dark:text-slate-300">{assignee ? assignee.username : 'Não atribuído'}</strong></span>
+                                  {activity.estimatedDurationHours !== undefined && (
+                                    <span>Estimado: <strong className="text-slate-700 dark:text-slate-300">{activity.estimatedDurationHours}h</strong></span>
+                                  )}
+                                  {(activity.startDate || activity.deliveryDate) && (
+                                    <span>Prazo: <strong className="text-slate-700 dark:text-slate-300">{formatDate(activity.startDate)} até {formatDate(activity.deliveryDate)}</strong></span>
+                                  )}
+                                </div>
+                                {activity.notes && (
+                                  <p className="text-[10px] text-slate-400 italic mt-1.5 max-w-lg truncate" title={activity.notes}>
+                                    Obs: {activity.notes}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end space-x-3 shrink-0">
+                              <span className={`inline-block px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
+                                activity.status === 'Concluída' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                                activity.status === 'Em Andamento' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
+                                activity.status === 'Pausada' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
+                                activity.status === 'Cancelada' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' :
+                                'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
+                              }`}>
+                                {activity.status}
+                              </span>
+
+                              {currentUser.role !== UserRole.VIEWER && (
+                                <div className="flex items-center space-x-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingActivity(activity);
+                                      setActTypeId(activity.activityTypeId || '');
+                                      setActAssigneeId(activity.assigneeId || '');
+                                      setActStatus(activity.status);
+                                      setActEstimatedDuration(activity.estimatedDurationHours !== undefined ? activity.estimatedDurationHours.toString() : '');
+                                      setActStartDate(activity.startDate || '');
+                                      setActDeliveryDate(activity.deliveryDate || '');
+                                      setActNotes(activity.notes || '');
+                                      setShowActivityModal(true);
+                                    }}
+                                    className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition"
+                                    title="Editar Atividade"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteProjectAct(activity)}
+                                    className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg transition"
+                                    title="Excluir Atividade"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* HISTÓRICO DE SUBTAREFAS - MODELO LEGADO ANTERIOR */}
+              {subtasks.length > 0 && (
+                <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800/50 transition-colors">
+                  <div className="flex items-center justify-between px-1">
+                    <h4 className="text-[10px] font-black text-rose-500/80 dark:text-rose-400/60 uppercase tracking-[0.2em] flex items-center transition-colors">
+                      <svg className="w-4 h-4 mr-2 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                      Histórico de Subtarefas — Modelo Anterior
+                    </h4>
+                    <span className="px-2 py-0.5 bg-rose-500/10 text-rose-500 text-[8px] font-black rounded uppercase tracking-wider border border-rose-500/20">Somente Leitura</span>
+                  </div>
+
+                  <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar transition-colors">
+                    {subtasks.map((st) => (
+                      <div key={st.id} className="bg-slate-50 dark:bg-slate-900/40 p-5 rounded-2xl border border-slate-100 dark:border-slate-800/50 opacity-80">
                         <div className="flex flex-col space-y-4">
                           <div className="flex items-center space-x-3">
                             <input
                               type="text"
                               value={st.name}
-                              disabled={currentUser.role === UserRole.VIEWER}
-                              onChange={(e) => handleUpdateSubTask(st.id, 'name', e.target.value)}
-                              placeholder="Nome da sub-tarefa..."
-                              className="flex-1 bg-transparent border-none text-sm font-bold text-slate-900 dark:text-slate-100 placeholder:text-slate-300 dark:placeholder:text-slate-700 focus:ring-0 p-0 transition-colors disabled:opacity-60"
+                              disabled={true}
+                              className="flex-1 bg-transparent border-none text-sm font-bold text-slate-500 dark:text-slate-400 focus:ring-0 p-0"
                             />
-                            {currentUser.role !== UserRole.VIEWER && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveSubTask(st.id)}
-                                className="opacity-0 group-hover/task:opacity-100 p-2 text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                              </button>
-                            )}
                           </div>
 
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
                             <div className="col-span-1 md:col-span-1">
-                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5 transition-colors">Responsável</label>
+                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5">Responsável</label>
                               <select
                                 value={st.assigneeId || ''}
-                                disabled={currentUser.role === UserRole.VIEWER}
-                                onChange={(e) => handleUpdateSubTask(st.id, 'assigneeId', e.target.value)}
-                                className="w-full bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-lg py-1.5 px-2 text-[10px] text-slate-900 dark:text-slate-300 font-bold outline-none focus:ring-1 focus:ring-indigo-500/50 transition-colors disabled:opacity-60"
+                                disabled={true}
+                                className="w-full bg-white dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/30 rounded-lg py-1.5 px-2 text-[10px] text-slate-500 font-bold outline-none"
                               >
                                 <option value="">Sem Resp.</option>
-                                {db.users.filter(u => u.isActive).map(u => (
-                                  <option key={u.id} value={u.id}>{u.username.split(' ')[0]}</option>
+                                {db.users.map(u => (
+                                  <option key={u.id} value={u.id}>{u.username}</option>
                                 ))}
                               </select>
                             </div>
 
                             <div className="col-span-1 md:col-span-1">
-                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5 transition-colors">Status</label>
+                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5">Status</label>
                               <select
                                 value={st.status}
-                                disabled={currentUser.role === UserRole.VIEWER}
-                                onChange={(e: any) => handleUpdateSubTask(st.id, 'status', e.target.value)}
-                                className={`w-full bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-lg py-1.5 px-2 text-[10px] font-black uppercase tracking-tighter outline-none focus:ring-1 focus:ring-indigo-500/50 transition-colors disabled:opacity-60 ${getStatusColor(st.status).split(' ')[1]}`}
+                                disabled={true}
+                                className="w-full bg-white dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/30 rounded-lg py-1.5 px-2 text-[10px] font-black uppercase tracking-tighter outline-none"
                               >
                                 {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
                               </select>
                             </div>
 
                             <div className="col-span-1 md:col-span-1">
-                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5 transition-colors">Início</label>
+                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5">Início</label>
                               <input
                                 type="date"
                                 value={st.startDate}
-                                min={startDate}
-                                max={st.deliveryDate || deliveryDate}
-                                disabled={currentUser.role === UserRole.VIEWER}
-                                onChange={(e) => handleUpdateSubTask(st.id, 'startDate', e.target.value)}
-                                className="w-full bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-lg py-1.5 px-2 text-[10px] text-slate-900 dark:text-slate-300 font-medium outline-none transition-colors disabled:opacity-60"
+                                disabled={true}
+                                className="w-full bg-white dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/30 rounded-lg py-1.5 px-2 text-[10px] text-slate-500 outline-none"
                               />
                             </div>
 
                             <div className="col-span-1 md:col-span-1">
-                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5 transition-colors">Entrega</label>
+                              <label className="block text-[8px] font-black text-slate-400 dark:text-slate-600 uppercase mb-1.5 ml-0.5">Entrega</label>
                               <input
                                 type="date"
                                 value={st.deliveryDate}
-                                min={st.startDate || startDate}
-                                max={deliveryDate}
-                                disabled={currentUser.role === UserRole.VIEWER}
-                                onChange={(e) => handleUpdateSubTask(st.id, 'deliveryDate', e.target.value)}
-                                className="w-full bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-lg py-1.5 px-2 text-[10px] text-slate-900 dark:text-slate-300 font-medium outline-none transition-colors disabled:opacity-60"
+                                disabled={true}
+                                className="w-full bg-white dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/30 rounded-lg py-1.5 px-2 text-[10px] text-slate-500 outline-none"
                               />
                             </div>
                           </div>
 
-                          <input
-                            type="text"
-                            value={st.notes || ''}
-                            disabled={currentUser.role === UserRole.VIEWER}
-                            onChange={(e) => handleUpdateSubTask(st.id, 'notes', e.target.value)}
-                            placeholder="Notas da sub-tarefa..."
-                            className="w-full bg-white dark:bg-slate-800/30 border border-slate-100 dark:border-white/5 rounded-xl py-2 px-3 text-[10px] text-slate-500 dark:text-indigo-300/60 placeholder:text-slate-300 dark:placeholder:text-indigo-300/20 outline-none transition-colors disabled:opacity-60"
-                          />
+                          {st.notes && (
+                            <p className="text-[10px] text-slate-400 italic">Obs: {st.notes}</p>
+                          )}
                         </div>
                       </div>
-                    ))
-                  )}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div>
                 <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Anotações do Projeto</label>
@@ -853,6 +1152,128 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     {editingProject ? 'Salvar Alterações' : 'Criar Projeto'}
                   </button>
                 )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Activity Modal */}
+      {showActivityModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-white/5 transition-all duration-500">
+            <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/30 flex justify-between items-center transition-colors">
+              <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm transition-colors">
+                {editingActivity ? 'Editar Atividade' : 'Adicionar Atividade'}
+              </h3>
+              <button type="button" onClick={() => setShowActivityModal(false)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300 dark:hover:bg-white/20 transition-all active:scale-95">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <form onSubmit={handleSaveProjectActivity} className="p-8 space-y-5">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Tipo de Atividade *</label>
+                <select
+                  required
+                  value={actTypeId}
+                  onChange={(e) => setActTypeId(e.target.value)}
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                >
+                  <option value="">Selecione o tipo de atividade...</option>
+                  {activeActivityTypes.map(t => (
+                    <option key={t.id} value={t.id}>{t.name} {t.category ? `(${t.category})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Responsável</label>
+                <select
+                  value={actAssigneeId}
+                  onChange={(e) => setActAssigneeId(e.target.value)}
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                >
+                  <option value="">Não atribuído</option>
+                  {db.users.filter(u => u.isActive).map(u => (
+                    <option key={u.id} value={u.id}>{u.username} ({u.role})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Duração Prevista (Horas)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Ex: 2.5"
+                    value={actEstimatedDuration}
+                    onChange={(e) => setActEstimatedDuration(e.target.value)}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Status</label>
+                  <select
+                    value={actStatus}
+                    onChange={(e) => setActStatus(e.target.value)}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                  >
+                    <option value="Fila de Espera">Fila de Espera</option>
+                    <option value="Em Andamento">Em Andamento</option>
+                    <option value="Pausada">Pausada</option>
+                    <option value="Concluída">Concluída</option>
+                    <option value="Cancelada">Cancelada</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Início Planejado</label>
+                  <input
+                    type="date"
+                    value={actStartDate}
+                    onChange={(e) => setActStartDate(e.target.value)}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Conclusão Planejada</label>
+                  <input
+                    type="date"
+                    value={actDeliveryDate}
+                    onChange={(e) => setActDeliveryDate(e.target.value)}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Observações</label>
+                <textarea
+                  value={actNotes}
+                  onChange={(e) => setActNotes(e.target.value)}
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium min-h-[80px] resize-none transition-colors"
+                  placeholder="Instruções adicionais para esta atividade..."
+                />
+              </div>
+
+              <div className="pt-4 flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => setShowActivityModal(false)}
+                  className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-xs font-black uppercase tracking-widest hover:text-slate-700 dark:hover:text-white transition active:scale-95"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition active:scale-95"
+                >
+                  Salvar Atividade
+                </button>
               </div>
             </form>
           </div>
