@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { ProjectStatus, Project, InternalUser, Client, ProjectActivity } from '../types';
+import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 import { AppDB, fetchProjectActivities } from '../storage';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -900,8 +901,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         projectActivities.forEach(pa => {
           // Filtrar apenas se for do usuário
           if (pa.assigneeId !== u.id) return;
-          // Ignorar se cancelada ou concluída
-          if (pa.status === 'Cancelada' || pa.status === 'Concluída') return;
+          // Capacidade representa apenas demanda futura/aberta.
+          if (isProjectActivityClosed(pa.status)) return;
           // Ignorar se não possuir datas planejadas
           if (!pa.startDate || !pa.deliveryDate) return;
 

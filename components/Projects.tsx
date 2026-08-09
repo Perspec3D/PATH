@@ -263,6 +263,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       notes: actNotes || undefined,
       estimatedDurationHours: duration,
       orderIndex: orderIdx,
+      actualStartDate: editingActivity?.actualStartDate,
+      actualEndDate: editingActivity?.actualEndDate,
+      conclusionResponsibleId: editingActivity?.conclusionResponsibleId,
+      deadlineAtConclusion: editingActivity?.deadlineAtConclusion,
       deadlineChangesCount: editingActivity?.deadlineChangesCount || 0,
       createdAt: editingActivity?.createdAt || Date.now(),
       updatedAt: Date.now()

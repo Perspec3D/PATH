@@ -8,6 +8,7 @@ import type {
 } from '../types';
 import { ProjectStatus } from '../types';
 import { calculateOvertimeMs, calculateRegularOperationalMs } from './operationalTime';
+import { isProjectActivityCompleted } from './projectActivityStatus';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -73,15 +74,18 @@ const validDateMs = (value?: string): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const isActivityInPeriod = (activity: ProjectActivity, period?: OperationalMetricsPeriod): boolean => {
+const isActivityInPeriod = (
+  activity: ProjectActivity,
+  completedAtMs: number | null,
+  period?: OperationalMetricsPeriod
+): boolean => {
   if (period?.startMs === undefined && period?.endMs === undefined) return true;
 
   const startMs = period.startMs ?? Number.NEGATIVE_INFINITY;
   const endMs = period.endMs ?? Number.POSITIVE_INFINITY;
 
-  if (activity.status === ProjectStatus.DONE) {
-    const completedAt = validDateMs(activity.actualEndDate);
-    return completedAt !== null && completedAt >= startMs && completedAt <= endMs;
+  if (isProjectActivityCompleted(activity.status)) {
+    return completedAtMs !== null && completedAtMs >= startMs && completedAtMs <= endMs;
   }
 
   const activityStart = validDateMs(activity.actualStartDate) ?? validDateMs(activity.startDate) ?? activity.createdAt;
@@ -104,10 +108,16 @@ export const buildActivityOperationalMetrics = ({
   period
 }: OperationalMetricsInput): ActivityOperationalMetric[] => {
   const executionIdsByActivity = new Map<string, Set<string>>();
+  const completedAtByActivity = new Map<string, number>();
   for (const execution of executions) {
     const executionIds = executionIdsByActivity.get(execution.projectActivityId) ?? new Set<string>();
     executionIds.add(execution.id);
     executionIdsByActivity.set(execution.projectActivityId, executionIds);
+
+    if (execution.completedAt !== undefined && Number.isFinite(execution.completedAt)) {
+      const currentCompletedAt = completedAtByActivity.get(execution.projectActivityId) ?? 0;
+      completedAtByActivity.set(execution.projectActivityId, Math.max(currentCompletedAt, execution.completedAt));
+    }
   }
 
   const sessionsByExecution = new Map<string, WorkSession[]>();
@@ -125,8 +135,15 @@ export const buildActivityOperationalMetrics = ({
   }
 
   return activities
-    .filter(activity => (!period?.internalUserId || activity.assigneeId === period.internalUserId) && isActivityInPeriod(activity, period))
-    .map(activity => {
+    .map(activity => ({
+      activity,
+      completedAtMs: validDateMs(activity.actualEndDate) ?? completedAtByActivity.get(activity.id) ?? null
+    }))
+    .filter(({ activity, completedAtMs }) => (
+      (!period?.internalUserId || activity.assigneeId === period.internalUserId)
+      && isActivityInPeriod(activity, completedAtMs, period)
+    ))
+    .map(({ activity, completedAtMs }) => {
       const executionIds = executionIdsByActivity.get(activity.id) ?? new Set<string>();
       const activitySessions = Array.from(executionIds).flatMap(executionId => sessionsByExecution.get(executionId) ?? []);
       const activityOvertime = overtimeByActivity.get(activity.id) ?? [];
@@ -145,7 +162,7 @@ export const buildActivityOperationalMetrics = ({
         projectId: activity.projectId,
         internalUserId: activity.assigneeId,
         status: activity.status,
-        isCompleted: activity.status === ProjectStatus.DONE,
+        isCompleted: isProjectActivityCompleted(activity.status),
         estimatedMs,
         regularMs,
         overtimeMs,
@@ -156,7 +173,7 @@ export const buildActivityOperationalMetrics = ({
         plannedStartDate: activity.startDate,
         plannedDeadline: activity.deliveryDate,
         actualStartDate: activity.actualStartDate,
-        actualEndDate: activity.actualEndDate
+        actualEndDate: activity.actualEndDate ?? (completedAtMs !== null ? new Date(completedAtMs).toISOString() : undefined)
       };
     });
 };
