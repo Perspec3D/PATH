@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry } from '../types';
-import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution } from '../storage';
+import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs } from '../utils/operationalTime';
+import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
 
 interface ProjectsProps {
   db: AppDB;
@@ -40,6 +41,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [activityExecutions, setActivityExecutions] = useState<ActivityExecution[]>([]);
   const [workSessions, setWorkSessions] = useState<WorkSession[]>([]);
   const [overtimeEntries, setOvertimeEntries] = useState<ActivityOvertimeEntry[]>([]);
+  const [forecastDataset, setForecastDataset] = useState<OperationalMetricsDataset | null>(null);
   const [activeWorkContext, setActiveWorkContext] = useState<ActiveWorkSessionContext | null>(null);
   const [pendingActivity, setPendingActivity] = useState<ProjectActivity | null>(null);
   const [activityActionId, setActivityActionId] = useState<string | null>(null);
@@ -66,6 +68,22 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [codePrefix, setCodePrefix] = useState('');
   const hasRunningOperationalSession = Boolean(activeWorkContext)
     || workSessions.some(session => session.endedAt === undefined);
+
+  const deliveryForecasts = useMemo(() => forecastDataset
+    ? buildProjectDeliveryForecasts({
+        projects: db.projects,
+        users: db.users,
+        activities: forecastDataset.activities,
+        executions: forecastDataset.executions,
+        sessions: forecastDataset.sessions,
+        overtimeEntries: forecastDataset.overtimeEntries,
+        company: db.company || undefined,
+        nowMs: Date.now()
+      })
+    : [], [forecastDataset, db.projects, db.users, db.company]);
+  const editingProjectForecast = editingProject
+    ? deliveryForecasts.find(forecast => forecast.projectId === editingProject.id)
+    : undefined;
 
   const resetForm = () => {
     setName('');
@@ -148,6 +166,19 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       }
     };
     loadActiveTypes();
+  }, [currentUser.workspaceId]);
+
+  const loadForecastDataset = async () => {
+    try {
+      const data = await fetchOperationalMetricsDataset(currentUser.workspaceId);
+      setForecastDataset(data);
+    } catch (err) {
+      console.error('Erro ao carregar previsão de entrega:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadForecastDataset();
   }, [currentUser.workspaceId]);
 
   const loadActiveWorkContext = async () => {
@@ -314,6 +345,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       );
 
       await loadProjectActivities(editingProject.id);
+      await loadForecastDataset();
       setShowActivityModal(false);
       resetActForm();
     } catch (err: any) {
@@ -338,6 +370,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
             editingProject.code
           );
           await loadProjectActivities(editingProject.id);
+          await loadForecastDataset();
         }
       } catch (err: any) {
         alert("Erro ao excluir atividade: " + err.message);
@@ -442,6 +475,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     if (editingProject) {
       await loadProjectActivities(editingProject.id);
     }
+    await loadForecastDataset();
   };
 
   const handleStartOrResumeActivity = async (activity: ProjectActivity, pauseCurrent = false) => {
@@ -850,6 +884,27 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     return 'text-slate-500 font-black';
   };
 
+  const formatForecastHours = (valueMs: number) => {
+    const sign = valueMs < 0 ? '-' : '';
+    const totalMinutes = Math.round(Math.abs(valueMs) / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${sign}${hours}h${minutes > 0 ? ` ${String(minutes).padStart(2, '0')}m` : ''}`;
+  };
+
+  const getForecastStyle = (forecastStatus: DeliveryForecastStatus) => {
+    if (forecastStatus === DeliveryForecastStatus.ON_TRACK) {
+      return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400';
+    }
+    if (forecastStatus === DeliveryForecastStatus.ATTENTION || forecastStatus === DeliveryForecastStatus.INCOMPLETE) {
+      return 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400';
+    }
+    if (forecastStatus === DeliveryForecastStatus.AT_RISK) {
+      return 'bg-orange-500/10 border-orange-500/20 text-orange-600 dark:text-orange-400';
+    }
+    return 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400';
+  };
+
   const filteredProjects = useMemo(() => {
     return db.projects.filter((p: Project) => {
       const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.code.includes(search);
@@ -1200,6 +1255,82 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   </div>
                 </div>
               </div>
+
+              {editingProject && ![ProjectStatus.DONE, ProjectStatus.CANCELED].includes(editingProject.status) && (
+                <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800/50">
+                  <div className="flex items-center justify-between px-1">
+                    <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
+                      Previsão de Entrega
+                    </h4>
+                    {editingProjectForecast && (
+                      <span className={`px-3 py-1.5 rounded-lg border text-[9px] font-black uppercase tracking-widest ${getForecastStyle(editingProjectForecast.status)}`}>
+                        {editingProjectForecast.status}
+                      </span>
+                    )}
+                  </div>
+
+                  {!forecastDataset || !editingProjectForecast ? (
+                    <div className="p-5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 text-center text-[9px] font-black uppercase tracking-widest text-slate-400 animate-pulse">
+                      Calculando capacidade...
+                    </div>
+                  ) : (
+                    <div className="p-5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Horas restantes</p>
+                          <p className="mt-1 text-sm font-black text-slate-800 dark:text-white">{formatForecastHours(editingProjectForecast.remainingRequiredMs)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Capacidade disponível</p>
+                          <p className="mt-1 text-sm font-black text-slate-800 dark:text-white">{formatForecastHours(editingProjectForecast.availableCapacityMs)}</p>
+                          {editingProjectForecast.overtimeCapacityMs > 0 && (
+                            <p className="mt-0.5 text-[8px] font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400">+{formatForecastHours(editingProjectForecast.overtimeCapacityMs)} extra</p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">{editingProjectForecast.marginMs < 0 ? 'Déficit' : 'Margem'}</p>
+                          <p className={`mt-1 text-sm font-black ${editingProjectForecast.marginMs < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{formatForecastHours(editingProjectForecast.marginMs)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Prazo global</p>
+                          <p className="mt-1 text-sm font-black text-slate-800 dark:text-white">{formatDate(editingProjectForecast.deliveryDate)}</p>
+                        </div>
+                      </div>
+
+                      {editingProjectForecast.status === DeliveryForecastStatus.INCOMPLETE && (
+                        <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                          {editingProjectForecast.unestimatedActivities > 0 && `⚠ ${editingProjectForecast.unestimatedActivities} atividade(s) sem estimativa`}
+                          {editingProjectForecast.unestimatedActivities > 0 && editingProjectForecast.unassignedActivities > 0 && ' · '}
+                          {editingProjectForecast.unassignedActivities > 0 && `⚠ ${editingProjectForecast.unassignedActivities} atividade(s) sem responsável`}
+                          {editingProjectForecast.unestimatedActivities === 0 && editingProjectForecast.unassignedActivities === 0 && '⚠ Cadastre atividades e um prazo global válido'}
+                        </div>
+                      )}
+
+                      {editingProjectForecast.assignees.length > 0 && (
+                        <details className="group rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/40">
+                          <summary className="cursor-pointer list-none px-4 py-3 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 flex items-center justify-between">
+                            Composição por responsável
+                            <span className="text-slate-400 group-open:rotate-180 transition-transform">▾</span>
+                          </summary>
+                          <div className="divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800">
+                            {editingProjectForecast.assignees.map(assigneeForecast => (
+                              <div key={assigneeForecast.internalUserId} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">{assigneeForecast.userName}</span>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
+                                  <span>Necessário <strong className="text-slate-700 dark:text-slate-200">{formatForecastHours(assigneeForecast.remainingRequiredMs)}</strong></span>
+                                  <span>Disponível <strong className="text-slate-700 dark:text-slate-200">{formatForecastHours(assigneeForecast.availableCapacityMs)}</strong></span>
+                                  {assigneeForecast.overtimeCapacityMs > 0 && <span>Extra <strong className="text-cyan-600 dark:text-cyan-400">+{formatForecastHours(assigneeForecast.overtimeCapacityMs)}</strong></span>}
+                                  <span>{assigneeForecast.marginMs < 0 ? 'Déficit' : 'Margem'} <strong className={assigneeForecast.marginMs < 0 ? 'text-rose-500' : 'text-emerald-500'}>{formatForecastHours(assigneeForecast.marginMs)}</strong></span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ATIVIDADES */}
               <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800/50 transition-colors">

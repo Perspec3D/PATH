@@ -1,6 +1,7 @@
 import type { Company, WorkSession } from '../types';
 
 const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
 
 const parseTime = (value: string | undefined, fallback: string): [number, number] | null => {
   const match = (value || fallback).match(/^(\d{1,2}):(\d{2})$/);
@@ -16,6 +17,20 @@ const parseTime = (value: string | undefined, fallback: string): [number, number
 };
 
 const isValidTimestamp = (value: number) => Number.isFinite(value) && value > 0;
+
+export const calculateNetWorkdayMs = (company: Company | undefined): number => {
+  if (!company) return 8 * HOUR_MS;
+
+  const start = company.workStartTime || '08:00';
+  const end = company.workEndTime || '18:00';
+  const lunchMinutes = company.lunchDurationMinutes ?? 60;
+  const [startHours, startMinutes = 0] = start.split(':').map(Number);
+  const [endHours, endMinutes = 0] = end.split(':').map(Number);
+  if (!Number.isFinite(startHours) || !Number.isFinite(endHours)) return 8 * HOUR_MS;
+
+  const grossMinutes = ((endHours * 60) + endMinutes) - ((startHours * 60) + startMinutes);
+  return Math.max(0, grossMinutes - lunchMinutes) * MINUTE_MS;
+};
 
 /**
  * Calculates regular operational time in the browser's local timezone.

@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { ProjectStatus, Project, InternalUser, Client, ProjectActivity } from '../types';
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
-import { AppDB, fetchProjectActivities } from '../storage';
+import { AppDB, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
+import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
+import { calculateNetWorkdayMs } from '../utils/operationalTime';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend
@@ -491,23 +493,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   const users = db.users || [];
   const clients = db.clients || [];
   const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
-  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+  const [forecastDataset, setForecastDataset] = useState<OperationalMetricsDataset | null>(null);
 
   useEffect(() => {
-    const loadActivities = async () => {
+    const loadForecastDataset = async () => {
       if (!db.company?.id) return;
-      setIsLoadingActivities(true);
       try {
-        const data = await fetchProjectActivities(db.company.id);
-        setProjectActivities(data);
+        const data = await fetchOperationalMetricsDataset(db.company.id);
+        setForecastDataset(data);
+        setProjectActivities(data.activities);
       } catch (err) {
-        console.error("Erro ao carregar atividades no Dashboard:", err);
-      } finally {
-        setIsLoadingActivities(false);
+        console.error("Erro ao carregar dados operacionais no Dashboard:", err);
       }
     };
-    loadActivities();
+    loadForecastDataset();
   }, [db.company?.id]);
+
+  const deliveryForecasts = useMemo(() => forecastDataset
+    ? buildProjectDeliveryForecasts({
+        projects,
+        users,
+        activities: forecastDataset.activities,
+        executions: forecastDataset.executions,
+        sessions: forecastDataset.sessions,
+        overtimeEntries: forecastDataset.overtimeEntries,
+        company: db.company || undefined,
+        nowMs: Date.now()
+      })
+    : [], [forecastDataset, projects, users, db.company]);
+
+  const deliveryRiskForecasts = useMemo(() => deliveryForecasts
+    .filter(forecast => [
+      DeliveryForecastStatus.ATTENTION,
+      DeliveryForecastStatus.AT_RISK,
+      DeliveryForecastStatus.INFEASIBLE,
+      DeliveryForecastStatus.OVERDUE,
+      DeliveryForecastStatus.INCOMPLETE
+    ].includes(forecast.status))
+    .sort((a, b) => a.marginMs - b.marginMs), [deliveryForecasts]);
 
   const now = new Date();
   const next7Days = new Date();
@@ -746,24 +769,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       }
     });
 
-    // Helper to calculate daily hours from company shift settings
-    const getJourneyDailyHours = (company: any): number => {
-      if (!company) return 8;
-      const start = company.workStartTime || '08:00';
-      const end = company.workEndTime || '18:00';
-      const lunch = company.lunchDurationMinutes !== undefined ? company.lunchDurationMinutes : 60;
-      
-      const [sh, sm] = start.split(':').map(Number);
-      const [eh, em] = end.split(':').map(Number);
-      if (isNaN(sh) || isNaN(eh)) return 8;
-      
-      const startMins = sh * 60 + (sm || 0);
-      const endMins = eh * 60 + (em || 0);
-      const totalMins = endMins - startMins;
-      const netMins = totalMins - lunch;
-      return Math.max(0, netMins / 60);
-    };
-
     // 10. Capacidade Operacional da Equipe (Semanal com Previsibilidade)
     const activeUsers_Capacity = users.filter(u => u.isActive);
 
@@ -801,7 +806,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
 
       // Configuração de jornada do workspace
       const companyWorkDays = db.company?.workDays || [1, 2, 3, 4, 5];
-      const dailyHours = getJourneyDailyHours(db.company);
+      const dailyHours = calculateNetWorkdayMs(db.company || undefined) / 3_600_000;
 
       // Calcular dias e horas disponíveis para o período
       let availableDaysInPeriod = 0;
@@ -970,6 +975,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   ];
 
   const currentStatus = getHealthStatus(health);
+  const formatForecastHours = (valueMs: number) => {
+    const sign = valueMs < 0 ? '-' : '';
+    const totalMinutes = Math.round(Math.abs(valueMs) / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${sign}${hours}h${minutes > 0 ? ` ${String(minutes).padStart(2, '0')}m` : ''}`;
+  };
+
+  const getForecastStatusClass = (status: DeliveryForecastStatus) => {
+    if (status === DeliveryForecastStatus.OVERDUE || status === DeliveryForecastStatus.INFEASIBLE) {
+      return 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/20';
+    }
+    if (status === DeliveryForecastStatus.AT_RISK) {
+      return 'text-orange-600 dark:text-orange-400 bg-orange-500/10 border-orange-500/20';
+    }
+    return 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20';
+  };
 
   return (
     <div id="dashboard-content" className="space-y-8 animate-in fade-in duration-700 pb-12 relative">
@@ -1155,6 +1177,60 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 <p className="text-[7px] font-black text-slate-400 dark:text-slate-500 uppercase mt-1 tracking-widest text-center transition-colors">Conflito</p>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* PREVISIBILIDADE DE ENTREGA */}
+        <div className="lg:col-span-3 bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl rounded-[40px] border border-slate-200 dark:border-white/10 shadow-sm dark:shadow-xl overflow-hidden transition-all">
+          <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/60 dark:bg-white/[0.02]">
+            <div>
+              <h3 className="text-[12px] font-black text-slate-900 dark:text-white uppercase tracking-[0.25em] flex items-center">
+                Previsibilidade de Entrega
+                <InfoTooltip
+                  title="Risco de Prazo"
+                  content="Compara as horas restantes de cada responsável com sua capacidade regular livre até o prazo global, incluindo somente horas extras já autorizadas."
+                  calculation="Restante estimado vs capacidade líquida - compromissos de outros projetos"
+                />
+              </h3>
+              <p className="mt-2 text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                Projetos ativos com atenção, risco ou previsão incompleta
+              </p>
+            </div>
+            <span className={`self-start sm:self-auto px-4 py-2 rounded-2xl text-sm font-black border ${deliveryRiskForecasts.length > 0 ? 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
+              {deliveryRiskForecasts.length}
+            </span>
+          </div>
+          <div className="divide-y divide-slate-100 dark:divide-slate-800/60 max-h-[360px] overflow-y-auto custom-scrollbar">
+            {!forecastDataset ? (
+              <div className="p-10 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 animate-pulse">Calculando previsões...</div>
+            ) : deliveryRiskForecasts.length === 0 ? (
+              <div className="p-10 text-center text-[10px] font-black uppercase tracking-widest text-emerald-500/70">Nenhum risco de capacidade identificado</div>
+            ) : deliveryRiskForecasts.map(forecast => (
+              <div key={forecast.projectId} className="px-8 py-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[11px] font-black text-indigo-600 dark:text-indigo-400">{forecast.projectCode}</span>
+                    <span className={`px-2.5 py-1 rounded-lg border text-[8px] font-black uppercase tracking-widest ${getForecastStatusClass(forecast.status)}`}>
+                      {forecast.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-sm font-bold text-slate-800 dark:text-slate-200">{forecast.projectName}</p>
+                  {forecast.status === DeliveryForecastStatus.INCOMPLETE && (
+                    <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                      {forecast.unestimatedActivities > 0 && `${forecast.unestimatedActivities} sem estimativa`}
+                      {forecast.unestimatedActivities > 0 && forecast.unassignedActivities > 0 && ' · '}
+                      {forecast.unassignedActivities > 0 && `${forecast.unassignedActivities} sem responsável`}
+                      {forecast.unestimatedActivities === 0 && forecast.unassignedActivities === 0 && 'Cadastre atividades e prazo global'}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-2 text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 lg:justify-end">
+                  <span>Restante <strong className="ml-1 text-slate-700 dark:text-slate-200">{formatForecastHours(forecast.remainingRequiredMs)}</strong></span>
+                  <span>Disponível <strong className="ml-1 text-slate-700 dark:text-slate-200">{formatForecastHours(forecast.availableCapacityMs)}</strong>{forecast.overtimeCapacityMs > 0 && <em className="ml-1 not-italic text-cyan-600 dark:text-cyan-400">(+{formatForecastHours(forecast.overtimeCapacityMs)} extra)</em>}</span>
+                  <span>{forecast.marginMs < 0 ? 'Déficit' : 'Margem'} <strong className={forecast.marginMs < 0 ? 'ml-1 text-rose-500' : 'ml-1 text-emerald-500'}>{formatForecastHours(forecast.marginMs)}</strong></span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
