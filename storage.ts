@@ -23,6 +23,31 @@ export { supabase };
 let memoryCache: { timestamp: number, data: Partial<AppDB> | null, companyId: string } = { timestamp: 0, data: null, companyId: '' };
 const CACHE_TTL = 1000 * 60 * 5; // 5 minutes
 
+const mapProject = (p: any): Project => {
+  const family = Array.isArray(p.project_families) ? p.project_families[0] : p.project_families;
+  return {
+    id: p.id,
+    workspaceId: p.workspace_id,
+    familyId: p.family_id,
+    familyCode: family?.code || p.code,
+    familyName: family?.name || p.name,
+    revisionNumber: p.revision_number,
+    isCurrentRevision: p.is_current_revision,
+    clientId: p.client_id,
+    assigneeId: p.assignee_id,
+    code: p.code,
+    name: p.name,
+    photoUrl: p.photo_url,
+    revision: p.revision,
+    status: p.status,
+    startDate: p.start_date,
+    deliveryDate: p.delivery_date,
+    dueDate: p.due_date,
+    notes: p.notes,
+    createdAt: new Date(p.created_at).getTime()
+  };
+};
+
 export const fetchAllData = async (companyId?: string, forceRefresh = false): Promise<Partial<AppDB>> => {
   if (companyId && !forceRefresh && memoryCache.companyId === companyId && memoryCache.data && (Date.now() - memoryCache.timestamp < CACHE_TTL)) {
     return memoryCache.data;
@@ -34,7 +59,7 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
     .eq('workspace_id', companyId);
 
   const { data: projects } = await supabase.from('projects')
-    .select('id, workspace_id, client_id, assignee_id, code, name, photo_url, revision, status, start_date, delivery_date, due_date, notes, created_at')
+    .select('id, workspace_id, family_id, revision_number, is_current_revision, client_id, assignee_id, code, name, photo_url, revision, status, start_date, delivery_date, due_date, notes, created_at, project_families(code, name)')
     .eq('workspace_id', companyId);
 
   const { data: teamTasks } = await supabase.from('team_tasks')
@@ -75,22 +100,7 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
       complement: c.complement,
       contacts: c.contacts || []
     })),
-    projects: (projects || []).map((p: any) => ({
-      id: p.id,
-      workspaceId: p.workspace_id,
-      clientId: p.client_id,
-      assigneeId: p.assignee_id,
-      code: p.code,
-      name: p.name,
-      photoUrl: p.photo_url,
-      revision: p.revision,
-      status: p.status,
-      startDate: p.start_date,
-      deliveryDate: p.delivery_date,
-      dueDate: p.due_date,
-      notes: p.notes,
-      createdAt: new Date(p.created_at).getTime()
-    })),
+    projects: (projects || []).map(mapProject),
     tasks: (teamTasks || []).map((t: any) => ({
       id: t.id,
       workspaceId: t.workspace_id,
@@ -170,24 +180,69 @@ export const syncClient = async (client: Client) => {
   if (error) throw error;
 };
 
-export const syncProject = async (project: Project) => {
-  const { error } = await supabase.from('projects').upsert({
-    id: project.id,
-    workspace_id: project.workspaceId,
-    client_id: project.clientId,
-    assignee_id: project.assigneeId || null,
-    code: project.code,
-    name: project.name,
-    photo_url: project.photoUrl,
-    revision: project.revision,
-    status: project.status,
-    start_date: project.startDate || null,
-    delivery_date: project.deliveryDate || null,
-    due_date: project.dueDate || null,
-    notes: project.notes,
-    created_at: new Date(project.createdAt).toISOString()
+export const syncProject = async (project: Project, actorInternalUserId?: string): Promise<Project> => {
+  if (!project.familyId) {
+    if (!actorInternalUserId) throw new Error('PROJECT_CREATOR_REQUIRED');
+    const { data, error } = await supabase.rpc('create_project_family', {
+      p_project_id: project.id,
+      p_actor_internal_user_id: actorInternalUserId,
+      p_client_id: project.clientId,
+      p_assignee_id: project.assigneeId,
+      p_code: project.code,
+      p_name: project.name,
+      p_photo_url: project.photoUrl || null,
+      p_status: project.status,
+      p_start_date: project.startDate,
+      p_delivery_date: project.deliveryDate,
+      p_notes: project.notes || null,
+      p_created_at: new Date(project.createdAt).toISOString()
+    });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) throw new Error('PROJECT_CREATE_WITHOUT_RESULT');
+    return mapProject(row);
+  }
+
+  const { data, error } = await supabase.from('projects')
+    .update({
+      client_id: project.clientId,
+      assignee_id: project.assigneeId || null,
+      name: project.name,
+      photo_url: project.photoUrl,
+      status: project.status,
+      start_date: project.startDate || null,
+      delivery_date: project.deliveryDate || null,
+      due_date: project.dueDate || null,
+      notes: project.notes
+    })
+    .eq('id', project.id)
+    .eq('workspace_id', project.workspaceId)
+    .select('id, workspace_id, family_id, revision_number, is_current_revision, client_id, assignee_id, code, name, photo_url, revision, status, start_date, delivery_date, due_date, notes, created_at, project_families(code, name)')
+    .single();
+  if (error) throw error;
+  return mapProject(data);
+};
+
+export const createProjectRevision = async (
+  familyId: string,
+  adminInternalUserId: string,
+  startDate: string,
+  deliveryDate: string,
+  assigneeId: string,
+  notes?: string
+): Promise<Project> => {
+  const { data, error } = await supabase.rpc('create_project_revision', {
+    p_family_id: familyId,
+    p_admin_internal_user_id: adminInternalUserId,
+    p_start_date: startDate,
+    p_delivery_date: deliveryDate,
+    p_assignee_id: assigneeId,
+    p_notes: notes || null
   });
   if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error('PROJECT_REVISION_CREATE_WITHOUT_RESULT');
+  return mapProject(row);
 };
 
 export const deleteProject = async (projectId: string) => {

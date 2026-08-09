@@ -5,6 +5,7 @@ import { AppDB, fetchOperationalMetricsDataset, OperationalMetricsDataset } from
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
 import { calculateNetWorkdayMs } from '../utils/operationalTime';
 import { InfoTooltip } from './InfoTooltip';
+import { isCurrentProjectRevision } from '../utils/projectRevision';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend
@@ -207,12 +208,19 @@ const UserDetailModal: React.FC<{
   clients: Client[];
   onClose: () => void;
 }> = ({ userId, userName, projects, projectActivities, clients, onClose }) => {
+  const currentProjectIds = new Set(projects.filter(isCurrentProjectRevision).map(project => project.id));
   const titularProjects = projects.filter(p =>
-    p.assigneeId === userId && [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status)
+    isCurrentProjectRevision(p)
+    && p.assigneeId === userId
+    && [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status)
   );
 
   const userActivities = projectActivities
-    .filter(activity => activity.assigneeId === userId && !isProjectActivityClosed(activity.status))
+    .filter(activity => (
+      currentProjectIds.has(activity.projectId)
+      && activity.assigneeId === userId
+      && !isProjectActivityClosed(activity.status)
+    ))
     .map(activity => {
       const parent = projects.find(project => project.id === activity.projectId);
       return {
@@ -261,7 +269,7 @@ const UserDetailModal: React.FC<{
                       <span className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{p.name}</span>
                       <div className="flex items-center space-x-2 mt-1">
                         <span className="text-[10px] font-mono font-black text-indigo-600/60 dark:text-indigo-400/50 uppercase">#{p.code}</span>
-                        <span className="text-[9px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md">REV.{p.revision || '00'}</span>
+                        <span className="text-[9px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-md">{p.revision || 'Rev.00'}</span>
                       </div>
                     </div>
                     <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${p.status === ProjectStatus.IN_PROGRESS ? 'bg-indigo-500/10 text-indigo-500' :
@@ -508,11 +516,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
 
   // 1. Métricas de Saúde
   const activeProjects = projects.filter((p: Project) =>
+    isCurrentProjectRevision(p) &&
     [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status)
   );
+  const currentProjectIds = new Set(projects.filter(isCurrentProjectRevision).map(project => project.id));
 
   const overdueProjects = projects.filter((p: Project) => {
-    if (!p.deliveryDate || p.status === ProjectStatus.DONE || p.status === ProjectStatus.CANCELED) return false;
+    if (!isCurrentProjectRevision(p) || !p.deliveryDate || p.status === ProjectStatus.DONE || p.status === ProjectStatus.CANCELED) return false;
     const [y, m, d] = p.deliveryDate.split('-').map(Number);
     return new Date(y, m - 1, d) < now;
   });
@@ -525,7 +535,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
 
   // 2. Projetos da Próxima Semana
   const upcomingProjects = projects.filter((p: Project) => {
-    if (!p.deliveryDate || p.status === ProjectStatus.DONE || p.status === ProjectStatus.CANCELED) return false;
+    if (!isCurrentProjectRevision(p) || !p.deliveryDate || p.status === ProjectStatus.DONE || p.status === ProjectStatus.CANCELED) return false;
     const [y, m, d] = p.deliveryDate.split('-').map(Number);
     const due = new Date(y, m - 1, d);
     return due >= now && due <= next7Days;
@@ -577,7 +587,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       };
     });
 
-    projectActivities.filter(activity => !isProjectActivityClosed(activity.status)).forEach(activity => {
+    projectActivities.filter(activity => (
+      currentProjectIds.has(activity.projectId) && !isProjectActivityClosed(activity.status)
+    )).forEach(activity => {
       const user = users.find(item => item.id === activity.assigneeId);
       if (user && matrix[user.username]) {
         matrix[user.username].activities++;
@@ -586,7 +598,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     });
 
     return Object.entries(matrix).filter(([_, data]) => data.activities > 0);
-  }, [projectActivities, users]);
+  }, [projectActivities, users, projects]);
 
   // 6. Média de Tempo de Execução (Dias Úteis)
   const avgExecutionTime = useMemo(() => {
@@ -670,7 +682,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       const userProjects: Project[] = [];
       const userTasks: any[] = [];
       const userOpenActivities = projectActivities.filter(activity => (
-        activity.assigneeId === u.id && !isProjectActivityClosed(activity.status)
+        activity.assigneeId === u.id
+        && currentProjectIds.has(activity.projectId)
+        && !isProjectActivityClosed(activity.status)
       ));
 
       userOpenActivities.forEach(activity => {
@@ -811,6 +825,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
         projectActivities.forEach(pa => {
           // Filtrar apenas se for do usuário
           if (pa.assigneeId !== u.id) return;
+          if (!currentProjectIds.has(pa.projectId)) return;
           // Capacidade representa apenas demanda futura/aberta.
           if (isProjectActivityClosed(pa.status)) return;
           // Ignorar se não possuir datas planejadas

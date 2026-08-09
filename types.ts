@@ -108,6 +108,11 @@ export interface ProjectSubTask {
 export interface Project {
   id: string;
   workspaceId: string;
+  familyId?: string;
+  familyCode?: string;
+  familyName?: string;
+  revisionNumber?: number;
+  isCurrentRevision?: boolean;
   clientId: string;
   assigneeId?: string; // ID do usuário responsável
   code: string; // [client_code]-[project_seq]-[year]

@@ -5,6 +5,7 @@ import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivitie
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 import { HoverTooltipPortal } from './InfoTooltip';
 import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, isValidDateRange } from '../utils/projectDateIntegrity';
+import { isCurrentProjectRevision } from '../utils/projectRevision';
 
 interface GanttProps {
   db: AppDB;
@@ -86,6 +87,10 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProject) return;
+    if (!isCurrentProjectRevision(editingProject)) {
+      alert('Revisões históricas são somente para consulta.');
+      return;
+    }
 
     if (!isValidDateRange(startDate, deliveryDate)) {
       alert("O período do projeto deve possuir início e prazo final válidos.");
@@ -221,6 +226,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   // Filtragem operacional (Projetos em andamento ou ativos)
   const activeProjects = useMemo(() => {
     return allProjects.filter((p: Project) =>
+      isCurrentProjectRevision(p) &&
       [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status) &&
       p.startDate && p.deliveryDate // Apenas com datas definidas
     );
@@ -627,7 +633,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                       const parent = allProjects.find(p => p.id === pa.projectId);
                       if (!parent) return null;
                       // Garantir que o projeto pai está ativo
-                      if (![ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(parent.status)) return null;
+                      if (!isCurrentProjectRevision(parent) || ![ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(parent.status)) return null;
                       return {
                         ...pa,
                         type: 'projectActivity' as const,
@@ -889,7 +895,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block transition-colors">Revisão</label>
-                    <input type="text" value={revision} disabled={currentUser.role === UserRole.VIEWER} onChange={e => setRevision(e.target.value)} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-900 dark:text-white outline-none transition-colors disabled:opacity-60" />
+                    <input type="text" value={revision} disabled className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 p-3 rounded-xl text-slate-500 dark:text-slate-400 outline-none transition-colors" />
                   </div>
                 </div>
 

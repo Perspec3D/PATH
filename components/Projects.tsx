@@ -1,11 +1,12 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry } from '../types';
-import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
+import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs } from '../utils/operationalTime';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
 import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, getProjectPeriodLabel, isActivityWithinProjectPeriod, isValidDateRange } from '../utils/projectDateIntegrity';
+import { getProjectFamilyId, getProjectRevisionNumber, isCurrentProjectRevision } from '../utils/projectRevision';
 
 interface ProjectsProps {
   db: AppDB;
@@ -30,12 +31,18 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [clientId, setClientId] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [status, setStatus] = useState<ProjectStatus>(ProjectStatus.QUEUE);
-  const [revision, setRevision] = useState('Rev.00');
   const [startDate, setStartDate] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [customCode, setCustomCode] = useState('');
+  const [expandedFamilyIds, setExpandedFamilyIds] = useState<string[]>([]);
+  const [showRevisionModal, setShowRevisionModal] = useState(false);
+  const [revisionStartDate, setRevisionStartDate] = useState('');
+  const [revisionDeliveryDate, setRevisionDeliveryDate] = useState('');
+  const [revisionAssigneeId, setRevisionAssigneeId] = useState('');
+  const [revisionNotes, setRevisionNotes] = useState('');
+  const [isCreatingRevision, setIsCreatingRevision] = useState(false);
 
   // Project Activities States
   const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
@@ -67,6 +74,16 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [isSavingOvertime, setIsSavingOvertime] = useState(false);
   const [usePrefix, setUsePrefix] = useState(false);
   const [codePrefix, setCodePrefix] = useState('');
+  const isHistoricalRevision = Boolean(editingProject && !isCurrentProjectRevision(editingProject));
+  const editingFamilyRevisions = editingProject
+    ? db.projects
+        .filter(project => getProjectFamilyId(project) === getProjectFamilyId(editingProject))
+        .sort((a, b) => getProjectRevisionNumber(b) - getProjectRevisionNumber(a))
+    : [];
+  const nextRevisionNumber = editingFamilyRevisions.length > 0
+    ? Math.max(...editingFamilyRevisions.map(getProjectRevisionNumber)) + 1
+    : 1;
+  const nextRevisionLabel = `Rev.${String(nextRevisionNumber).padStart(2, '0')}`;
   const hasRunningOperationalSession = Boolean(activeWorkContext)
     || workSessions.some(session => session.endedAt === undefined);
 
@@ -91,7 +108,6 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setClientId('');
     setAssigneeId('');
     setStatus(ProjectStatus.QUEUE);
-    setRevision('Rev.00');
     setStartDate('');
     setDeliveryDate('');
     setPhotoUrl('');
@@ -255,6 +271,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const handleSaveProjectActivity = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProject) return;
+    if (!isCurrentProjectRevision(editingProject)) {
+      alert('Revisões históricas são somente para consulta.');
+      return;
+    }
     if (!actTypeId) {
       alert("Selecione um tipo de atividade.");
       return;
@@ -370,6 +390,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   };
 
   const handleDeleteProjectAct = async (activity: ProjectActivity) => {
+    if (isHistoricalRevision) {
+      alert('Revisões históricas são somente para consulta.');
+      return;
+    }
     if (confirm(`Tem certeza que deseja excluir a atividade "${activity.name}"?`)) {
       try {
         await deleteProjectActivity(activity.id);
@@ -395,6 +419,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   };
 
   const handleReorderProjectActivity = async (index: number, direction: 'up' | 'down') => {
+    if (isHistoricalRevision) return;
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     if (newIndex < 0 || newIndex >= projectActivities.length) return;
 
@@ -495,6 +520,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   };
 
   const handleStartOrResumeActivity = async (activity: ProjectActivity, pauseCurrent = false) => {
+    if (isHistoricalRevision) {
+      alert('Não é possível iniciar atividades em uma revisão histórica.');
+      return;
+    }
     if (!validateActivityAssignee(activity)) return;
 
     if (activeWorkContext && activeWorkContext.activity.id !== activity.id && !pauseCurrent) {
@@ -549,6 +578,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   };
 
   const handlePauseActivity = async (activity: ProjectActivity, execution?: ActivityExecution) => {
+    if (isHistoricalRevision) return;
     if (!validateActivityAssignee(activity)) return;
     if (!execution) {
       alert('Não foi possível localizar a execução ativa desta atividade.');
@@ -576,6 +606,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   };
 
   const handleCompleteActivity = async (activity: ProjectActivity, execution?: ActivityExecution) => {
+    if (isHistoricalRevision) return;
     if (!validateActivityAssignee(activity)) return;
     if (!execution) {
       alert('Não foi possível localizar a execução desta atividade.');
@@ -626,6 +657,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
 
   const handleSaveOvertime = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isHistoricalRevision) return;
     if (!overtimeActivity || currentUser.role !== UserRole.ADMIN) return;
 
     const hours = Number(overtimeHours.replace(',', '.'));
@@ -681,6 +713,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   };
 
   const handleDeleteOvertime = async (entry: ActivityOvertimeEntry) => {
+    if (isHistoricalRevision) return;
     if (!overtimeActivity || currentUser.role !== UserRole.ADMIN) return;
     if (!confirm(`Remover o lançamento de ${entry.authorizedHours}h em ${formatDate(entry.date)}?`)) return;
 
@@ -711,7 +744,6 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setClientId(project.clientId);
     setAssigneeId(project.assigneeId || '');
     setStatus(project.status);
-    setRevision(project.revision);
     setStartDate(project.startDate || '');
     setDeliveryDate(project.deliveryDate || '');
     setPhotoUrl(project.photoUrl || '');
@@ -744,6 +776,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isHistoricalRevision) {
+      alert('Revisões históricas são somente para consulta.');
+      return;
+    }
     const client = db.clients.find((c: Client) => c.id === clientId);
     if (!client) return;
 
@@ -771,9 +807,13 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     const yearYY = new Date().getFullYear().toString().slice(-2);
     const seq = (customCode || getNextGlobalProjectSeq(db.projects)).toString().padStart(6, '0');
     const baseCode = `${client.code.padStart(3, '0')}-${seq}-${yearYY}`;
-    const finalCode = usePrefix && codePrefix ? `${codePrefix}-${baseCode}` : baseCode;
+    const calculatedCode = usePrefix && codePrefix ? `${codePrefix}-${baseCode}` : baseCode;
+    const finalCode = editingProject?.code || calculatedCode;
 
-    if (db.projects.some((p: Project) => p.code === finalCode && p.id !== editingProject?.id)) {
+    if (db.projects.some((p: Project) => (
+      p.code === finalCode
+      && getProjectFamilyId(p) !== (editingProject ? getProjectFamilyId(editingProject) : '')
+    ))) {
       alert("Este código de projeto já está em uso.");
       return;
     }
@@ -787,7 +827,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       code: finalCode,
       name,
       status,
-      revision,
+      revision: editingProject?.revision || 'Rev.00',
+      revisionNumber: editingProject?.revisionNumber ?? 0,
+      isCurrentRevision: editingProject?.isCurrentRevision ?? true,
       startDate,
       dueDate: deliveryDate, // keeping legacy structure mapping
       deliveryDate,
@@ -808,11 +850,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
 
 
     try {
-      await syncProject(projectData);
+      const savedProject = await syncProject(projectData, currentUser.id);
 
       let newProjects;
       if (editingProject) {
-        newProjects = db.projects.map((p: Project) => p.id === editingProject.id ? projectData : p);
+        newProjects = db.projects.map((p: Project) => p.id === editingProject.id ? savedProject : p);
         
         const diffLogs = generateDiffLogs(editingProject, projectData, {
           name: { label: 'Nome' },
@@ -833,7 +875,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
            await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} atualizou o projeto ${projectData.code}`, projectData.code);
         }
       } else {
-        newProjects = [...db.projects, projectData];
+        newProjects = [...db.projects, savedProject];
         await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.CREATE, `${currentUser.username} criou o projeto ${projectData.code}`, projectData.code);
       }
 
@@ -847,6 +889,69 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       } else {
         alert("Erro ao salvar no Supabase: " + (err.message || "Erro desconhecido"));
       }
+    }
+  };
+
+  const openCreateRevisionModal = () => {
+    if (!editingProject || !isCurrentProjectRevision(editingProject) || currentUser.role !== UserRole.ADMIN) return;
+    setRevisionStartDate('');
+    setRevisionDeliveryDate('');
+    setRevisionAssigneeId(editingProject.assigneeId || '');
+    setRevisionNotes('');
+    setShowRevisionModal(true);
+  };
+
+  const handleCreateRevision = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingProject?.familyId || currentUser.role !== UserRole.ADMIN) return;
+    if (!isValidDateRange(revisionStartDate, revisionDeliveryDate)) {
+      alert('Informe um período válido para a nova revisão.');
+      return;
+    }
+    if (!revisionAssigneeId) {
+      alert('Selecione o responsável pela nova revisão.');
+      return;
+    }
+
+    setIsCreatingRevision(true);
+    try {
+      const newRevision = await createProjectRevision(
+        editingProject.familyId,
+        currentUser.id,
+        revisionStartDate,
+        revisionDeliveryDate,
+        revisionAssigneeId,
+        revisionNotes
+      );
+      const updatedProjects = db.projects
+        .map(project => getProjectFamilyId(project) === editingProject.familyId
+          ? { ...project, isCurrentRevision: false }
+          : project)
+        .concat(newRevision);
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.CREATE,
+        `${currentUser.username} criou ${newRevision.revision} da família ${newRevision.code}; ${editingProject.revision} deixou de ser a revisão atual`,
+        newRevision.code
+      );
+
+      setDb({ ...db, projects: updatedProjects });
+      setShowRevisionModal(false);
+      openEdit(newRevision);
+    } catch (err: any) {
+      const message = `${err?.message || ''} ${err?.details || ''}`;
+      if (message.includes('ACTIVE_WORK_SESSION_MUST_BE_PAUSED')) {
+        alert('Pause a atividade atualmente em execução antes de criar uma nova revisão.');
+      } else if (message.includes('ADMIN_REQUIRED')) {
+        alert('Apenas administradores podem criar uma nova revisão.');
+      } else {
+        alert('Não foi possível criar a nova revisão: ' + (err?.message || 'Erro desconhecido'));
+      }
+    } finally {
+      setIsCreatingRevision(false);
     }
   };
 
@@ -866,7 +971,10 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     }
     
     // Concatena o nome base e sanitiza para evitar caracteres proibidos no sistema de arquivos ou API (como /, \, <, >, :, ", |, ?, *, etc)
-    const folderName = `${previewCode} - ${name}`;
+    const familyCode = editingProject?.familyCode || editingProject?.code || previewCode;
+    const familyName = editingProject?.familyName || editingProject?.name || name;
+    const revisionFolderName = editingProject?.revision || 'Rev.00';
+    const folderName = `${familyCode} - ${familyName}`;
     const safeFolderName = folderName.replace(/[<>:"\/\\|?*]/g, '-').trim().replace(/\.$/, '');
     
     try {
@@ -879,8 +987,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
         mode: 'readwrite',
         startIn: 'desktop'
       });
-      await dirHandle.getDirectoryHandle(safeFolderName, { create: true });
-      alert(`Pasta "${safeFolderName}" criada com sucesso!`);
+      const familyHandle = await dirHandle.getDirectoryHandle(safeFolderName, { create: true });
+      await familyHandle.getDirectoryHandle(revisionFolderName, { create: true });
+      alert(`Estrutura "${safeFolderName} / ${revisionFolderName}" garantida com sucesso!`);
     } catch (error: any) {
       if (error.name !== 'AbortError') {
         alert("Erro ao criar pasta: " + error.message);
@@ -948,14 +1057,31 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   };
 
   const filteredProjects = useMemo(() => {
-    return db.projects.filter((p: Project) => {
-      const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.code.includes(search);
-      const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter;
-      const matchesClient = clientFilter === 'ALL' || p.clientId === clientFilter;
-      const matchesAssignee = assigneeFilter === 'ALL' || p.assigneeId === assigneeFilter;
-      return matchesSearch && matchesStatus && matchesClient && matchesAssignee;
-    }).sort((a: Project, b: Project) => b.createdAt - a.createdAt);
-  }, [db.projects, search, statusFilter, clientFilter, assigneeFilter]);
+    const families = new Map<string, Project[]>();
+    db.projects.forEach(project => {
+      const familyId = getProjectFamilyId(project);
+      families.set(familyId, [...(families.get(familyId) || []), project]);
+    });
+
+    return Array.from(families.entries())
+      .map(([familyId, revisions]) => {
+        const ordered = [...revisions].sort((a, b) => getProjectRevisionNumber(b) - getProjectRevisionNumber(a));
+        const current = ordered.find(isCurrentProjectRevision) || ordered[0];
+        const matchesFamily = ordered.some(project => {
+          const matchesSearch = project.name.toLowerCase().includes(search.toLowerCase()) || project.code.includes(search);
+          const matchesStatus = statusFilter === 'ALL' || project.status === statusFilter;
+          const matchesClient = clientFilter === 'ALL' || project.clientId === clientFilter;
+          const matchesAssignee = assigneeFilter === 'ALL' || project.assigneeId === assigneeFilter;
+          return matchesSearch && matchesStatus && matchesClient && matchesAssignee;
+        });
+        return { familyId, ordered, current, matchesFamily };
+      })
+      .filter(family => family.matchesFamily)
+      .sort((a, b) => b.current.createdAt - a.current.createdAt)
+      .flatMap(family => expandedFamilyIds.includes(family.familyId)
+        ? [family.current, ...family.ordered.filter(project => project.id !== family.current.id)]
+        : [family.current]);
+  }, [db.projects, search, statusFilter, clientFilter, assigneeFilter, expandedFamilyIds]);
 
   const getStatusColor = (s: ProjectStatus) => {
     switch (s) {
@@ -969,6 +1095,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   };
 
   const getPreviewCode = () => {
+    if (editingProject) return editingProject.code;
     const client = db.clients.find((c: Client) => c.id === clientId);
     if (!client) return "---";
     const baseSeq = customCode || getNextGlobalProjectSeq(db.projects);
@@ -1056,9 +1183,13 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 const assignee = db.users.find((u: InternalUser) => u.id === project.assigneeId);
                 const workingDays = calculateWorkingDays(project.startDate || '', project.deliveryDate || '');
                 const dateStyle = getDeliveryDateStyle(project.deliveryDate || '', project.status);
+                const familyId = getProjectFamilyId(project);
+                const familyRevisions = db.projects.filter(item => getProjectFamilyId(item) === familyId);
+                const isHistorical = !isCurrentProjectRevision(project);
+                const isExpanded = expandedFamilyIds.includes(familyId);
 
                 return (
-                  <tr key={project.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors group relative border-l-4 border-transparent">
+                  <tr key={project.id} className={`hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors group relative border-l-4 border-transparent ${isHistorical ? 'bg-slate-50/70 dark:bg-slate-950/25 opacity-80' : ''}`}>
                     <td className="w-2 p-0">
                       <div className={`absolute left-0 top-0 bottom-0 w-1 ${project.status === ProjectStatus.DONE ? 'bg-emerald-500' : project.status === ProjectStatus.IN_PROGRESS ? 'bg-blue-500' : project.status === ProjectStatus.PAUSED ? 'bg-purple-500' : project.status === ProjectStatus.CANCELED ? 'bg-orange-500' : 'bg-slate-600'}`}></div>
                     </td>
@@ -1082,6 +1213,20 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                       <button onClick={() => openEdit(project)} className="font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors text-left outline-none whitespace-normal break-words leading-tight block w-full">
                         {project.name}
                       </button>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <span className={`rounded-md px-2 py-0.5 text-[8px] font-black uppercase tracking-widest ${isHistorical ? 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
+                          {isHistorical ? 'Revisão histórica' : 'Atual'}
+                        </span>
+                        {!isHistorical && familyRevisions.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedFamilyIds(current => current.includes(familyId) ? current.filter(id => id !== familyId) : [...current, familyId])}
+                            className="text-[8px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            {isExpanded ? 'Ocultar histórico' : `Ver histórico (${familyRevisions.length - 1})`}
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-2.5 py-4 text-center">
                       <div className="flex flex-col whitespace-nowrap">
@@ -1154,9 +1299,19 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
           <div className="bg-white dark:bg-[#0f172a] rounded-[40px] shadow-2xl w-full max-w-2xl h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-white/5 transition-all duration-500">
             <div className="px-8 py-6 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-white/5 flex items-center justify-between transition-colors">
-              <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight transition-colors">
-                {currentUser.role === UserRole.VIEWER ? 'Visualizar Detalhes' : (editingProject ? 'Editar Detalhes' : 'Novo Projeto')}
-              </h3>
+              <div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight transition-colors">
+                  {currentUser.role === UserRole.VIEWER || isHistoricalRevision ? 'Visualizar Detalhes' : (editingProject ? 'Editar Detalhes' : 'Novo Projeto')}
+                </h3>
+                {editingProject && (
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">{editingProject.revision}</span>
+                    <span className={`rounded-md px-2 py-0.5 text-[8px] font-black uppercase tracking-widest ${isHistoricalRevision ? 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
+                      {isHistoricalRevision ? 'Revisão histórica' : 'Atual'}
+                    </span>
+                  </div>
+                )}
+              </div>
               <button onClick={() => setShowModal(false)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-white/70 hover:text-slate-900 dark:hover:text-white hover:bg-slate-300 dark:hover:bg-white/20 transition-all active:scale-95">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
@@ -1179,7 +1334,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   <input
                     type="text"
                     value={customCode}
-                    disabled={currentUser.role === UserRole.VIEWER}
+                    disabled={currentUser.role === UserRole.VIEWER || Boolean(editingProject)}
                     onChange={(e) => setCustomCode(e.target.value)}
                     className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/50 rounded-lg text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-500 outline-none font-mono transition-colors disabled:opacity-60"
                     placeholder="Ex: 000042"
@@ -1196,7 +1351,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   <input
                     type="checkbox"
                     checked={usePrefix}
-                    disabled={currentUser.role === UserRole.VIEWER}
+                    disabled={currentUser.role === UserRole.VIEWER || Boolean(editingProject)}
                     onChange={(e) => setUsePrefix(e.target.checked)}
                     className="hidden"
                   />
@@ -1208,7 +1363,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     <input
                       type="text"
                       value={codePrefix}
-                      disabled={currentUser.role === UserRole.VIEWER}
+                      disabled={currentUser.role === UserRole.VIEWER || Boolean(editingProject)}
                       onChange={(e) => setCodePrefix(e.target.value)}
                       placeholder="Ex: Estudo, Protótipo, Interno..."
                       className="w-full px-5 py-3 bg-white dark:bg-slate-900 border border-indigo-500/30 dark:border-indigo-500/20 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none font-bold transition-all shadow-lg shadow-indigo-500/5 disabled:opacity-60"
@@ -1232,23 +1387,23 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   </div>
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Responsável *</label>
-                    <select required value={assigneeId} disabled={currentUser.role === UserRole.VIEWER} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors disabled:opacity-60" onChange={(e) => setAssigneeId(e.target.value)}>
+                    <select required value={assigneeId} disabled={currentUser.role === UserRole.VIEWER || isHistoricalRevision} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors disabled:opacity-60" onChange={(e) => setAssigneeId(e.target.value)}>
                       <option value="">Selecione um usuário...</option>
                       {db.users.filter((u: any) => u.isActive).map((u: InternalUser) => <option key={u.id} value={u.id}>{u.username} ({u.role})</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Nome do Projeto *</label>
-                    <input type="text" required value={name} disabled={currentUser.role === UserRole.VIEWER} onChange={(e) => setName(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors disabled:opacity-60" placeholder="Ex: Reforma Pavimento Superior" />
+                    <input type="text" required value={name} disabled={currentUser.role === UserRole.VIEWER || isHistoricalRevision} onChange={(e) => setName(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors disabled:opacity-60" placeholder="Ex: Reforma Pavimento Superior" />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Revisão</label>
-                      <input type="text" value={revision} disabled={currentUser.role === UserRole.VIEWER} onChange={(e) => setRevision(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 outline-none font-medium transition-colors disabled:opacity-60" />
+                      <input type="text" value={editingProject?.revision || 'Rev.00'} disabled className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-500 dark:text-slate-400 outline-none font-medium transition-colors" />
                     </div>
                     <div>
                       <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Status</label>
-                      <select value={status} disabled={currentUser.role === UserRole.VIEWER} onChange={(e: any) => setStatus(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 outline-none font-medium cursor-pointer transition-colors disabled:opacity-60">
+                      <select value={status} disabled={currentUser.role === UserRole.VIEWER || isHistoricalRevision} onChange={(e: any) => setStatus(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 outline-none font-medium cursor-pointer transition-colors disabled:opacity-60">
                         {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
@@ -1258,11 +1413,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Data Início</label>
-                      <input type="date" value={startDate} max={deliveryDate || undefined} disabled={currentUser.role === UserRole.VIEWER} onInvalid={(e) => e.currentTarget.setCustomValidity('O período do projeto deve possuir início e prazo final válidos.')} onInput={(e) => e.currentTarget.setCustomValidity('')} onChange={(e) => setStartDate(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors disabled:opacity-60" />
+                      <input type="date" value={startDate} max={deliveryDate || undefined} disabled={currentUser.role === UserRole.VIEWER || isHistoricalRevision} onInvalid={(e) => e.currentTarget.setCustomValidity('O período do projeto deve possuir início e prazo final válidos.')} onInput={(e) => e.currentTarget.setCustomValidity('')} onChange={(e) => setStartDate(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors disabled:opacity-60" />
                     </div>
                     <div>
                       <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Data Entrega</label>
-                      <input type="date" value={deliveryDate} min={startDate || undefined} disabled={currentUser.role === UserRole.VIEWER} onInvalid={(e) => e.currentTarget.setCustomValidity('O período do projeto deve possuir início e prazo final válidos.')} onInput={(e) => e.currentTarget.setCustomValidity('')} onChange={(e) => setDeliveryDate(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors disabled:opacity-60" />
+                      <input type="date" value={deliveryDate} min={startDate || undefined} disabled={currentUser.role === UserRole.VIEWER || isHistoricalRevision} onInvalid={(e) => e.currentTarget.setCustomValidity('O período do projeto deve possuir início e prazo final válidos.')} onInput={(e) => e.currentTarget.setCustomValidity('')} onChange={(e) => setDeliveryDate(e.target.value)} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-colors disabled:opacity-60" />
                     </div>
                   </div>
                   <div>
@@ -1272,7 +1427,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                         <div className="relative w-full h-full">
                           <img src={photoUrl} className="absolute inset-0 w-full h-full object-cover" />
                           <div className="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center space-y-3 p-4">
-                            {currentUser.role !== UserRole.VIEWER && (
+                            {currentUser.role !== UserRole.VIEWER && !isHistoricalRevision && (
                               <>
                                 <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-indigo-700 transition">Alterar Foto</button>
                                 <button type="button" onClick={removePhoto} className="w-full py-2 bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg hover:bg-rose-700 transition">Remover Imagem</button>
@@ -1298,7 +1453,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 </div>
               </div>
 
-              {editingProject && ![ProjectStatus.DONE, ProjectStatus.CANCELED].includes(editingProject.status) && (
+              {editingProject && isCurrentProjectRevision(editingProject) && ![ProjectStatus.DONE, ProjectStatus.CANCELED].includes(editingProject.status) && (
                 <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800/50">
                   <div className="flex items-center justify-between px-1">
                     <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
@@ -1381,7 +1536,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     <svg className="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
                     Atividades do Projeto
                   </h4>
-                  {currentUser.role !== UserRole.VIEWER && editingProject && (
+                  {currentUser.role !== UserRole.VIEWER && editingProject && !isHistoricalRevision && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1499,7 +1654,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                             </div>
 
                             <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-slate-200/70 pt-3 dark:border-slate-800">
-                              {currentUser.role === UserRole.ADMIN && (
+                              {currentUser.role === UserRole.ADMIN && !isHistoricalRevision && (
                                 <button
                                   type="button"
                                   onClick={() => openOvertimeModal(activity)}
@@ -1508,7 +1663,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                                   Horas extras
                                 </button>
                               )}
-                              {!isClosed && (
+                              {!isClosed && !isHistoricalRevision && (
                                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                                   {isActiveForCurrentUser ? (
                                     <>
@@ -1564,7 +1719,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                                 {activity.status}
                               </span>
 
-                              {currentUser.role !== UserRole.VIEWER && (
+                              {currentUser.role !== UserRole.VIEWER && !isHistoricalRevision && (
                                 <div className="flex items-center space-x-2">
                                   <button
                                     type="button"
@@ -1607,15 +1762,15 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1 transition-colors">Anotações do Projeto</label>
                 <textarea
                   value={notes}
-                  disabled={currentUser.role === UserRole.VIEWER}
+                  disabled={currentUser.role === UserRole.VIEWER || isHistoricalRevision}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium min-h-[100px] resize-none transition-colors disabled:opacity-60"
                   placeholder="Observações técnicas, contatos adicionais ou notas de andamento..."
                 />
               </div>
 
-              <div className="pt-8 border-t border-slate-100 dark:border-slate-800 flex space-x-4 transition-colors bg-white dark:bg-[#0f172a] sticky bottom-0 z-10">
-                {editingProject && currentUser.role === UserRole.ADMIN && (
+              <div className="pt-8 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 transition-colors bg-white dark:bg-[#0f172a] sticky bottom-0 z-10">
+                {editingProject && currentUser.role === UserRole.ADMIN && !isHistoricalRevision && editingFamilyRevisions.length === 1 && (
                   <button
                     type="button"
                     onClick={handleDeleteProject}
@@ -1623,6 +1778,16 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     title="Excluir Projeto"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                )}
+                {editingProject && currentUser.role === UserRole.ADMIN && !isHistoricalRevision && (
+                  <button
+                    type="button"
+                    onClick={openCreateRevisionModal}
+                    className="py-4 px-5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center hover:bg-indigo-600 hover:text-white transition-all active:scale-[0.98] font-black text-[9px] uppercase tracking-widest whitespace-nowrap"
+                    title="Criar nova revisão operacional"
+                  >
+                    Nova revisão
                   </button>
                 )}
                 <button
@@ -1641,7 +1806,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 >
                   {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
                 </button>
-                {currentUser.role !== UserRole.VIEWER && (
+                {currentUser.role !== UserRole.VIEWER && !isHistoricalRevision && (
                   <button
                     type="submit"
                     className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all active:scale-[0.98]"
@@ -1649,6 +1814,48 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     {editingProject ? 'Salvar Alterações' : 'Criar Projeto'}
                   </button>
                 )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showRevisionModal && editingProject && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-white/5 dark:bg-[#0f172a]">
+            <div className="border-b border-slate-100 px-7 py-6 dark:border-white/5">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Família</p>
+              <h3 className="mt-1 text-sm font-black text-slate-900 dark:text-white">{editingProject.code} — {editingProject.familyName || editingProject.name}</h3>
+              <p className="mt-3 text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Nova revisão: {nextRevisionLabel}</p>
+            </div>
+            <form onSubmit={handleCreateRevision} className="space-y-5 p-7">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-2 block text-[9px] font-black uppercase tracking-widest text-slate-400">Data de início</label>
+                  <input type="date" required value={revisionStartDate} max={revisionDeliveryDate || undefined} onChange={event => setRevisionStartDate(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                </div>
+                <div>
+                  <label className="mb-2 block text-[9px] font-black uppercase tracking-widest text-slate-400">Data de entrega</label>
+                  <input type="date" required value={revisionDeliveryDate} min={revisionStartDate || undefined} onChange={event => setRevisionDeliveryDate(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+                </div>
+              </div>
+              <div>
+                <label className="mb-2 block text-[9px] font-black uppercase tracking-widest text-slate-400">Responsável</label>
+                <select required value={revisionAssigneeId} onChange={event => setRevisionAssigneeId(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white">
+                  <option value="">Selecione...</option>
+                  {db.users.filter(user => user.isActive).map(user => <option key={user.id} value={user.id}>{user.username}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-2 block text-[9px] font-black uppercase tracking-widest text-slate-400">Observações opcionais</label>
+                <textarea value={revisionNotes} onChange={event => setRevisionNotes(event.target.value)} className="min-h-[90px] w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white" />
+              </div>
+              <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[9px] font-bold leading-relaxed text-slate-500 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-400">
+                A nova revisão começa em Fila de Espera e sem atividades. Execuções, sessões e horas extras da revisão anterior não serão copiadas.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowRevisionModal(false)} disabled={isCreatingRevision} className="flex-1 rounded-xl bg-slate-100 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:bg-slate-800 dark:text-slate-400">Cancelar</button>
+                <button type="submit" disabled={isCreatingRevision} className="flex-1 rounded-xl bg-indigo-600 py-3 text-[10px] font-black uppercase tracking-widest text-white disabled:opacity-50">{isCreatingRevision ? 'Criando...' : `Criar ${nextRevisionLabel}`}</button>
               </div>
             </form>
           </div>
@@ -1791,7 +1998,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
         </div>
       )}
 
-      {showOvertimeModal && overtimeActivity && currentUser.role === UserRole.ADMIN && (
+      {showOvertimeModal && overtimeActivity && currentUser.role === UserRole.ADMIN && !isHistoricalRevision && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[135] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-white/5">
             <div className="px-7 py-6 border-b border-slate-100 dark:border-white/5 flex items-center justify-between sticky top-0 bg-white dark:bg-[#0f172a] z-10">

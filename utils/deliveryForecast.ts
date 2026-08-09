@@ -11,6 +11,7 @@ import { ProjectStatus } from '../types';
 import { buildActivityOperationalMetrics } from './operationalMetrics';
 import { calculateNetWorkdayMs } from './operationalTime';
 import { isProjectActivityClosed } from './projectActivityStatus';
+import { isCurrentProjectRevision } from './projectRevision';
 
 const HOUR_MS = 60 * 60 * 1000;
 // Centralized management bands: up to 75% leaves a comfortable margin;
@@ -140,7 +141,9 @@ export const buildProjectDeliveryForecasts = ({
   const workDays = company?.workDays || [1, 2, 3, 4, 5];
   const dailyCapacityMs = calculateNetWorkdayMs(company);
   const activeProjects = projects.filter(project => (
-    project.status !== ProjectStatus.DONE && project.status !== ProjectStatus.CANCELED
+    isCurrentProjectRevision(project)
+    && project.status !== ProjectStatus.DONE
+    && project.status !== ProjectStatus.CANCELED
   ));
   const activeProjectIds = new Set(activeProjects.map(project => project.id));
   const projectById = new Map(projects.map(project => [project.id, project]));
