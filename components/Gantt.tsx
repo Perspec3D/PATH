@@ -3,6 +3,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskType, ProjectActivity } from '../types';
 import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivities } from '../storage';
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
+import { HoverTooltipPortal } from './InfoTooltip';
 
 interface GanttProps {
   db: AppDB;
@@ -476,16 +477,10 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                           </div>
 
                           {width > 0 && (
-                            <div
-                              style={{ left: `${offset}px`, width: `${width}px` }}
-                              className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-110 dark:hover:brightness-125 z-20 cursor-pointer ${getStatusColor(project.status)} border-white/5 flex items-center px-3`}
-                              onClick={() => openEdit(project)}
-                            >
-                              <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(project.id)}`} />
-                              <span className="text-[9px] font-black text-white/90 truncate uppercase tracking-tighter">
-                                {project.name}
-                              </span>
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl opacity-0 group-hover/row:opacity-100 transition-all transform translate-y-2 group-hover/row:translate-y-0 z-[100] pointer-events-none shadow-xl dark:shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[240px] ring-1 ring-slate-200 dark:ring-white/10">
+                            <HoverTooltipPortal
+                              tooltipClassName="w-[240px] p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl dark:shadow-[0_20px_50px_rgba(0,0,0,0.6)] ring-1 ring-slate-200 dark:ring-white/10"
+                              tooltip={
+                                <>
                                 <div className="flex items-center justify-between mb-2">
                                   <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{project.code}</p>
                                   <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(project.status)} text-white`}>{project.status}</span>
@@ -495,8 +490,20 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                   <div><p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase mb-1">Início</p><p className="text-[10px] font-bold text-slate-600 dark:text-slate-300">{start?.toLocaleDateString('pt-BR')}</p></div>
                                   <div><p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase mb-1">Entrega</p><p className="text-[10px] font-bold text-slate-600 dark:text-slate-300">{end?.toLocaleDateString('pt-BR')}</p></div>
                                 </div>
+                                </>
+                              }
+                            >
+                              <div
+                                style={{ left: `${offset}px`, width: `${width}px` }}
+                                className={`absolute top-1/2 -translate-y-1/2 h-7 rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-110 dark:hover:brightness-125 z-20 cursor-pointer ${getStatusColor(project.status)} border-white/5 flex items-center px-3`}
+                                onClick={() => openEdit(project)}
+                              >
+                                <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(project.id)}`} />
+                                <span className="text-[9px] font-black text-white/90 truncate uppercase tracking-tighter">
+                                  {project.name}
+                                </span>
                               </div>
-                            </div>
+                            </HoverTooltipPortal>
                           )}
                         </div>
                       </div>
@@ -542,15 +549,10 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                 </div>
 
                                 {stWidth > 0 && (
-                                  <div
-                                    style={{ left: `${stOffset}px`, width: `${stWidth}px` }}
-                                    className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm transition-all duration-300 hover:brightness-125 z-20 ${getStatusColor(st.status)} opacity-80 hover:opacity-100 flex items-center px-2`}
-                                  >
-                                    <div className={`w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 ${getProjectMarkerColor(project.id)}`} />
-                                    <span className="text-[7px] font-black text-white/90 truncate uppercase tracking-tighter">
-                                      {st.name}
-                                    </span>
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-3 bg-slate-900 border border-slate-700 rounded-xl opacity-0 group-hover/sub:opacity-100 transition-all transform translate-y-1 group-hover/sub:translate-y-0 z-[100] pointer-events-none shadow-2xl min-w-[180px] ring-1 ring-white/5">
+                                  <HoverTooltipPortal
+                                    tooltipClassName="w-[180px] p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl ring-1 ring-white/5"
+                                    tooltip={
+                                      <>
                                       <div className="flex items-center justify-between mb-1.5">
                                         <div className="flex flex-col">
                                           <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">ATIVIDADE DO PROJETO</p>
@@ -564,8 +566,19 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                         <svg className="w-2 h-2 mx-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                                         <span>{stEnd?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
                                       </div>
+                                      </>
+                                    }
+                                  >
+                                    <div
+                                      style={{ left: `${stOffset}px`, width: `${stWidth}px` }}
+                                      className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm transition-all duration-300 hover:brightness-125 z-20 ${getStatusColor(st.status)} opacity-80 hover:opacity-100 flex items-center px-2`}
+                                    >
+                                      <div className={`w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 ${getProjectMarkerColor(project.id)}`} />
+                                      <span className="text-[7px] font-black text-white/90 truncate uppercase tracking-tighter">
+                                        {st.name}
+                                      </span>
                                     </div>
-                                  </div>
+                                  </HoverTooltipPortal>
                                 )}
                               </div>
                             </div>
@@ -729,8 +742,49 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                           const barHeight = isProjectActivity ? 'h-5' : 'h-8';
                           const topPos = 16 + (task.laneIndex * 42) + (isProjectActivity ? 6 : 0);
                           return (
-                            <div
+                            <HoverTooltipPortal
                               key={task.id}
+                              tooltipClassName="w-[220px] p-4 bg-slate-900 border border-slate-700 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] ring-1 ring-white/10"
+                              tooltip={
+                                <>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex flex-col">
+                                      <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">
+                                        {task.type === 'project' ? 'PROJETO PAI' : task.type === 'projectActivity' ? 'ATIVIDADE DO PROJETO' : 'TAREFA / BLOQUEIO'}
+                                      </p>
+                                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">
+                                        {task.type === 'project' ? (task as any).code : task.type === 'projectActivity' ? (task as any).parentProject?.code : (task as any).activityType || task.type}
+                                      </p>
+                                    </div>
+                                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(task.status)} text-white`}>{task.status === 'ACTIVITY' ? 'AVULSA' : task.status}</span>
+                                  </div>
+                                  <p className="text-xs font-bold text-white mb-1 leading-tight whitespace-normal">{task.name}</p>
+                                  {task.type === 'projectActivity' && <p className="text-[9px] text-slate-500 font-black uppercase mb-3 truncate">Ref: {task.parentProject?.name}</p>}
+                                  {task.type === 'teamTask' && (
+                                    <div className="text-[10px] text-slate-400 font-medium mb-3 whitespace-normal break-words space-y-1">
+                                      {task.description && <p className="text-xs text-slate-300 mb-2 italic">"{task.description}"</p>}
+                                      <p><strong className="text-slate-500 uppercase text-[8px] tracking-wider">Responsável:</strong> {allUsers.find(u => u.id === task.assigneeId)?.username || 'Desconhecido'}</p>
+                                      {task.invitedUsers && task.invitedUsers.length > 0 && (
+                                        <p><strong className="text-slate-500 uppercase text-[8px] tracking-wider">Convidados:</strong> {allUsers.filter(u => task.invitedUsers?.includes(u.id)).map(u => u.username).join(', ')}</p>
+                                      )}
+                                    </div>
+                                  )}
+                                  <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
+                                    <div>
+                                      <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p>
+                                      <p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p>
+                                      {task.type === 'teamTask' && task.startTime && <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.startTime}</p>}
+                                    </div>
+                                    <div>
+                                      <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p>
+                                      <p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p>
+                                      {task.type === 'teamTask' && task.endTime && <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.endTime}</p>}
+                                    </div>
+                                  </div>
+                                </>
+                              }
+                            >
+                            <div
                               style={{ left: `${offset}px`, width: `${width}px`, top: `${topPos}px` }}
                               className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 hover:z-50 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
                               onClick={() => {
@@ -755,48 +809,8 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                                 </span>
                               </span>
 
-                              {/* TOOLTIP ATRIBUIÇÃO */}
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 p-4 bg-slate-900 border border-slate-700 rounded-2xl opacity-0 group-hover/task:opacity-100 transition-all transform translate-y-2 group-hover/task:translate-y-0 z-[100] pointer-events-none shadow-[0_20px_50px_rgba(0,0,0,0.6)] min-w-[220px] ring-1 ring-white/10">
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex flex-col">
-                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">
-                                      {task.type === 'project' ? 'PROJETO PAI' : task.type === 'projectActivity' ? 'ATIVIDADE DO PROJETO' : 'TAREFA / BLOQUEIO'}
-                                    </p>
-                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">
-                                      {task.type === 'project' ? (task as any).code : task.type === 'projectActivity' ? (task as any).parentProject?.code : (task as any).activityType || task.type}
-                                    </p>
-                                  </div>
-                                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(task.status)} text-white`}>{task.status === 'ACTIVITY' ? 'AVULSA' : task.status}</span>
-                                </div>
-                                <p className="text-xs font-bold text-white mb-1 leading-tight whitespace-normal">{task.name}</p>
-                                {task.type === 'projectActivity' && <p className="text-[9px] text-slate-500 font-black uppercase mb-3 truncate">Ref: {task.parentProject?.name}</p>}
-                                {task.type === 'teamTask' && (
-                                  <div className="text-[10px] text-slate-400 font-medium mb-3 whitespace-normal break-words space-y-1">
-                                    {task.description && <p className="text-xs text-slate-300 mb-2 italic">"{task.description}"</p>}
-                                    <p><strong className="text-slate-500 uppercase text-[8px] tracking-wider">Responsável:</strong> {allUsers.find(u => u.id === task.assigneeId)?.username || 'Desconhecido'}</p>
-                                    {task.invitedUsers && task.invitedUsers.length > 0 && (
-                                      <p><strong className="text-slate-500 uppercase text-[8px] tracking-wider">Convidados:</strong> {allUsers.filter(u => task.invitedUsers?.includes(u.id)).map(u => u.username).join(', ')}</p>
-                                    )}
-                                  </div>
-                                )}
-                                <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
-                                  <div>
-                                    <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p>
-                                    <p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p>
-                                    {task.type === 'teamTask' && task.startTime && (
-                                      <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.startTime}</p>
-                                    )}
-                                  </div>
-                                  <div>
-                                    <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p>
-                                    <p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p>
-                                    {task.type === 'teamTask' && task.endTime && (
-                                      <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.endTime}</p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
                             </div>
+                            </HoverTooltipPortal>
                           );
                         })}
                       </div>

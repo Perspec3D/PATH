@@ -4,11 +4,12 @@ import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 import { AppDB, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
 import { calculateNetWorkdayMs } from '../utils/operationalTime';
+import { InfoTooltip } from './InfoTooltip';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Info, CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar, Trophy, Medal, Eye, ArrowRight, Search } from 'lucide-react';
+import { CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar, Trophy, Medal, Eye, ArrowRight, Search } from 'lucide-react';
 
 interface DashboardProps {
   db: AppDB;
@@ -192,37 +193,6 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
   );
 };
 
-const InfoTooltip: React.FC<{ title: string; content: string; calculation?: string; position?: 'top' | 'bottom' }> = ({
-  title, content, calculation, position = 'top'
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <div className="relative inline-block ml-2 group/info">
-      <button
-        type="button"
-        onMouseEnter={() => setIsOpen(true)}
-        onMouseLeave={() => setIsOpen(false)}
-        className="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700/50 transition-colors text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400"
-      >
-        <Info size={14} />
-      </button>
-      {isOpen && (
-        <div className={`absolute ${position === 'top' ? 'bottom-full mb-2 slide-in-from-bottom-2' : 'top-full mt-2 slide-in-from-top-2'} left-1/2 -translate-x-1/2 p-4 bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl dark:shadow-[0_20px_50px_rgba(0,0,0,0.7)] z-[200] w-72 pointer-events-none animate-in fade-in duration-200 ring-1 ring-slate-200 dark:ring-white/10`}>
-          <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-2 border-b border-slate-100 dark:border-slate-800 pb-2">{title}</p>
-          <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium leading-relaxed mb-3">{content}</p>
-          {calculation && (
-            <div className="bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-              <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter mb-1">Base de Cálculo:</p>
-              <p className="text-[10px] text-indigo-600 dark:text-indigo-300/80 font-mono italic">{calculation}</p>
-            </div>
-          )}
-          <div className={`absolute ${position === 'top' ? 'top-full border-t-white dark:border-t-[#0f172a]' : 'bottom-full border-b-white dark:border-b-[#0f172a]'} left-1/2 -translate-x-1/2 border-8 border-transparent`}></div>
-        </div>
-      )}
-    </div>
-  );
-};
 const formatDate = (dateStr?: string) => {
   if (!dateStr) return null;
   const [y, m, d] = dateStr.split('-');
