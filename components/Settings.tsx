@@ -566,78 +566,82 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-slate-100 dark:border-slate-800 pt-6">
+            <button type="submit" className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 active:scale-95">
+              Salvar Alterações
+            </button>
+          </form>
+        </div>
+      </section>
+
+      {/* Jornada de Trabalho Section */}
+      <section className="bg-white dark:bg-[#1e293b] rounded-3xl shadow-sm dark:shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
+        <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 transition-colors">
+          <h2 className="font-black text-xs text-slate-400 dark:text-slate-400 uppercase tracking-widest">Jornada de Trabalho</h2>
+        </div>
+        <div className="p-8 space-y-6">
+          <form onSubmit={handleSaveCompany} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Jornada de Trabalho</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Hora Início</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 08:00"
-                      value={workStartTime}
-                      onChange={(e) => setWorkStartTime(e.target.value)}
-                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Hora Fim</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 18:00"
-                      value={workEndTime}
-                      onChange={(e) => setWorkEndTime(e.target.value)}
-                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
-                    />
-                  </div>
-                </div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Início da jornada</label>
+                <input
+                  type="text"
+                  placeholder="Ex: 08:00"
+                  value={workStartTime}
+                  onChange={(e) => setWorkStartTime(e.target.value)}
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
+                />
               </div>
               <div>
-                <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">Intervalo e Dias Úteis</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Intervalo (Minutos)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={lunchDurationMinutes}
-                      onChange={(e) => setLunchDurationMinutes(Number(e.target.value))}
-                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 ml-1">Dias de Trabalho</label>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((dayName, idx) => {
-                        const isSelected = workDays.includes(idx);
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => {
-                              if (isSelected) {
-                                setWorkDays(workDays.filter(d => d !== idx));
-                              } else {
-                                setWorkDays([...workDays, idx].sort());
-                              }
-                            }}
-                            className={`px-2 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition ${
-                              isSelected
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
-                            }`}
-                          >
-                            {dayName}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Fim da jornada</label>
+                <input
+                  type="text"
+                  placeholder="Ex: 18:00"
+                  value={workEndTime}
+                  onChange={(e) => setWorkEndTime(e.target.value)}
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Intervalo (Minutos)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={lunchDurationMinutes}
+                  onChange={(e) => setLunchDurationMinutes(Number(e.target.value))}
+                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Dias de trabalho</label>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((dayName, idx) => {
+                    const isSelected = workDays.includes(idx);
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            setWorkDays(workDays.filter(d => d !== idx));
+                          } else {
+                            setWorkDays([...workDays, idx].sort());
+                          }
+                        }}
+                        className={`px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {dayName}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
             <button type="submit" className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 active:scale-95">
-              Salvar Alterações
+              Salvar Jornada
             </button>
           </form>
         </div>
