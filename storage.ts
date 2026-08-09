@@ -1,4 +1,4 @@
-import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, WorkSession, ActivityTransitionResult, ActiveWorkSessionContext } from './types';
+import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, WorkSession, ActivityOvertimeEntry, ActivityTransitionResult, ActiveWorkSessionContext } from './types';
 import { supabase } from './lib/supabase';
 
 export interface AppDB {
@@ -519,6 +519,18 @@ const mapWorkSession = (session: any): WorkSession => ({
   updatedAt: new Date(session.updated_at).getTime()
 });
 
+const mapActivityOvertimeEntry = (entry: any): ActivityOvertimeEntry => ({
+  id: entry.id,
+  workspaceId: entry.workspace_id,
+  projectActivityId: entry.project_activity_id,
+  date: entry.date,
+  authorizedHours: Number(entry.authorized_hours),
+  createdBy: entry.created_by,
+  createdAt: new Date(entry.created_at).getTime(),
+  updatedAt: new Date(entry.updated_at).getTime(),
+  notes: entry.notes || undefined
+});
+
 export const fetchActivityExecutions = async (
   workspaceId: string,
   filters: { projectActivityId?: string; projectActivityIds?: string[]; internalUserId?: string } = {}
@@ -603,6 +615,26 @@ export const fetchActiveWorkSession = async (
   return data ? mapWorkSession(data) : null;
 };
 
+export const fetchActivityOvertimeEntries = async (
+  workspaceId: string,
+  filters: { projectActivityId?: string; projectActivityIds?: string[] } = {}
+): Promise<ActivityOvertimeEntry[]> => {
+  let query = supabase.from('activity_overtime_entries')
+    .select('id, workspace_id, project_activity_id, date, authorized_hours, created_by, created_at, updated_at, notes')
+    .eq('workspace_id', workspaceId);
+
+  if (filters.projectActivityId) {
+    query = query.eq('project_activity_id', filters.projectActivityId);
+  }
+  if (filters.projectActivityIds && filters.projectActivityIds.length > 0) {
+    query = query.in('project_activity_id', filters.projectActivityIds);
+  }
+
+  const { data, error } = await query.order('date', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapActivityOvertimeEntry);
+};
+
 export const syncWorkSession = async (session: WorkSession) => {
   const { error } = await supabase.from('work_sessions').upsert({
     id: session.id,
@@ -632,6 +664,57 @@ const mapActivityTransition = (transition: any): ActivityTransitionResult => ({
 });
 
 const firstRpcRow = (data: any): any => Array.isArray(data) ? data[0] : data;
+
+export const createActivityOvertimeEntry = async (
+  projectActivityId: string,
+  adminInternalUserId: string,
+  date: string,
+  authorizedHours: number,
+  notes?: string
+): Promise<ActivityOvertimeEntry> => {
+  const { data, error } = await supabase.rpc('create_activity_overtime_entry', {
+    p_project_activity_id: projectActivityId,
+    p_admin_internal_user_id: adminInternalUserId,
+    p_entry_date: date,
+    p_authorized_hours: authorizedHours,
+    p_notes: notes || null
+  });
+  if (error) throw error;
+  const entry = firstRpcRow(data);
+  if (!entry) throw new Error('OVERTIME_ENTRY_WITHOUT_RESULT');
+  return mapActivityOvertimeEntry(entry);
+};
+
+export const updateActivityOvertimeEntry = async (
+  entryId: string,
+  adminInternalUserId: string,
+  date: string,
+  authorizedHours: number,
+  notes?: string
+): Promise<ActivityOvertimeEntry> => {
+  const { data, error } = await supabase.rpc('update_activity_overtime_entry', {
+    p_entry_id: entryId,
+    p_admin_internal_user_id: adminInternalUserId,
+    p_entry_date: date,
+    p_authorized_hours: authorizedHours,
+    p_notes: notes || null
+  });
+  if (error) throw error;
+  const entry = firstRpcRow(data);
+  if (!entry) throw new Error('OVERTIME_ENTRY_WITHOUT_RESULT');
+  return mapActivityOvertimeEntry(entry);
+};
+
+export const deleteActivityOvertimeEntry = async (
+  entryId: string,
+  adminInternalUserId: string
+): Promise<void> => {
+  const { error } = await supabase.rpc('delete_activity_overtime_entry', {
+    p_entry_id: entryId,
+    p_admin_internal_user_id: adminInternalUserId
+  });
+  if (error) throw error;
+};
 
 export const startOrResumeActivity = async (
   projectActivityId: string,
@@ -700,6 +783,9 @@ export const fetchActiveWorkSessionContext = async (
   if (executionError) throw executionError;
   if (!executionData) throw new Error('ACTIVE_EXECUTION_NOT_FOUND');
   const execution = mapActivityExecution(executionData);
+  const overtimeEntries = await fetchActivityOvertimeEntries(workspaceId, {
+    projectActivityId: execution.projectActivityId
+  });
 
   const { data: activity, error: activityError } = await supabase.from('project_activities')
     .select('id, project_id, name, status')
@@ -722,6 +808,7 @@ export const fetchActiveWorkSessionContext = async (
   return {
     session,
     sessions,
+    overtimeEntries,
     execution,
     activity: {
       id: activity.id,

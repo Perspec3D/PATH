@@ -248,6 +248,18 @@ export interface WorkSession {
   updatedAt: number;
 }
 
+export interface ActivityOvertimeEntry {
+  id: string;
+  workspaceId: string;
+  projectActivityId: string;
+  date: string;
+  authorizedHours: number;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  notes?: string;
+}
+
 export type ActivityTransitionAction = 'STARTED' | 'RESUMED' | 'ALREADY_RUNNING';
 
 export interface ActivityTransitionResult {
@@ -261,6 +273,7 @@ export interface ActivityTransitionResult {
 export interface ActiveWorkSessionContext {
   session: WorkSession;
   sessions: WorkSession[];
+  overtimeEntries: ActivityOvertimeEntry[];
   execution: ActivityExecution;
   activity: {
     id: string;

@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession } from '../types';
-import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution } from '../storage';
+import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry } from '../types';
+import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
+import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs } from '../utils/operationalTime';
 
 interface ProjectsProps {
   db: AppDB;
@@ -39,6 +40,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
   const [activityExecutions, setActivityExecutions] = useState<ActivityExecution[]>([]);
   const [workSessions, setWorkSessions] = useState<WorkSession[]>([]);
+  const [overtimeEntries, setOvertimeEntries] = useState<ActivityOvertimeEntry[]>([]);
   const [activeWorkContext, setActiveWorkContext] = useState<ActiveWorkSessionContext | null>(null);
   const [pendingActivity, setPendingActivity] = useState<ProjectActivity | null>(null);
   const [activityActionId, setActivityActionId] = useState<string | null>(null);
@@ -54,8 +56,17 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const [actStartDate, setActStartDate] = useState('');
   const [actDeliveryDate, setActDeliveryDate] = useState('');
   const [actNotes, setActNotes] = useState('');
+  const [showOvertimeModal, setShowOvertimeModal] = useState(false);
+  const [overtimeActivity, setOvertimeActivity] = useState<ProjectActivity | null>(null);
+  const [editingOvertimeEntry, setEditingOvertimeEntry] = useState<ActivityOvertimeEntry | null>(null);
+  const [overtimeDate, setOvertimeDate] = useState('');
+  const [overtimeHours, setOvertimeHours] = useState('');
+  const [overtimeNotes, setOvertimeNotes] = useState('');
+  const [isSavingOvertime, setIsSavingOvertime] = useState(false);
   const [usePrefix, setUsePrefix] = useState(false);
   const [codePrefix, setCodePrefix] = useState('');
+  const hasRunningOperationalSession = Boolean(activeWorkContext)
+    || workSessions.some(session => session.endedAt === undefined);
 
   const resetForm = () => {
     setName('');
@@ -72,6 +83,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setProjectActivities([]);
     setActivityExecutions([]);
     setWorkSessions([]);
+    setOvertimeEntries([]);
     setUsePrefix(false);
     setCodePrefix('');
     setEditingProject(null);
@@ -157,11 +169,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   }, [currentUser.id, currentUser.workspaceId]);
 
   useEffect(() => {
-    if (!activeWorkContext) return;
+    if (!hasRunningOperationalSession) return;
     setClockNow(Date.now());
     const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [activeWorkContext?.session.id]);
+  }, [activeWorkContext?.session.id, hasRunningOperationalSession]);
 
   const loadProjectActivities = async (projectId: string) => {
     setIsLoadingActivities(true);
@@ -171,25 +183,29 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       setProjectActivities(sortedActivities);
 
       if (sortedActivities.length > 0) {
-        const executions = await fetchActivityExecutions(currentUser.workspaceId, {
-          projectActivityIds: sortedActivities.map(activity => activity.id),
-          internalUserId: currentUser.id
-        });
+        const activityIds = sortedActivities.map(activity => activity.id);
+        const [executions, entries] = await Promise.all([
+          fetchActivityExecutions(currentUser.workspaceId, { projectActivityIds: activityIds }),
+          fetchActivityOvertimeEntries(currentUser.workspaceId, { projectActivityIds: activityIds })
+        ]);
         setActivityExecutions(executions);
+        setOvertimeEntries(entries);
         const sessions = executions.length > 0
           ? await fetchWorkSessions(currentUser.workspaceId, {
-              activityExecutionIds: executions.map(execution => execution.id),
-              internalUserId: currentUser.id
+              activityExecutionIds: executions.map(execution => execution.id)
             })
           : [];
         setWorkSessions(sessions);
       } else {
         setActivityExecutions([]);
         setWorkSessions([]);
+        setOvertimeEntries([]);
       }
     } catch (err) {
       console.error("Erro ao carregar atividades do projeto:", err);
       setActivityExecutions([]);
+      setWorkSessions([]);
+      setOvertimeEntries([]);
     } finally {
       setIsLoadingActivities(false);
     }
@@ -363,18 +379,40 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
   };
 
-  const getWorkedDurationMs = (activityExecutionId: string): number | null => {
-    const executionSessions = activeWorkContext?.execution.id === activityExecutionId
-      ? activeWorkContext.sessions
-      : workSessions.filter(session => session.activityExecutionId === activityExecutionId);
+  const getActivitySessions = (activityId: string): WorkSession[] => {
+    const executionIds = new Set(activityExecutions
+      .filter(execution => execution.projectActivityId === activityId)
+      .map(execution => execution.id));
+    const sessions = workSessions.filter(session => executionIds.has(session.activityExecutionId));
 
-    return executionSessions.reduce<number | null>((total, session) => {
-      if (total === null || !isValidTimestamp(session.startedAt)) return null;
-      const sessionEnd = session.endedAt ?? clockNow;
-      if (!isValidTimestamp(sessionEnd) || sessionEnd < session.startedAt) return null;
-      return total + (sessionEnd - session.startedAt);
-    }, 0);
+    if (activeWorkContext?.activity.id !== activityId) return sessions;
+    const knownIds = new Set(sessions.map(session => session.id));
+    return [...sessions, ...activeWorkContext.sessions.filter(session => !knownIds.has(session.id))];
   };
+
+  const getActivityOvertimeEntries = (activityId: string): ActivityOvertimeEntry[] => {
+    const entries = overtimeEntries.filter(entry => entry.projectActivityId === activityId);
+    if (activeWorkContext?.activity.id !== activityId) return entries;
+    const knownIds = new Set(entries.map(entry => entry.id));
+    return [...entries, ...activeWorkContext.overtimeEntries.filter(entry => !knownIds.has(entry.id))];
+  };
+
+  const getRegularOperationalMs = (activityId: string) => calculateRegularOperationalMs(
+    getActivitySessions(activityId),
+    db.company,
+    clockNow
+  );
+
+  const getActivityOvertimeMs = (activityId: string) => calculateOvertimeMs(
+    getActivityOvertimeEntries(activityId).map(entry => entry.authorizedHours)
+  );
+
+  const getAccountedOperationalMs = (activityId: string) => calculateAccountedOperationalMs(
+    getActivitySessions(activityId),
+    getActivityOvertimeEntries(activityId).map(entry => entry.authorizedHours),
+    db.company,
+    clockNow
+  );
 
   const formatSessionStartedAt = (startedAt: number) => isValidTimestamp(startedAt)
     ? new Date(startedAt).toLocaleString('pt-BR')
@@ -509,6 +547,109 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       alert('Não foi possível concluir esta atividade.');
     } finally {
       setActivityActionId(null);
+    }
+  };
+
+  const resetOvertimeForm = () => {
+    const today = new Date();
+    const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    setEditingOvertimeEntry(null);
+    setOvertimeDate(localDate);
+    setOvertimeHours('');
+    setOvertimeNotes('');
+  };
+
+  const openOvertimeModal = (activity: ProjectActivity) => {
+    setOvertimeActivity(activity);
+    resetOvertimeForm();
+    setShowOvertimeModal(true);
+  };
+
+  const editOvertimeEntry = (entry: ActivityOvertimeEntry) => {
+    setEditingOvertimeEntry(entry);
+    setOvertimeDate(entry.date);
+    setOvertimeHours(entry.authorizedHours.toString());
+    setOvertimeNotes(entry.notes || '');
+  };
+
+  const handleSaveOvertime = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!overtimeActivity || currentUser.role !== UserRole.ADMIN) return;
+
+    const hours = Number(overtimeHours.replace(',', '.'));
+    if (!overtimeDate || !Number.isFinite(hours) || hours <= 0) {
+      alert('Informe uma data e uma quantidade de horas maior que zero.');
+      return;
+    }
+
+    setIsSavingOvertime(true);
+    try {
+      if (editingOvertimeEntry) {
+        await updateActivityOvertimeEntry(
+          editingOvertimeEntry.id,
+          currentUser.id,
+          overtimeDate,
+          hours,
+          overtimeNotes
+        );
+        await logAction(
+          currentUser.workspaceId,
+          currentUser,
+          LogModule.PROJECTS,
+          LogAction.UPDATE,
+          `${currentUser.username} alterou uma hora extra de ${overtimeActivity.name} para ${hours}h em ${overtimeDate}`,
+          editingProject?.code
+        );
+      } else {
+        await createActivityOvertimeEntry(
+          overtimeActivity.id,
+          currentUser.id,
+          overtimeDate,
+          hours,
+          overtimeNotes
+        );
+        await logAction(
+          currentUser.workspaceId,
+          currentUser,
+          LogModule.PROJECTS,
+          LogAction.CREATE,
+          `${currentUser.username} adicionou ${hours}h extras à atividade ${overtimeActivity.name} em ${overtimeDate}`,
+          editingProject?.code
+        );
+      }
+
+      resetOvertimeForm();
+      await refreshActivityExecutionState();
+    } catch (err) {
+      console.error('Erro técnico ao salvar hora extra:', err);
+      alert('Não foi possível salvar a hora extra.');
+    } finally {
+      setIsSavingOvertime(false);
+    }
+  };
+
+  const handleDeleteOvertime = async (entry: ActivityOvertimeEntry) => {
+    if (!overtimeActivity || currentUser.role !== UserRole.ADMIN) return;
+    if (!confirm(`Remover o lançamento de ${entry.authorizedHours}h em ${formatDate(entry.date)}?`)) return;
+
+    setIsSavingOvertime(true);
+    try {
+      await deleteActivityOvertimeEntry(entry.id, currentUser.id);
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.DELETE,
+        `${currentUser.username} removeu ${entry.authorizedHours}h extras da atividade ${overtimeActivity.name} em ${entry.date}`,
+        editingProject?.code
+      );
+      resetOvertimeForm();
+      await refreshActivityExecutionState();
+    } catch (err) {
+      console.error('Erro técnico ao remover hora extra:', err);
+      alert('Não foi possível remover a hora extra.');
+    } finally {
+      setIsSavingOvertime(false);
     }
   };
 
@@ -1144,6 +1285,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                       const isClosed = activity.status === ProjectStatus.DONE || activity.status === ProjectStatus.CANCELED;
                       const isPaused = activity.status === ProjectStatus.PAUSED || execution?.status === ActivityExecutionStatus.PAUSED;
                       const isActionLoading = activityActionId === activity.id;
+                      const hasOperationalTime = activityExecutions.some(item => item.projectActivityId === activity.id)
+                        || overtimeEntries.some(entry => entry.projectActivityId === activity.id);
+                      const activityOvertimeMs = getActivityOvertimeMs(activity.id);
                       return (
                         <div key={activity.id} className="bg-slate-50 dark:bg-slate-900/80 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 transition-all group/task">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1184,6 +1328,9 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                                   {activity.estimatedDurationHours !== undefined && (
                                     <span>Estimado: <strong className="text-slate-700 dark:text-slate-300">{activity.estimatedDurationHours}h</strong></span>
                                   )}
+                                  {activityOvertimeMs !== null && activityOvertimeMs > 0 && (
+                                    <span>Horas extras: <strong className="text-slate-700 dark:text-slate-300">{formatElapsedTime(activityOvertimeMs)}</strong></span>
+                                  )}
                                   {(activity.startDate || activity.deliveryDate) && (
                                     <span>Prazo: <strong className="text-slate-700 dark:text-slate-300">{formatDate(activity.startDate)} até {formatDate(activity.deliveryDate)}</strong></span>
                                   )}
@@ -1199,20 +1346,33 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                                       <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                                     </span>
-                                    <span className="text-[9px] font-black uppercase tracking-widest">Em execução</span>
-                                    <span className="font-mono text-[11px] font-bold">{formatElapsedTime(getWorkedDurationMs(activeWorkContext.execution.id))}</span>
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Tempo contabilizado</span>
+                                    <span className="font-mono text-[11px] font-bold">{formatElapsedTime(getAccountedOperationalMs(activity.id))}</span>
                                   </div>
                                 )}
-                                {!isActiveForCurrentUser && execution && (isPaused || activity.status === ProjectStatus.DONE) && (
+                                {!isActiveForCurrentUser && hasOperationalTime && (
+                                  activity.status === ProjectStatus.IN_PROGRESS
+                                  || isPaused
+                                  || activity.status === ProjectStatus.DONE
+                                ) && (
                                   <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-200/60 dark:bg-slate-800/70 border border-slate-300/60 dark:border-slate-700 text-slate-600 dark:text-slate-300">
-                                    <span className="text-[9px] font-black uppercase tracking-widest">Tempo trabalhado</span>
-                                    <span className="font-mono text-[11px] font-bold">{formatElapsedTime(getWorkedDurationMs(execution.id))}</span>
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Tempo contabilizado</span>
+                                    <span className="font-mono text-[11px] font-bold">{formatElapsedTime(getAccountedOperationalMs(activity.id))}</span>
                                   </div>
                                 )}
                               </div>
                             </div>
 
                             <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                              {currentUser.role === UserRole.ADMIN && (
+                                <button
+                                  type="button"
+                                  onClick={() => openOvertimeModal(activity)}
+                                  className="px-3 py-1.5 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 text-[9px] font-black uppercase tracking-widest rounded-lg border border-cyan-500/20 hover:bg-cyan-500 hover:text-white transition"
+                                >
+                                  Horas extras
+                                </button>
+                              )}
                               {!isClosed && (
                                 <div className="flex items-center gap-2">
                                   {isActiveForCurrentUser ? (
@@ -1561,6 +1721,115 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
         </div>
       )}
 
+      {showOvertimeModal && overtimeActivity && currentUser.role === UserRole.ADMIN && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[135] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-white/5">
+            <div className="px-7 py-6 border-b border-slate-100 dark:border-white/5 flex items-center justify-between sticky top-0 bg-white dark:bg-[#0f172a] z-10">
+              <div>
+                <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm">Horas extras</h3>
+                <p className="text-xs text-slate-500 mt-1">{overtimeActivity.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOvertimeModal(false);
+                  setOvertimeActivity(null);
+                  resetOvertimeForm();
+                }}
+                className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 dark:bg-white/10 text-slate-500 hover:text-slate-900 dark:hover:text-white transition"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="p-7 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-100 dark:border-slate-800 p-4">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tempo regular</p>
+                  <p className="font-mono text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">{formatElapsedTime(getRegularOperationalMs(overtimeActivity.id))}</p>
+                </div>
+                <div className="rounded-xl bg-cyan-500/5 border border-cyan-500/20 p-4">
+                  <p className="text-[9px] font-black text-cyan-600 dark:text-cyan-400 uppercase tracking-widest">Horas extras</p>
+                  <p className="font-mono text-sm font-bold text-cyan-600 dark:text-cyan-400 mt-1">{formatElapsedTime(getActivityOvertimeMs(overtimeActivity.id))}</p>
+                </div>
+                <div className="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-4">
+                  <p className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Total contabilizado</p>
+                  <p className="font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatElapsedTime(getAccountedOperationalMs(overtimeActivity.id))}</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveOvertime} className="rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-100 dark:border-slate-800 p-5 space-y-4">
+                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                  {editingOvertimeEntry ? 'Editar lançamento' : 'Adicionar hora extra'}
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Data</label>
+                    <input
+                      type="date"
+                      required
+                      value={overtimeDate}
+                      onChange={event => setOvertimeDate(event.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Quantidade de horas</label>
+                    <input
+                      type="number"
+                      required
+                      min="0.01"
+                      step="0.01"
+                      placeholder="Ex: 2 ou 2,5"
+                      value={overtimeHours}
+                      onChange={event => setOvertimeHours(event.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Observação opcional</label>
+                  <textarea
+                    value={overtimeNotes}
+                    onChange={event => setOvertimeNotes(event.target.value)}
+                    placeholder="Ex: Entrega urgente"
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-cyan-500 min-h-[72px] resize-none"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  {editingOvertimeEntry && (
+                    <button type="button" onClick={resetOvertimeForm} className="flex-1 py-3 bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                      Cancelar edição
+                    </button>
+                  )}
+                  <button disabled={isSavingOvertime} type="submit" className="flex-1 py-3 bg-cyan-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-cyan-700 transition disabled:opacity-50">
+                    {isSavingOvertime ? 'Salvando...' : 'Salvar'}
+                  </button>
+                </div>
+              </form>
+
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Lançamentos</h4>
+                {getActivityOvertimeEntries(overtimeActivity.id).length === 0 ? (
+                  <p className="text-xs text-slate-400 py-4 text-center">Nenhuma hora extra cadastrada.</p>
+                ) : getActivityOvertimeEntries(overtimeActivity.id).map(entry => (
+                  <div key={entry.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+                    <div>
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{formatDate(entry.date)} · {formatElapsedTime(entry.authorizedHours * 60 * 60 * 1000)}</p>
+                      {entry.notes && <p className="text-xs text-slate-500 mt-1">{entry.notes}</p>}
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => editOvertimeEntry(entry)} disabled={isSavingOvertime} className="px-3 py-2 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest disabled:opacity-50">Editar</button>
+                      <button type="button" onClick={() => handleDeleteOvertime(entry)} disabled={isSavingOvertime} className="px-3 py-2 bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-lg text-[9px] font-black uppercase tracking-widest disabled:opacity-50">Excluir</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {pendingActivity && activeWorkContext && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-white/5">
@@ -1585,8 +1854,8 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1">{formatSessionStartedAt(activeWorkContext.session.startedAt)}</p>
                   </div>
                   <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tempo decorrido</p>
-                    <p className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatElapsedTime(getWorkedDurationMs(activeWorkContext.execution.id))}</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tempo contabilizado</p>
+                    <p className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatElapsedTime(getAccountedOperationalMs(activeWorkContext.activity.id))}</p>
                   </div>
                 </div>
               </div>
