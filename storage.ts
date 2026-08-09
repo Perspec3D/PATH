@@ -1,4 +1,4 @@
-import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, WorkSession } from './types';
+import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, WorkSession, ActivityTransitionResult, ActiveWorkSessionContext } from './types';
 import { supabase } from './lib/supabase';
 
 export interface AppDB {
@@ -521,7 +521,7 @@ const mapWorkSession = (session: any): WorkSession => ({
 
 export const fetchActivityExecutions = async (
   workspaceId: string,
-  filters: { projectActivityId?: string; internalUserId?: string } = {}
+  filters: { projectActivityId?: string; projectActivityIds?: string[]; internalUserId?: string } = {}
 ): Promise<ActivityExecution[]> => {
   let query = supabase.from('activity_executions')
     .select('id, workspace_id, project_activity_id, internal_user_id, status, started_at, completed_at, created_at, updated_at')
@@ -529,6 +529,9 @@ export const fetchActivityExecutions = async (
 
   if (filters.projectActivityId) {
     query = query.eq('project_activity_id', filters.projectActivityId);
+  }
+  if (filters.projectActivityIds && filters.projectActivityIds.length > 0) {
+    query = query.in('project_activity_id', filters.projectActivityIds);
   }
   if (filters.internalUserId) {
     query = query.eq('internal_user_id', filters.internalUserId);
@@ -615,4 +618,113 @@ export const deleteWorkSession = async (sessionId: string) => {
     .delete()
     .eq('id', sessionId);
   if (error) throw error;
+};
+
+const mapActivityTransition = (transition: any): ActivityTransitionResult => ({
+  activityExecutionId: transition.activity_execution_id,
+  workSessionId: transition.work_session_id || undefined,
+  transitionAction: transition.transition_action || undefined,
+  transitionedAt: new Date(transition.transitioned_at).getTime(),
+  previousProjectActivityId: transition.previous_project_activity_id || undefined
+});
+
+const firstRpcRow = (data: any): any => Array.isArray(data) ? data[0] : data;
+
+export const startOrResumeActivity = async (
+  projectActivityId: string,
+  internalUserId: string,
+  pauseCurrent = false
+): Promise<ActivityTransitionResult> => {
+  const { data, error } = await supabase.rpc('start_or_resume_activity', {
+    p_project_activity_id: projectActivityId,
+    p_internal_user_id: internalUserId,
+    p_pause_current: pauseCurrent
+  });
+
+  if (error) throw error;
+  const transition = firstRpcRow(data);
+  if (!transition) throw new Error('ACTIVITY_TRANSITION_WITHOUT_RESULT');
+  return mapActivityTransition(transition);
+};
+
+export const pauseActivityExecution = async (
+  activityExecutionId: string,
+  internalUserId: string
+): Promise<ActivityTransitionResult> => {
+  const { data, error } = await supabase.rpc('pause_activity_execution', {
+    p_activity_execution_id: activityExecutionId,
+    p_internal_user_id: internalUserId
+  });
+
+  if (error) throw error;
+  const transition = firstRpcRow(data);
+  if (!transition) throw new Error('ACTIVITY_TRANSITION_WITHOUT_RESULT');
+  return mapActivityTransition(transition);
+};
+
+export const completeActivityExecution = async (
+  activityExecutionId: string,
+  internalUserId: string
+): Promise<ActivityTransitionResult> => {
+  const { data, error } = await supabase.rpc('complete_activity_execution', {
+    p_activity_execution_id: activityExecutionId,
+    p_internal_user_id: internalUserId
+  });
+
+  if (error) throw error;
+  const transition = firstRpcRow(data);
+  if (!transition) throw new Error('ACTIVITY_TRANSITION_WITHOUT_RESULT');
+  return mapActivityTransition(transition);
+};
+
+export const fetchActiveWorkSessionContext = async (
+  workspaceId: string,
+  internalUserId: string
+): Promise<ActiveWorkSessionContext | null> => {
+  const session = await fetchActiveWorkSession(workspaceId, internalUserId);
+  if (!session) return null;
+
+  const { data: executionData, error: executionError } = await supabase.from('activity_executions')
+    .select('id, workspace_id, project_activity_id, internal_user_id, status, started_at, completed_at, created_at, updated_at')
+    .eq('id', session.activityExecutionId)
+    .eq('workspace_id', workspaceId)
+    .maybeSingle();
+
+  if (executionError) throw executionError;
+  if (!executionData) throw new Error('ACTIVE_EXECUTION_NOT_FOUND');
+  const execution = mapActivityExecution(executionData);
+
+  const { data: activity, error: activityError } = await supabase.from('project_activities')
+    .select('id, project_id, name, status')
+    .eq('id', execution.projectActivityId)
+    .eq('workspace_id', workspaceId)
+    .maybeSingle();
+
+  if (activityError) throw activityError;
+  if (!activity) throw new Error('ACTIVE_PROJECT_ACTIVITY_NOT_FOUND');
+
+  const { data: project, error: projectError } = await supabase.from('projects')
+    .select('id, code, name')
+    .eq('id', activity.project_id)
+    .eq('workspace_id', workspaceId)
+    .maybeSingle();
+
+  if (projectError) throw projectError;
+  if (!project) throw new Error('ACTIVE_PROJECT_NOT_FOUND');
+
+  return {
+    session,
+    execution,
+    activity: {
+      id: activity.id,
+      projectId: activity.project_id,
+      name: activity.name,
+      status: activity.status
+    },
+    project: {
+      id: project.id,
+      code: project.code,
+      name: project.name
+    }
+  };
 };

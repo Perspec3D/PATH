@@ -203,7 +203,7 @@ export interface ProjectActivity {
   activityTypeId?: string;
   name: string;
   assigneeId?: string;
-  status: string;
+  status: ProjectStatus;
   startDate?: string;
   deliveryDate?: string;
   notes?: string;
@@ -246,4 +246,30 @@ export interface WorkSession {
   endedAt?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export type ActivityTransitionAction = 'STARTED' | 'RESUMED' | 'ALREADY_RUNNING';
+
+export interface ActivityTransitionResult {
+  activityExecutionId: string;
+  workSessionId?: string;
+  transitionAction?: ActivityTransitionAction;
+  transitionedAt: number;
+  previousProjectActivityId?: string;
+}
+
+export interface ActiveWorkSessionContext {
+  session: WorkSession;
+  execution: ActivityExecution;
+  activity: {
+    id: string;
+    projectId: string;
+    name: string;
+    status: ProjectStatus;
+  };
+  project: {
+    id: string;
+    code: string;
+    name: string;
+  };
 }

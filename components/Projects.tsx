@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction, ActivityType, ProjectActivity } from '../types';
-import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue } from '../storage';
+import { Project, ProjectStatus, Client, InternalUser, ProjectSubTask, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext } from '../types';
+import { getNextGlobalProjectSeq, syncProject, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 
 interface ProjectsProps {
@@ -37,13 +37,18 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
 
   // Project Activities States
   const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
+  const [activityExecutions, setActivityExecutions] = useState<ActivityExecution[]>([]);
+  const [activeWorkContext, setActiveWorkContext] = useState<ActiveWorkSessionContext | null>(null);
+  const [pendingActivity, setPendingActivity] = useState<ProjectActivity | null>(null);
+  const [activityActionId, setActivityActionId] = useState<string | null>(null);
+  const [clockNow, setClockNow] = useState(Date.now());
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
   const [activeActivityTypes, setActiveActivityTypes] = useState<ActivityType[]>([]);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [editingActivity, setEditingActivity] = useState<ProjectActivity | null>(null);
   const [actTypeId, setActTypeId] = useState('');
   const [actAssigneeId, setActAssigneeId] = useState('');
-  const [actStatus, setActStatus] = useState('Fila de Espera');
+  const [actStatus, setActStatus] = useState<ProjectStatus>(ProjectStatus.QUEUE);
   const [actEstimatedDuration, setActEstimatedDuration] = useState('');
   const [actStartDate, setActStartDate] = useState('');
   const [actDeliveryDate, setActDeliveryDate] = useState('');
@@ -64,6 +69,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     setCustomCode('');
     setSubtasks([]);
     setProjectActivities([]);
+    setActivityExecutions([]);
     setUsePrefix(false);
     setCodePrefix('');
     setEditingProject(null);
@@ -132,13 +138,48 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
     loadActiveTypes();
   }, [currentUser.workspaceId]);
 
+  const loadActiveWorkContext = async () => {
+    try {
+      const context = await fetchActiveWorkSessionContext(currentUser.workspaceId, currentUser.id);
+      setActiveWorkContext(context);
+      return context;
+    } catch (err) {
+      console.error('Erro ao restaurar sessão de trabalho ativa:', err);
+      setActiveWorkContext(null);
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    loadActiveWorkContext();
+  }, [currentUser.id, currentUser.workspaceId]);
+
+  useEffect(() => {
+    if (!activeWorkContext) return;
+    setClockNow(Date.now());
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [activeWorkContext?.session.id]);
+
   const loadProjectActivities = async (projectId: string) => {
     setIsLoadingActivities(true);
     try {
       const data = await fetchProjectActivities(currentUser.workspaceId, projectId);
-      setProjectActivities(data.sort((a, b) => a.orderIndex - b.orderIndex));
+      const sortedActivities = data.sort((a, b) => a.orderIndex - b.orderIndex);
+      setProjectActivities(sortedActivities);
+
+      if (sortedActivities.length > 0) {
+        const executions = await fetchActivityExecutions(currentUser.workspaceId, {
+          projectActivityIds: sortedActivities.map(activity => activity.id),
+          internalUserId: currentUser.id
+        });
+        setActivityExecutions(executions);
+      } else {
+        setActivityExecutions([]);
+      }
     } catch (err) {
       console.error("Erro ao carregar atividades do projeto:", err);
+      setActivityExecutions([]);
     } finally {
       setIsLoadingActivities(false);
     }
@@ -147,7 +188,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   const resetActForm = () => {
     setActTypeId('');
     setActAssigneeId('');
-    setActStatus('Fila de Espera');
+    setActStatus(ProjectStatus.QUEUE);
     setActEstimatedDuration('');
     setActStartDate('');
     setActDeliveryDate('');
@@ -196,6 +237,7 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       notes: actNotes || undefined,
       estimatedDurationHours: duration,
       orderIndex: orderIdx,
+      deadlineChangesCount: editingActivity?.deadlineChangesCount || 0,
       createdAt: editingActivity?.createdAt || Date.now(),
       updatedAt: Date.now()
     };
@@ -205,21 +247,21 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       if (actDeliveryDate && editingActivity.deliveryDate && actDeliveryDate !== editingActivity.deliveryDate) {
         activityData.deadlineChangesCount = (editingActivity.deadlineChangesCount || 0) + 1;
       }
-      if (editingActivity.status !== 'Concluída' && actStatus === 'Concluída') {
+      if (editingActivity.status !== ProjectStatus.DONE && actStatus === ProjectStatus.DONE) {
         activityData.actualEndDate = new Date().toISOString().split('T')[0];
         activityData.conclusionResponsibleId = currentUser.id;
         activityData.deadlineAtConclusion = actDeliveryDate || undefined;
       }
-      if (editingActivity.status === 'Fila de Espera' && actStatus !== 'Fila de Espera') {
+      if (editingActivity.status === ProjectStatus.QUEUE && actStatus !== ProjectStatus.QUEUE) {
         activityData.actualStartDate = new Date().toISOString().split('T')[0];
       }
     } else {
       activityData.deadlineChangesCount = 0;
-      if (actStatus === 'Concluída') {
+      if (actStatus === ProjectStatus.DONE) {
         activityData.actualEndDate = new Date().toISOString().split('T')[0];
         activityData.conclusionResponsibleId = currentUser.id;
         activityData.deadlineAtConclusion = actDeliveryDate || undefined;
-      } else if (actStatus !== 'Fila de Espera') {
+      } else if (actStatus !== ProjectStatus.QUEUE) {
         activityData.actualStartDate = new Date().toISOString().split('T')[0];
       }
     }
@@ -295,6 +337,146 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
       }
     } catch (err: any) {
       alert("Erro ao reordenar atividades: " + err.message);
+    }
+  };
+
+  const formatElapsedTime = (startedAt: number) => {
+    const elapsedSeconds = Math.max(0, Math.floor((clockNow - startedAt) / 1000));
+    const hours = Math.floor(elapsedSeconds / 3600);
+    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+    const seconds = elapsedSeconds % 60;
+    return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
+  };
+
+  const getOpenExecution = (activityId: string) => activityExecutions.find(execution =>
+    execution.projectActivityId === activityId &&
+    execution.internalUserId === currentUser.id &&
+    ![ActivityExecutionStatus.COMPLETED, ActivityExecutionStatus.CANCELED].includes(execution.status)
+  );
+
+  const validateActivityAssignee = (activity: ProjectActivity) => {
+    if (activity.assigneeId === currentUser.id) return true;
+    const assignee = db.users.find(user => user.id === activity.assigneeId);
+    if (assignee) {
+      alert(`Esta atividade está atribuída a ${assignee.username}.`);
+    } else {
+      alert('Esta atividade ainda não possui um responsável definido.');
+    }
+    return false;
+  };
+
+  const refreshActivityExecutionState = async () => {
+    await loadActiveWorkContext();
+    if (editingProject) {
+      await loadProjectActivities(editingProject.id);
+    }
+  };
+
+  const handleStartOrResumeActivity = async (activity: ProjectActivity, pauseCurrent = false) => {
+    if (!validateActivityAssignee(activity)) return;
+
+    if (activeWorkContext && activeWorkContext.activity.id !== activity.id && !pauseCurrent) {
+      setPendingActivity(activity);
+      return;
+    }
+
+    setActivityActionId(activity.id);
+    try {
+      const transition = await startOrResumeActivity(activity.id, currentUser.id, pauseCurrent);
+      const resumed = transition.transitionAction === 'RESUMED';
+      const actionLabel = resumed ? 'retomou' : 'iniciou';
+
+      if (pauseCurrent && activeWorkContext) {
+        await logAction(
+          currentUser.workspaceId,
+          currentUser,
+          LogModule.PROJECTS,
+          LogAction.STATUS_CHANGE,
+          `${currentUser.username} trocou da atividade ${activeWorkContext.activity.name} (${activeWorkContext.project.code}) para ${activity.name} (${editingProject?.code || 'projeto'})`,
+          editingProject?.code
+        );
+      }
+
+      if (transition.transitionAction !== 'ALREADY_RUNNING') {
+        await logAction(
+          currentUser.workspaceId,
+          currentUser,
+          LogModule.PROJECTS,
+          LogAction.STATUS_CHANGE,
+          `${currentUser.username} ${actionLabel} a atividade ${activity.name} no projeto ${editingProject?.code || ''}`,
+          editingProject?.code
+        );
+      }
+
+      setPendingActivity(null);
+      await refreshActivityExecutionState();
+    } catch (err: any) {
+      console.error('Erro técnico ao iniciar ou retomar atividade:', err);
+      const technicalMessage = `${err?.message || ''} ${err?.details || ''}`;
+      if (technicalMessage.includes('ACTIVE_SESSION_EXISTS')) {
+        await loadActiveWorkContext();
+        setPendingActivity(activity);
+      } else if (technicalMessage.includes('ACTIVITY_NOT_ASSIGNED_TO_USER')) {
+        alert('Esta atividade não está mais atribuída ao usuário interno ativo.');
+      } else {
+        alert('Não foi possível iniciar a atividade.');
+      }
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
+  const handlePauseActivity = async (activity: ProjectActivity, execution?: ActivityExecution) => {
+    if (!validateActivityAssignee(activity)) return;
+    if (!execution) {
+      alert('Não foi possível localizar a execução ativa desta atividade.');
+      return;
+    }
+
+    setActivityActionId(activity.id);
+    try {
+      await pauseActivityExecution(execution.id, currentUser.id);
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} pausou a atividade ${activity.name} no projeto ${editingProject?.code || ''}`,
+        editingProject?.code
+      );
+      await refreshActivityExecutionState();
+    } catch (err) {
+      console.error('Erro técnico ao pausar atividade:', err);
+      alert('Não foi possível pausar esta atividade.');
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
+  const handleCompleteActivity = async (activity: ProjectActivity, execution?: ActivityExecution) => {
+    if (!validateActivityAssignee(activity)) return;
+    if (!execution) {
+      alert('Não foi possível localizar a execução desta atividade.');
+      return;
+    }
+
+    setActivityActionId(activity.id);
+    try {
+      await completeActivityExecution(execution.id, currentUser.id);
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} concluiu a atividade ${activity.name} no projeto ${editingProject?.code || ''}`,
+        editingProject?.code
+      );
+      await refreshActivityExecutionState();
+    } catch (err) {
+      console.error('Erro técnico ao concluir atividade:', err);
+      alert('Não foi possível concluir esta atividade.');
+    } finally {
+      setActivityActionId(null);
     }
   };
 
@@ -923,6 +1105,11 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                     {projectActivities.map((activity, index) => {
                       const assignee = db.users.find(u => u.id === activity.assigneeId);
                       const actType = activeActivityTypes.find(t => t.id === activity.activityTypeId);
+                      const isActiveForCurrentUser = activeWorkContext?.activity.id === activity.id && activeWorkContext.execution.internalUserId === currentUser.id;
+                      const execution = getOpenExecution(activity.id) || (isActiveForCurrentUser ? activeWorkContext.execution : undefined);
+                      const isClosed = activity.status === ProjectStatus.DONE || activity.status === ProjectStatus.CANCELED;
+                      const isPaused = activity.status === ProjectStatus.PAUSED || execution?.status === ActivityExecutionStatus.PAUSED;
+                      const isActionLoading = activityActionId === activity.id;
                       return (
                         <div key={activity.id} className="bg-slate-50 dark:bg-slate-900/80 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 transition-all group/task">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -972,15 +1159,71 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                                     Obs: {activity.notes}
                                   </p>
                                 )}
+                                {isActiveForCurrentUser && activeWorkContext && (
+                                  <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                                    <span className="relative flex h-2 w-2">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                                    </span>
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Em execução</span>
+                                    <span className="font-mono text-[11px] font-bold">{formatElapsedTime(activeWorkContext.session.startedAt)}</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-end space-x-3 shrink-0">
+                            <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                              {!isClosed && (
+                                <div className="flex items-center gap-2">
+                                  {isActiveForCurrentUser ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePauseActivity(activity, execution)}
+                                        disabled={isActionLoading}
+                                        className="px-3 py-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-black uppercase tracking-widest rounded-lg border border-amber-500/20 hover:bg-amber-500 hover:text-white transition disabled:opacity-50"
+                                      >
+                                        Pausar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCompleteActivity(activity, execution)}
+                                        disabled={isActionLoading}
+                                        className="px-3 py-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest rounded-lg border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition disabled:opacity-50"
+                                      >
+                                        Concluir
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartOrResumeActivity(activity)}
+                                        disabled={isActionLoading}
+                                        className="px-3 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg shadow-indigo-500/15 hover:bg-indigo-700 transition disabled:opacity-50"
+                                      >
+                                        {isActionLoading ? 'Aguarde...' : (isPaused || execution ? 'Retomar' : 'Iniciar')}
+                                      </button>
+                                      {isPaused && execution && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCompleteActivity(activity, execution)}
+                                          disabled={isActionLoading}
+                                          className="px-3 py-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest rounded-lg border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition disabled:opacity-50"
+                                        >
+                                          Concluir
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              )}
+
                               <span className={`inline-block px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
-                                activity.status === 'Concluída' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
-                                activity.status === 'Em Andamento' ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
-                                activity.status === 'Pausada' ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
-                                activity.status === 'Cancelada' ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' :
+                                activity.status === ProjectStatus.DONE ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                                activity.status === ProjectStatus.IN_PROGRESS ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
+                                activity.status === ProjectStatus.PAUSED ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
+                                activity.status === ProjectStatus.CANCELED ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' :
                                 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
                               }`}>
                                 {activity.status}
@@ -1217,14 +1460,12 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                   <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Status</label>
                   <select
                     value={actStatus}
-                    onChange={(e) => setActStatus(e.target.value)}
+                    onChange={(e) => setActStatus(e.target.value as ProjectStatus)}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
                   >
-                    <option value="Fila de Espera">Fila de Espera</option>
-                    <option value="Em Andamento">Em Andamento</option>
-                    <option value="Pausada">Pausada</option>
-                    <option value="Concluída">Concluída</option>
-                    <option value="Cancelada">Cancelada</option>
+                    {Object.values(ProjectStatus).map(activityStatus => (
+                      <option key={activityStatus} value={activityStatus}>{activityStatus}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1276,6 +1517,63 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {pendingActivity && activeWorkContext && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-white/5">
+            <div className="px-7 py-6 border-b border-slate-100 dark:border-white/5">
+              <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm">
+                Você já possui uma atividade em execução.
+              </h3>
+            </div>
+            <div className="p-7 space-y-5">
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-100 dark:border-slate-800 p-5 space-y-3">
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Projeto</p>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white mt-1">{activeWorkContext.project.code} — {activeWorkContext.project.name}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Atividade</p>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white mt-1">{activeWorkContext.activity.name}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Início</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1">{new Date(activeWorkContext.session.startedAt).toLocaleString('pt-BR')}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tempo decorrido</p>
+                    <p className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatElapsedTime(activeWorkContext.session.startedAt)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Para iniciar <strong className="text-slate-800 dark:text-slate-200">{pendingActivity.name}</strong>, a atividade atual será pausada no mesmo instante.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPendingActivity(null)}
+                  disabled={activityActionId === pendingActivity.id}
+                  className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:text-slate-700 dark:hover:text-white transition disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStartOrResumeActivity(pendingActivity, true)}
+                  disabled={activityActionId === pendingActivity.id}
+                  className="flex-[1.7] py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition disabled:opacity-50"
+                >
+                  {activityActionId === pendingActivity.id ? 'Aguarde...' : 'Pausar atual e iniciar esta'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
