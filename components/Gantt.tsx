@@ -1,20 +1,30 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskType, ProjectActivity } from '../types';
-import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivities } from '../storage';
+import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskType, ProjectActivity, ActivityExecution, ActivityOvertimeEntry, WorkSession, ActiveWorkSessionContext, ActivityType, LogModule, LogAction } from '../types';
+import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivities, fetchActivityExecutions, fetchActivityOvertimeEntries, fetchWorkSessions, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, logAction, fetchActivityTypes } from '../storage';
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 import { HoverTooltipPortal } from './InfoTooltip';
 import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, isValidDateRange } from '../utils/projectDateIntegrity';
 import { isCurrentProjectRevision } from '../utils/projectRevision';
+import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs } from '../utils/operationalTime';
 
 interface GanttProps {
   db: AppDB;
   setDb: (db: AppDB) => void;
   currentUser: InternalUser;
   theme: 'dark' | 'light';
+  onOpenProject?: (project: Project) => void;
+  onEditActivity?: (project: Project, activity: ProjectActivity) => void;
 }
 
-export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) => {
+export const Gantt: React.FC<GanttProps> = ({
+  db,
+  setDb,
+  currentUser,
+  theme,
+  onOpenProject,
+  onEditActivity
+}) => {
   const allProjects = db.projects || [];
   const allClients = db.clients || [];
   const allUsers = db.users || [];
@@ -52,6 +62,292 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
   const [deliveryDate, setDeliveryDate] = useState('');
 
   const [editingTeamTask, setEditingTeamTask] = useState<TeamTask | null>(null);
+  
+  // States for ActivityQuickViewModal
+  const [selectedQuickViewActivity, setSelectedQuickViewActivity] = useState<any | null>(null);
+  const [activityExecutions, setActivityExecutions] = useState<ActivityExecution[]>([]);
+  const [overtimeEntries, setOvertimeEntries] = useState<ActivityOvertimeEntry[]>([]);
+  const [workSessions, setWorkSessions] = useState<WorkSession[]>([]);
+  const [activeWorkContext, setActiveWorkContext] = useState<ActiveWorkSessionContext | null>(null);
+  const [pendingActivity, setPendingActivity] = useState<ProjectActivity | null>(null);
+  const [activityActionId, setActivityActionId] = useState<string | null>(null);
+  const [clockNow, setClockNow] = useState(Date.now());
+  const [isLoadingQuickViewData, setIsLoadingQuickViewData] = useState(false);
+  const [activeActivityTypes, setActiveActivityTypes] = useState<ActivityType[]>([]);
+
+  // Helpers for operational time
+  const formatElapsedTime = (durationMs: number | null) => {
+    if (durationMs === null || !Number.isFinite(durationMs) || durationMs < 0) {
+      return 'Tempo indisponível';
+    }
+    const elapsedSeconds = Math.floor(durationMs / 1000);
+    const hours = Math.floor(elapsedSeconds / 3600);
+    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+    const seconds = elapsedSeconds % 60;
+    return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
+  };
+
+  const formatDate = (dateStr: string | undefined) => {
+    if (!dateStr) return '---';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  };
+
+  const formatDecimalHours = (hours: number): string => {
+    const isNegative = hours < 0;
+    const absHours = Math.abs(hours);
+    const h = Math.floor(absHours);
+    const m = Math.round((absHours - h) * 60);
+    const formatted = m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+    return isNegative ? `-${formatted}` : formatted;
+  };
+
+  const getActivitySessions = (activityId: string): WorkSession[] => {
+    const executionIds = new Set(activityExecutions
+      .filter(execution => execution.projectActivityId === activityId)
+      .map(execution => execution.id));
+    const sessions = workSessions.filter(session => executionIds.has(session.activityExecutionId));
+
+    if (activeWorkContext?.activity.id !== activityId) return sessions;
+    const knownIds = new Set(sessions.map(session => session.id));
+    return [...sessions, ...activeWorkContext.sessions.filter(session => !knownIds.has(session.id))];
+  };
+
+  const getActivityOvertimeEntries = (activityId: string): ActivityOvertimeEntry[] => {
+    const entries = overtimeEntries.filter(entry => entry.projectActivityId === activityId);
+    if (activeWorkContext?.activity.id !== activityId) return entries;
+    const knownIds = new Set(entries.map(entry => entry.id));
+    return [...entries, ...activeWorkContext.overtimeEntries.filter(entry => !knownIds.has(entry.id))];
+  };
+
+  const getRegularOperationalMs = (activityId: string) => calculateRegularOperationalMs(
+    getActivitySessions(activityId),
+    db.company,
+    clockNow
+  ) || 0;
+
+  const getActivityOvertimeMs = (activityId: string) => calculateOvertimeMs(
+    getActivityOvertimeEntries(activityId).map(entry => entry.authorizedHours)
+  ) || 0;
+
+  const getAccountedOperationalMs = (activityId: string) => calculateAccountedOperationalMs(
+    getActivitySessions(activityId),
+    getActivityOvertimeEntries(activityId).map(entry => entry.authorizedHours),
+    db.company,
+    clockNow
+  ) || 0;
+
+  const getOpenExecution = (activityId: string) => activityExecutions.find(execution =>
+    execution.projectActivityId === activityId &&
+    execution.internalUserId === currentUser.id &&
+    execution.status !== 'COMPLETED' && execution.status !== 'CANCELED'
+  );
+
+  const validateActivityAssignee = (activity: ProjectActivity) => {
+    if (activity.assigneeId === currentUser.id) return true;
+    const assignee = db.users.find(user => user.id === activity.assigneeId);
+    if (assignee) {
+      alert(`Esta atividade está atribuída a ${assignee.username}.`);
+    } else {
+      alert('Esta atividade ainda não possui um responsável definido.');
+    }
+    return false;
+  };
+
+  // Load active activity types on mount
+  useEffect(() => {
+    const loadActiveTypes = async () => {
+      try {
+        const types = await fetchActivityTypes(currentUser.workspaceId);
+        setActiveActivityTypes(types.filter(t => t.isActive));
+      } catch (err) {
+        console.error('Erro ao carregar tipos de atividade:', err);
+      }
+    };
+    loadActiveTypes();
+  }, [currentUser.workspaceId]);
+
+  // Load quick view details for activity
+  const loadQuickViewData = async (activityId: string) => {
+    setIsLoadingQuickViewData(true);
+    try {
+      const [executions, entries, context] = await Promise.all([
+        fetchActivityExecutions(currentUser.workspaceId, { projectActivityIds: [activityId] }),
+        fetchActivityOvertimeEntries(currentUser.workspaceId, { projectActivityIds: [activityId] }),
+        fetchActiveWorkSessionContext(currentUser.workspaceId, currentUser.id)
+      ]);
+      setActivityExecutions(executions);
+      setOvertimeEntries(entries);
+      setActiveWorkContext(context);
+      
+      const sessions = executions.length > 0
+        ? await fetchWorkSessions(currentUser.workspaceId, {
+            activityExecutionIds: executions.map(execution => execution.id)
+          })
+        : [];
+      setWorkSessions(sessions);
+    } catch (err) {
+      console.error("Erro ao carregar detalhes operacionais da atividade:", err);
+      setActivityExecutions([]);
+      setOvertimeEntries([]);
+      setWorkSessions([]);
+    } finally {
+      setIsLoadingQuickViewData(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedQuickViewActivity) {
+      loadQuickViewData(selectedQuickViewActivity.id);
+    } else {
+      setActivityExecutions([]);
+      setOvertimeEntries([]);
+      setWorkSessions([]);
+    }
+  }, [selectedQuickViewActivity?.id]);
+
+  const hasRunningOperationalSession = Boolean(activeWorkContext?.session.startedAt);
+  useEffect(() => {
+    if (!hasRunningOperationalSession) return;
+    setClockNow(Date.now());
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [activeWorkContext?.session.id, hasRunningOperationalSession]);
+
+  const refreshActivityExecutionState = async (activityId: string) => {
+    const context = await fetchActiveWorkSessionContext(currentUser.workspaceId, currentUser.id);
+    setActiveWorkContext(context);
+    await loadQuickViewData(activityId);
+    loadProjectActivitiesConsolidated();
+  };
+
+  const handleStartOrResumeActivity = async (activity: ProjectActivity, pauseCurrent = false) => {
+    const parentProject = allProjects.find(p => p.id === activity.projectId);
+    const isHistorical = parentProject ? !isCurrentProjectRevision(parentProject) : false;
+    if (isHistorical) {
+      alert('Não é possível iniciar atividades em uma revisão histórica.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+
+    if (activeWorkContext && activeWorkContext.activity.id !== activity.id && !pauseCurrent) {
+      setPendingActivity(activity);
+      return;
+    }
+
+    setActivityActionId(activity.id);
+    try {
+      const transition = await startOrResumeActivity(activity.id, currentUser.id, pauseCurrent);
+      const resumed = transition.transitionAction === 'RESUMED';
+      const actionLabel = resumed ? 'retomou' : 'iniciou';
+
+      if (pauseCurrent && activeWorkContext) {
+        await logAction(
+          currentUser.workspaceId,
+          currentUser,
+          LogModule.PROJECTS,
+          LogAction.STATUS_CHANGE,
+          `${currentUser.username} trocou da atividade ${activeWorkContext.activity.name} (${activeWorkContext.project.code}) para ${activity.name} (${parentProject?.code || 'projeto'})`,
+          parentProject?.code
+        );
+      }
+
+      if (transition.transitionAction !== 'ALREADY_RUNNING') {
+        await logAction(
+          currentUser.workspaceId,
+          currentUser,
+          LogModule.PROJECTS,
+          LogAction.STATUS_CHANGE,
+          `${currentUser.username} ${actionLabel} a atividade ${activity.name} no projeto ${parentProject?.code || ''}`,
+          parentProject?.code
+        );
+      }
+
+      setPendingActivity(null);
+      await refreshActivityExecutionState(activity.id);
+    } catch (err: any) {
+      console.error('Erro técnico ao iniciar ou retomar atividade:', err);
+      const technicalMessage = `${err?.message || ''} ${err?.details || ''}`;
+      if (technicalMessage.includes('ACTIVE_SESSION_EXISTS')) {
+        const context = await fetchActiveWorkSessionContext(currentUser.workspaceId, currentUser.id);
+        setActiveWorkContext(context);
+        setPendingActivity(activity);
+      } else if (technicalMessage.includes('ACTIVITY_NOT_ASSIGNED_TO_USER')) {
+        alert('Esta atividade não está mais atribuída ao usuário interno ativo.');
+      } else {
+        alert('Não foi possível iniciar a atividade.');
+      }
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
+  const handlePauseActivity = async (activity: ProjectActivity, execution?: ActivityExecution) => {
+    const parentProject = allProjects.find(p => p.id === activity.projectId);
+    const isHistorical = parentProject ? !isCurrentProjectRevision(parentProject) : false;
+    if (isHistorical) return;
+    if (!validateActivityAssignee(activity)) return;
+    if (!execution) {
+      alert('Não foi possível localizar a execução ativa desta atividade.');
+      return;
+    }
+
+    setActivityActionId(activity.id);
+    try {
+      await pauseActivityExecution(execution.id, currentUser.id);
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} pausou a atividade ${activity.name} no projeto ${parentProject?.code || ''}`,
+        parentProject?.code
+      );
+      await refreshActivityExecutionState(activity.id);
+    } catch (err) {
+      console.error('Erro técnico ao pausar atividade:', err);
+      alert('Não foi possível pausar esta atividade.');
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
+  const handleCompleteActivity = async (activity: ProjectActivity, execution?: ActivityExecution) => {
+    const parentProject = allProjects.find(p => p.id === activity.projectId);
+    const isHistorical = parentProject ? !isCurrentProjectRevision(parentProject) : false;
+    if (isHistorical) return;
+    if (!validateActivityAssignee(activity)) return;
+    if (!execution) {
+      alert('Não foi possível localizar a execução desta atividade.');
+      return;
+    }
+
+    setActivityActionId(activity.id);
+    try {
+      await completeActivityExecution(execution.id, currentUser.id);
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} concluiu a atividade ${activity.name} no projeto ${parentProject?.code || ''}`,
+        parentProject?.code
+      );
+      await refreshActivityExecutionState(activity.id);
+    } catch (err) {
+      console.error('Erro técnico ao concluir atividade:', err);
+      alert('Não foi possível concluir esta atividade.');
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
+  const formatSessionStartedAt = (startedAt: number) => {
+    if (!startedAt || !Number.isFinite(startedAt) || startedAt <= 0) return 'Horário indisponível';
+    return new Date(startedAt).toLocaleString('pt-BR');
+  };
+
   const [taskTitle, setTaskTitle] = useState('');
   const [taskType, setTaskType] = useState<TaskType>(TaskType.REUNIAO);
   const [taskAssigneeId, setTaskAssigneeId] = useState('');
@@ -821,7 +1117,7 @@ export const Gantt: React.FC<GanttProps> = ({ db, setDb, currentUser, theme }) =
                               className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 hover:z-50 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
                               onClick={() => {
                                 if (task.type === 'project') openEdit(task);
-                                else if (task.type === 'projectActivity' && task.parentProject) openEdit(task.parentProject);
+                                else if (task.type === 'projectActivity' && task.parentProject) setSelectedQuickViewActivity(task);
                                 else if (task.type === 'teamTask') openEditTeamTask(task);
                               }}
                             >
@@ -1129,7 +1425,271 @@ const UserCargaModal: React.FC<{
         <div className="px-8 py-6 bg-slate-100/50 dark:bg-slate-950/40 border-t border-slate-100 dark:border-white/5 text-center transition-colors">
           <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-[0.2em] transition-colors">Painel de Controle de Carga Operacional</p>
         </div>
-      </div>
+      {/* ActivityQuickViewModal */}
+      {selectedQuickViewActivity && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-white/5 transition-colors">
+            {/* Header */}
+            <div className="px-7 py-5 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
+              <div>
+                <p className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">
+                  Atividade do Projeto
+                </p>
+                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                  {selectedQuickViewActivity.parentProject.code} — {selectedQuickViewActivity.parentProject.name}
+                  <span className="ml-2 text-xs font-medium text-slate-400">({selectedQuickViewActivity.parentProject.revision})</span>
+                </h4>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setSelectedQuickViewActivity(null)} 
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="p-7 space-y-6">
+              {/* Banner Revisão Histórica */}
+              {selectedQuickViewActivity && !isCurrentProjectRevision(selectedQuickViewActivity.parentProject) && (
+                <div className="bg-slate-100 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider text-center border border-slate-250 dark:border-slate-700/50">
+                  ⚠️ Revisão Histórica (Somente Consulta)
+                </div>
+              )}
+
+              {/* Atividade Info */}
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                  {selectedQuickViewActivity.name}
+                </h3>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(selectedQuickViewActivity.status)} text-white`}>
+                    {selectedQuickViewActivity.status}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Categoria: {activeActivityTypes.find(t => t.id === selectedQuickViewActivity.activityTypeId)?.category || 'Geral'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Bloco de Planejamento */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-white/5 p-5 rounded-2xl text-xs transition-colors">
+                <div>
+                  <p className="text-[9px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Responsável</p>
+                  <p className="font-bold text-slate-800 dark:text-slate-250">
+                    {db.users.find(u => u.id === selectedQuickViewActivity.assigneeId)?.username || 'Não atribuído'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Estimado</p>
+                  <p className="font-bold text-slate-800 dark:text-slate-250">
+                    {selectedQuickViewActivity.estimatedDurationHours !== undefined && selectedQuickViewActivity.estimatedDurationHours > 0 
+                      ? `${selectedQuickViewActivity.estimatedDurationHours}h` 
+                      : 'Sem estimativa'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Período Planejado</p>
+                  <p className="font-bold text-slate-800 dark:text-slate-250">
+                    {formatDate(selectedQuickViewActivity.startDate)} até {formatDate(selectedQuickViewActivity.deliveryDate)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Bloco Operacional */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-white/5 p-4 rounded-2xl text-center">
+                    <p className="text-[8px] font-black text-slate-455 dark:text-slate-500 uppercase tracking-widest mb-1">Tempo Contabilizado</p>
+                    <p className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-1">
+                      {formatElapsedTime(getAccountedOperationalMs(selectedQuickViewActivity.id))}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-white/5 p-4 rounded-2xl text-center">
+                    <p className="text-[8px] font-black text-slate-455 dark:text-slate-500 uppercase tracking-widest mb-1">Horas Extras</p>
+                    <p className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-1">
+                      {formatElapsedTime(getActivityOvertimeMs(selectedQuickViewActivity.id))}
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-white/5 p-4 rounded-2xl text-center">
+                    <p className="text-[8px] font-black text-slate-455 dark:text-slate-500 uppercase tracking-widest mb-1">Saldo Estimado</p>
+                    <p className={`text-xs font-mono font-bold mt-1 ${
+                      selectedQuickViewActivity.estimatedDurationHours !== undefined && selectedQuickViewActivity.estimatedDurationHours > 0
+                        ? (selectedQuickViewActivity.estimatedDurationHours - getAccountedOperationalMs(selectedQuickViewActivity.id) / (1000 * 60 * 60) < 0
+                          ? 'text-rose-600 dark:text-rose-400'
+                          : 'text-emerald-600 dark:text-emerald-400')
+                        : 'text-slate-400 dark:text-slate-500'
+                    }`}>
+                      {selectedQuickViewActivity.estimatedDurationHours !== undefined && selectedQuickViewActivity.estimatedDurationHours > 0
+                        ? formatDecimalHours(selectedQuickViewActivity.estimatedDurationHours - getAccountedOperationalMs(selectedQuickViewActivity.id) / (1000 * 60 * 60))
+                        : 'Sem estimativa'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sessão Ativa */}
+                {activeWorkContext && activeWorkContext.activity.id === selectedQuickViewActivity.id && (
+                  <div className="flex items-center justify-between px-5 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                      </span>
+                      <span className="font-bold uppercase tracking-wider text-[10px]">Atividade em Execução</span>
+                    </div>
+                    <span className="font-medium text-[10px]">
+                      Desde: {formatSessionStartedAt(activeWorkContext.session.startedAt)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="px-7 py-5 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-white/5 flex flex-wrap items-center gap-3">
+              {/* Botoes Operacionais */}
+              {isCurrentProjectRevision(selectedQuickViewActivity.parentProject) && selectedQuickViewActivity.status !== ProjectStatus.DONE && selectedQuickViewActivity.status !== ProjectStatus.CANCELED && (
+                <div className="flex gap-2">
+                  {activeWorkContext && activeWorkContext.activity.id === selectedQuickViewActivity.id ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handlePauseActivity(selectedQuickViewActivity, getOpenExecution(selectedQuickViewActivity.id))}
+                        disabled={activityActionId === selectedQuickViewActivity.id}
+                        className="px-4 py-2.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-xl border border-amber-500/20 hover:bg-amber-500 hover:text-white transition disabled:opacity-50"
+                      >
+                        Pausar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCompleteActivity(selectedQuickViewActivity, getOpenExecution(selectedQuickViewActivity.id))}
+                        disabled={activityActionId === selectedQuickViewActivity.id}
+                        className="px-4 py-2.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-600/15 transition disabled:opacity-50"
+                      >
+                        Concluir
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleStartOrResumeActivity(selectedQuickViewActivity)}
+                        disabled={activityActionId === selectedQuickViewActivity.id}
+                        className="px-4 py-2.5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/15 transition disabled:opacity-50"
+                      >
+                        {selectedQuickViewActivity.status === ProjectStatus.PAUSED ? 'Retomar' : 'Iniciar'}
+                      </button>
+                      {(selectedQuickViewActivity.status === ProjectStatus.IN_PROGRESS || selectedQuickViewActivity.status === ProjectStatus.PAUSED) && (
+                        <button
+                          type="button"
+                          onClick={() => handleCompleteActivity(selectedQuickViewActivity, getOpenExecution(selectedQuickViewActivity.id))}
+                          disabled={activityActionId === selectedQuickViewActivity.id}
+                          className="px-4 py-2.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-600/15 transition disabled:opacity-50"
+                        >
+                          Concluir
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              <div className="flex-1" />
+
+              {isCurrentProjectRevision(selectedQuickViewActivity.parentProject) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onEditActivity?.(selectedQuickViewActivity.parentProject, selectedQuickViewActivity);
+                    setSelectedQuickViewActivity(null);
+                  }}
+                  className="px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                >
+                  Editar Atividade
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenProject?.(selectedQuickViewActivity.parentProject);
+                  setSelectedQuickViewActivity(null);
+                }}
+                className="px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+              >
+                Abrir Projeto
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedQuickViewActivity(null)}
+                className="px-3.5 py-2.5 bg-slate-200 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-slate-300 dark:hover:bg-slate-600 transition"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Session Conflict Modal */}
+      {pendingActivity && activeWorkContext && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-white/5 transition-colors">
+            <div className="px-7 py-6 border-b border-slate-100 dark:border-white/5">
+              <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm">
+                Você já possui uma atividade em execução.
+              </h3>
+            </div>
+            <div className="p-7 space-y-5">
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/70 border border-slate-100 dark:border-slate-800 p-5 space-y-3">
+                <div>
+                  <p className="text-[9px] font-black text-slate-450 uppercase tracking-widest">Projeto</p>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white mt-1">{activeWorkContext.project.code} — {activeWorkContext.project.name}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-black text-slate-450 uppercase tracking-widest">Atividade</p>
+                  <p className="text-sm font-bold text-slate-900 dark:text-white mt-1">{activeWorkContext.activity.name}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-[9px] font-black text-slate-450 uppercase tracking-widest">Início</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1">{formatSessionStartedAt(activeWorkContext.session.startedAt)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-black text-slate-450 uppercase tracking-widest">Tempo contabilizado</p>
+                    <p className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatElapsedTime(getAccountedOperationalMs(activeWorkContext.activity.id))}</p>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Para iniciar <strong className="text-slate-800 dark:text-slate-200">{pendingActivity.name}</strong>, a atividade atual será pausada no mesmo instante.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPendingActivity(null)}
+                  disabled={activityActionId === pendingActivity.id}
+                  className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest hover:text-slate-700 dark:hover:text-white transition disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStartOrResumeActivity(pendingActivity, true)}
+                  disabled={activityActionId === pendingActivity.id}
+                  className="flex-[1.7] py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition disabled:opacity-50"
+                >
+                  {activityActionId === pendingActivity.id ? 'Aguarde...' : 'Pausar atual e iniciar esta'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  </div>
+);
 };

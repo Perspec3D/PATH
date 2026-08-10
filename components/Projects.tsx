@@ -13,9 +13,22 @@ interface ProjectsProps {
   setDb: (db: AppDB) => void;
   currentUser: InternalUser;
   theme: 'dark' | 'light';
+  initialEditingProject?: Project | null;
+  clearInitialEditingProject?: () => void;
+  initialEditingActivity?: ProjectActivity | null;
+  clearInitialEditingActivity?: () => void;
 }
 
-export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, theme }) => {
+export const Projects: React.FC<ProjectsProps> = ({
+  db,
+  setDb,
+  currentUser,
+  theme,
+  initialEditingProject,
+  clearInitialEditingProject,
+  initialEditingActivity,
+  clearInitialEditingActivity
+}) => {
   const [showModal, setShowModal] = useState(false);
   const [showImageZoom, setShowImageZoom] = useState<string | null>(null);
   const [viewingClient, setViewingClient] = useState<Client | null>(null);
@@ -358,6 +371,28 @@ export const Projects: React.FC<ProjectsProps> = ({ db, setDb, currentUser, them
   useEffect(() => {
     loadActiveWorkContext();
   }, [currentUser.id, currentUser.workspaceId]);
+
+  useEffect(() => {
+    if (initialEditingProject) {
+      openEdit(initialEditingProject);
+      clearInitialEditingProject?.();
+    }
+  }, [initialEditingProject]);
+
+  useEffect(() => {
+    if (initialEditingActivity) {
+      setEditingActivity(initialEditingActivity);
+      setActTypeId(initialEditingActivity.activityTypeId || '');
+      setActAssigneeId(initialEditingActivity.assigneeId || '');
+      setActStatus(initialEditingActivity.status);
+      setActEstimatedDuration(initialEditingActivity.estimatedDurationHours !== undefined ? initialEditingActivity.estimatedDurationHours.toString() : '');
+      setActStartDate(initialEditingActivity.startDate || '');
+      setActDeliveryDate(initialEditingActivity.deliveryDate || '');
+      setActNotes(initialEditingActivity.notes || '');
+      setShowActivityModal(true);
+      clearInitialEditingActivity?.();
+    }
+  }, [initialEditingActivity]);
 
   useEffect(() => {
     if (!hasRunningOperationalSession) return;

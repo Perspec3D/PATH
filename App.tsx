@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Company, InternalUser, LicenseStatus, UserRole, LogModule, LogAction, TeamTask } from './types';
+import { Company, InternalUser, LicenseStatus, UserRole, LogModule, LogAction, TeamTask, Project, ProjectActivity } from './types';
 import { AppDB, fetchAllData, syncUser, logAction, syncTeamTask } from './storage';
 import { supabase } from './lib/supabase';
 import { Layout } from './components/Layout';
@@ -29,6 +28,8 @@ const App: React.FC = () => {
   const [companySession, setCompanySession] = useState<Company | null>(null);
   const [userSession, setUserSession] = useState<InternalUser | null>(null);
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [initialEditingProject, setInitialEditingProject] = useState<Project | null>(null);
+  const [initialEditingActivity, setInitialEditingActivity] = useState<ProjectActivity | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentAlert, setCurrentAlert] = useState<TeamTask | null>(null);
   const notifiedTasksRef = useRef<Record<string, boolean>>({});
@@ -749,9 +750,36 @@ const App: React.FC = () => {
       >
         {currentPage === 'dashboard' && <Dashboard db={db} theme={theme} />}
         {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
-        {currentPage === 'projects' && <Projects db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+        {currentPage === 'projects' && (
+          <Projects
+            db={db}
+            setDb={setDb}
+            currentUser={userSession}
+            theme={theme}
+            initialEditingProject={initialEditingProject}
+            clearInitialEditingProject={() => setInitialEditingProject(null)}
+            initialEditingActivity={initialEditingActivity}
+            clearInitialEditingActivity={() => setInitialEditingActivity(null)}
+          />
+        )}
         {currentPage === 'tasks' && <Tasks db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
-        {currentPage === 'timeline' && <Gantt db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+        {currentPage === 'timeline' && (
+          <Gantt
+            db={db}
+            setDb={setDb}
+            currentUser={userSession}
+            theme={theme}
+            onOpenProject={(project) => {
+              setInitialEditingProject(project);
+              setCurrentPage('projects');
+            }}
+            onEditActivity={(project, activity) => {
+              setInitialEditingProject(project);
+              setInitialEditingActivity(activity);
+              setCurrentPage('projects');
+            }}
+          />
+        )}
         {currentPage === 'team' && userSession.role === UserRole.ADMIN && <Team db={db} theme={theme} />}
         {currentPage === 'reports' && userSession.role === UserRole.ADMIN && <Reports db={db} theme={theme} />}
         {currentPage === 'settings' && userSession.role === UserRole.ADMIN && (
