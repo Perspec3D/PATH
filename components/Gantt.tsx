@@ -1334,97 +1334,7 @@ export const Gantt: React.FC<GanttProps> = ({
           getProjectMarkerColor={getProjectMarkerColor}
         />
       )}
-    </div >
-  );
-};
 
-// --- MODAL DE RESUMO DE CARGA ---
-const UserCargaModal: React.FC<{
-  data: { user: InternalUser, assignments: any[], distinctCount: number },
-  onClose: () => void,
-  getStatusColor: (s: ProjectStatus) => string,
-  getProjectMarkerColor: (id?: string) => string
-}> = ({ data, onClose, getStatusColor, getProjectMarkerColor }) => {
-  // Agrupar tarefas por projeto pai
-  const groupedTasks = data.assignments.reduce((acc: any, task: any) => {
-    const parentId = task.type === 'project' ? task.id : task.type === 'projectActivity' ? (task.parentProject?.id || 'unknown') : 'activities';
-    if (!acc[parentId]) {
-      acc[parentId] = {
-        project: task.type === 'project' ? task : task.type === 'projectActivity' ? (task.parentProject || { id: 'unknown', name: 'Projeto não encontrado', code: 'PROJETO', status: 'UNKNOWN' }) : { id: 'activities', name: 'Tarefas / Bloqueios Avulsos', code: 'ATIVIDADES', status: 'ACTIVITY' },
-        tasks: []
-      };
-    }
-    acc[parentId].tasks.push(task);
-    return acc;
-  }, {});
-
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-300 transition-colors">
-        {/* Header Modal */}
-        <div className="px-8 py-8 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-gradient-to-r from-emerald-500/5 to-transparent transition-colors">
-          <div className="flex items-center space-x-5">
-            <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-black text-2xl uppercase shadow-inner">
-              {data.user.username.charAt(0)}
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter transition-colors">{data.user.username}</h2>
-              <div className="flex items-center space-x-3 mt-1">
-                <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em]">{data.assignments.length} Tarefa(s) Totais</p>
-                <span className="w-1 h-1 rounded-full bg-slate-700" />
-                <p className="text-[10px] text-emerald-600 dark:text-emerald-500 font-black uppercase tracking-[0.2em] transition-colors">{data.distinctCount} Projetos</p>
-              </div>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 transition-all">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-8 max-h-[60vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-          <div className="space-y-8">
-            {Object.values(groupedTasks).map((group: any) => (
-              <div key={group.project.id} className="bg-slate-50 dark:bg-slate-800/20 border border-slate-100 dark:border-white/5 rounded-3xl p-6 hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors group">
-                <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100 dark:border-white/5">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-3 h-3 rounded-full shadow-sm ${getProjectMarkerColor(group.project.id)}`} />
-                    <div>
-                      <h4 className="text-sm font-black text-slate-900 dark:text-white group-hover:text-emerald-500 dark:group-hover:text-emerald-400 transition-colors uppercase">{group.project.name}</h4>
-                      <p className="text-[10px] text-indigo-600/60 dark:text-indigo-400/60 font-mono font-bold mt-0.5 transition-colors">{group.project.code}</p>
-                    </div>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(group.project.status)} text-white`}>
-                    {group.project.status}
-                  </span>
-                </div>
-
-                <div className="space-y-3">
-                  {group.tasks.map((t: any) => (
-                    <div key={t.id} className="flex items-center justify-between pl-6 relative">
-                      <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 transition-colors" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate transition-colors">{t.name}</p>
-                        <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium uppercase mt-0.5 tracking-tighter transition-colors">
-                          {t.startDate ? new Date(t.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'S/ data'} → {t.deliveryDate ? new Date(t.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'S/ data'}
-                        </p>
-                      </div>
-                      <span className={`px-2 py-0.5 rounded-lg text-[7px] font-black uppercase tracking-widest ${getStatusColor(t.status)} text-white/90`}>
-                        {t.status}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-8 py-6 bg-slate-100/50 dark:bg-slate-950/40 border-t border-slate-100 dark:border-white/5 text-center transition-colors">
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-[0.2em] transition-colors">Painel de Controle de Carga Operacional</p>
-        </div>
       {/* ActivityQuickViewModal */}
       {selectedQuickViewActivity && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[140] flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -1648,16 +1558,16 @@ const UserCargaModal: React.FC<{
                   <p className="text-sm font-bold text-slate-900 dark:text-white mt-1">{activeWorkContext.project.code} — {activeWorkContext.project.name}</p>
                 </div>
                 <div>
-                  <p className="text-[9px] font-black text-slate-450 uppercase tracking-widest">Atividade</p>
+                  <p className="text-[9px] font-black text-slate-455 uppercase tracking-widest">Atividade</p>
                   <p className="text-sm font-bold text-slate-900 dark:text-white mt-1">{activeWorkContext.activity.name}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-[9px] font-black text-slate-450 uppercase tracking-widest">Início</p>
+                    <p className="text-[9px] font-black text-slate-455 uppercase tracking-widest">Início</p>
                     <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1">{formatSessionStartedAt(activeWorkContext.session.startedAt)}</p>
                   </div>
                   <div>
-                    <p className="text-[9px] font-black text-slate-450 uppercase tracking-widest">Tempo contabilizado</p>
+                    <p className="text-[9px] font-black text-slate-455 uppercase tracking-widest">Tempo contabilizado</p>
                     <p className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1">{formatElapsedTime(getAccountedOperationalMs(activeWorkContext.activity.id))}</p>
                   </div>
                 </div>
@@ -1689,7 +1599,98 @@ const UserCargaModal: React.FC<{
           </div>
         </div>
       )}
+    </div >
+  );
+};
+
+// --- MODAL DE RESUMO DE CARGA ---
+const UserCargaModal: React.FC<{
+  data: { user: InternalUser, assignments: any[], distinctCount: number },
+  onClose: () => void,
+  getStatusColor: (s: ProjectStatus) => string,
+  getProjectMarkerColor: (id?: string) => string
+}> = ({ data, onClose, getStatusColor, getProjectMarkerColor }) => {
+  // Agrupar tarefas por projeto pai
+  const groupedTasks = data.assignments.reduce((acc: any, task: any) => {
+    const parentId = task.type === 'project' ? task.id : task.type === 'projectActivity' ? (task.parentProject?.id || 'unknown') : 'activities';
+    if (!acc[parentId]) {
+      acc[parentId] = {
+        project: task.type === 'project' ? task : task.type === 'projectActivity' ? (task.parentProject || { id: 'unknown', name: 'Projeto não encontrado', code: 'PROJETO', status: 'UNKNOWN' }) : { id: 'activities', name: 'Tarefas / Bloqueios Avulsos', code: 'ATIVIDADES', status: 'ACTIVITY' },
+        tasks: []
+      };
+    }
+    acc[parentId].tasks.push(task);
+    return acc;
+  }, {});
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={onClose} />
+      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-[40px] shadow-2xl overflow-hidden animate-in zoom-in duration-300 transition-colors">
+        {/* Header Modal */}
+        <div className="px-8 py-8 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-gradient-to-r from-emerald-500/5 to-transparent transition-colors">
+          <div className="flex items-center space-x-5">
+            <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-black text-2xl uppercase shadow-inner">
+              {data.user.username.charAt(0)}
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter transition-colors">{data.user.username}</h2>
+              <div className="flex items-center space-x-3 mt-1">
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em]">{data.assignments.length} Tarefa(s) Totais</p>
+                <span className="w-1 h-1 rounded-full bg-slate-700" />
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-500 font-black uppercase tracking-[0.2em] transition-colors">{data.distinctCount} Projetos</p>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:bg-rose-500/20 hover:text-rose-400 transition-all">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-8 max-h-[60vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+          <div className="space-y-8">
+            {Object.values(groupedTasks).map((group: any) => (
+              <div key={group.project.id} className="bg-slate-50 dark:bg-slate-800/20 border border-slate-100 dark:border-white/5 rounded-3xl p-6 hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors group">
+                <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100 dark:border-white/5">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-3 h-3 rounded-full shadow-sm ${getProjectMarkerColor(group.project.id)}`} />
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 dark:text-white group-hover:text-emerald-500 dark:group-hover:text-emerald-400 transition-colors uppercase">{group.project.name}</h4>
+                      <p className="text-[10px] text-indigo-600/60 dark:text-indigo-400/60 font-mono font-bold mt-0.5 transition-colors">{group.project.code}</p>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(group.project.status)} text-white`}>
+                    {group.project.status}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {group.tasks.map((t: any) => (
+                    <div key={t.id} className="flex items-center justify-between pl-6 relative">
+                      <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 transition-colors" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate transition-colors">{t.name}</p>
+                        <p className="text-[9px] text-slate-400 dark:text-slate-500 font-medium uppercase mt-0.5 tracking-tighter transition-colors">
+                          {t.startDate ? new Date(t.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'S/ data'} → {t.deliveryDate ? new Date(t.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR') : 'S/ data'}
+                        </p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-lg text-[7px] font-black uppercase tracking-widest ${getStatusColor(t.status)} text-white/90`}>
+                        {t.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-8 py-6 bg-slate-100/50 dark:bg-slate-950/40 border-t border-slate-100 dark:border-white/5 text-center transition-colors">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-[0.2em] transition-colors">Painel de Controle de Carga Operacional</p>
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
 };
