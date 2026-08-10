@@ -6,8 +6,8 @@ import type {
   ProjectActivity,
   WorkSession
 } from '../types';
-import { ProjectStatus } from '../types';
-import { calculateOvertimeMs, calculateRegularOperationalMs } from './operationalTime';
+import { ProjectStatus, ActivityExecutionStatus } from '../types';
+import { calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from './operationalTime';
 import { isProjectActivityCompleted } from './projectActivityStatus';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -36,6 +36,10 @@ export interface ActivityOperationalMetric {
   plannedDeadline?: string;
   actualStartDate?: string;
   actualEndDate?: string;
+  pauseCount: number;
+  pauseTotalMs: number;
+  pauseAverageMs: number;
+  currentPauseMs: number;
 }
 
 export interface ProfessionalOperationalMetrics {
@@ -156,6 +160,10 @@ export const buildActivityOperationalMetrics = ({
         : null;
       const deviationMs = estimatedMs !== null && totalAccountedMs !== null ? totalAccountedMs - estimatedMs : null;
 
+      const activityExecutions = executions.filter(exec => exec.projectActivityId === activity.id);
+      const isPaused = activity.status === ProjectStatus.PAUSED || activityExecutions.some(exec => exec.status === ActivityExecutionStatus.PAUSED);
+      const pauseMetrics = calculatePauseMetrics(activitySessions, company, nowMs, isPaused);
+
       return {
         activityId: activity.id,
         activityName: activity.name,
@@ -173,7 +181,11 @@ export const buildActivityOperationalMetrics = ({
         plannedStartDate: activity.startDate,
         plannedDeadline: activity.deliveryDate,
         actualStartDate: activity.actualStartDate,
-        actualEndDate: activity.actualEndDate ?? (completedAtMs !== null ? new Date(completedAtMs).toISOString() : undefined)
+        actualEndDate: activity.actualEndDate ?? (completedAtMs !== null ? new Date(completedAtMs).toISOString() : undefined),
+        pauseCount: pauseMetrics.count,
+        pauseTotalMs: pauseMetrics.totalMs,
+        pauseAverageMs: pauseMetrics.averageMs,
+        currentPauseMs: pauseMetrics.currentPauseMs
       };
     });
 };

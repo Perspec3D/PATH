@@ -3,7 +3,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry } from '../types';
 import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
-import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs } from '../utils/operationalTime';
+import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
 import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, getProjectPeriodLabel, isActivityWithinProjectPeriod, isValidDateRange } from '../utils/projectDateIntegrity';
 import { getProjectFamilyId, getProjectRevisionNumber, isCurrentProjectRevision } from '../utils/projectRevision';
@@ -644,6 +644,23 @@ export const Projects: React.FC<ProjectsProps> = ({
     const minutes = Math.floor((elapsedSeconds % 3600) / 60);
     const seconds = elapsedSeconds % 60;
     return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
+  };
+
+  const formatPauseDuration = (ms: number): string => {
+    const totalMinutes = Math.round(ms / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}h${minutes.toString().padStart(2, '0')}`;
+  };
+
+  const formatPauseAverage = (ms: number): string => {
+    const totalMinutes = Math.round(ms / 60000);
+    if (totalMinutes < 60) {
+      return `${totalMinutes} min`;
+    }
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}h${minutes.toString().padStart(2, '0')}`;
   };
 
   const getActivitySessions = (activityId: string): WorkSession[] => {
@@ -1840,6 +1857,31 @@ export const Projects: React.FC<ProjectsProps> = ({
                                     <span className="text-[9px] font-black uppercase tracking-widest">Tempo contabilizado</span>
                                     <span className="whitespace-nowrap font-mono text-[11px] font-bold">{formatElapsedTime(getAccountedOperationalMs(activity.id))}</span>
                                   </div>
+                                )}
+                                {(activity.status === ProjectStatus.IN_PROGRESS || isPaused || activity.status === ProjectStatus.DONE || hasOperationalTime) && (
+                                  (() => {
+                                    const pauseMetrics = calculatePauseMetrics(getActivitySessions(activity.id), db.company, clockNow, isPaused);
+                                    return (
+                                      <div className="mt-3 flex flex-wrap gap-2 text-[10px] items-center">
+                                        <div className="px-3 py-1.5 rounded-lg bg-slate-200/40 dark:bg-slate-800/50 border border-slate-300/40 dark:border-slate-700 text-slate-600 dark:text-slate-400 inline-flex flex-wrap items-center gap-x-3 gap-y-1 font-medium">
+                                          <span className="font-black uppercase tracking-widest text-[8px] border-b sm:border-b-0 sm:border-r border-slate-300 dark:border-slate-700 pb-1 sm:pb-0 sm:pr-3">Pausas</span>
+                                          <span>Quantidade: <strong className="text-slate-800 dark:text-slate-200">{pauseMetrics.count}</strong></span>
+                                          <span>Tempo em pausa: <strong className="text-slate-800 dark:text-slate-200">{formatPauseDuration(pauseMetrics.totalMs)}</strong></span>
+                                          <span>Média: <strong className="text-slate-800 dark:text-slate-200">{formatPauseAverage(pauseMetrics.averageMs)}</strong></span>
+                                        </div>
+                                        {isPaused && pauseMetrics.currentPauseMs > 0 && (
+                                          <div className="px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 font-bold uppercase tracking-wider inline-flex items-center gap-1.5">
+                                            <span className="relative flex h-1.5 w-1.5">
+                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
+                                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-purple-500" />
+                                            </span>
+                                            <span>Pausa Atual: </span>
+                                            <span className="font-mono text-[11px] font-bold">{formatPauseDuration(pauseMetrics.currentPauseMs)}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()
                                 )}
                               </div>
                             </div>

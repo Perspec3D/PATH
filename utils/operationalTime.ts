@@ -108,3 +108,92 @@ export const calculateAccountedOperationalMs = (
   const overtimeMs = calculateOvertimeMs(authorizedHours);
   return regularMs === null || overtimeMs === null ? null : regularMs + overtimeMs;
 };
+
+export interface PauseMetrics {
+  count: number;
+  totalMs: number;
+  averageMs: number;
+  currentPauseMs: number;
+}
+
+export const calculatePauseMetrics = (
+  sessions: WorkSession[],
+  company: Company | undefined,
+  nowMs: number,
+  isPaused: boolean
+): PauseMetrics => {
+  const validSessions = sessions.filter(s => Number.isFinite(s.startedAt) && s.startedAt > 0);
+  if (validSessions.length === 0) {
+    return { count: 0, totalMs: 0, averageMs: 0, currentPauseMs: 0 };
+  }
+
+  // Group by activityExecutionId
+  const groups: { [executionId: string]: WorkSession[] } = {};
+  for (const session of validSessions) {
+    if (!groups[session.activityExecutionId]) {
+      groups[session.activityExecutionId] = [];
+    }
+    groups[session.activityExecutionId].push(session);
+  }
+
+  let count = 0;
+  let totalMs = 0;
+
+  for (const execId of Object.keys(groups)) {
+    const execSessions = [...groups[execId]].sort((a, b) => a.startedAt - b.startedAt);
+    for (let i = 0; i < execSessions.length - 1; i++) {
+      const current = execSessions[i];
+      const next = execSessions[i + 1];
+      if (
+        current.endedAt !== undefined && current.endedAt !== null && Number.isFinite(current.endedAt) && current.endedAt > 0 &&
+        next.startedAt !== undefined && next.startedAt !== null && Number.isFinite(next.startedAt) && next.startedAt > 0 &&
+        next.startedAt > current.endedAt
+      ) {
+        const pauseStart = current.endedAt;
+        const pauseEnd = next.startedAt;
+        const duration = calculateRegularOperationalMs(
+          [{ startedAt: pauseStart, endedAt: pauseEnd } as WorkSession],
+          company,
+          nowMs
+        );
+        if (duration !== null && duration > 0) {
+          totalMs += duration;
+        }
+        count++;
+      }
+    }
+  }
+
+  const averageMs = count > 0 ? Math.round(totalMs / count) : 0;
+
+  let currentPauseMs = 0;
+  if (isPaused) {
+    const endedSessions = validSessions.filter(
+      s => s.endedAt !== undefined && s.endedAt !== null && Number.isFinite(s.endedAt) && s.endedAt > 0
+    );
+    if (endedSessions.length > 0) {
+      const latestSession = endedSessions.reduce((latest, curr) => {
+        return curr.endedAt! > latest.endedAt! ? curr : latest;
+      }, endedSessions[0]);
+
+      if (latestSession.endedAt && nowMs > latestSession.endedAt) {
+        const duration = calculateRegularOperationalMs(
+          [{ startedAt: latestSession.endedAt, endedAt: nowMs } as WorkSession],
+          company,
+          nowMs
+        );
+        if (duration !== null && duration > 0) {
+          currentPauseMs = duration;
+        }
+      }
+    }
+  }
+
+  return {
+    count,
+    totalMs,
+    averageMs,
+    currentPauseMs
+  };
+};
+
