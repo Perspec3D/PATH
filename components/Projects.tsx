@@ -2098,7 +2098,7 @@ export const Projects: React.FC<ProjectsProps> = ({
       {/* Activity Modal */}
       {showActivityModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[120] flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-[#0f172a] rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-white/5 transition-all duration-500">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[32px] shadow-2xl w-full max-w-md max-h-[calc(100vh-40px)] md:max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-white/5 transition-all duration-500">
             <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/30 flex justify-between items-center transition-colors">
               <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-widest text-sm transition-colors">
                 {editingActivity ? 'Editar Atividade' : 'Adicionar Atividade'}
@@ -2107,181 +2107,183 @@ export const Projects: React.FC<ProjectsProps> = ({
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <form onSubmit={handleSaveProjectActivity} className="p-8 space-y-5">
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Tipo de Atividade *</label>
-                <select
-                  required
-                  value={actTypeId}
-                  onChange={(e) => setActTypeId(e.target.value)}
-                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
-                >
-                  <option value="">Selecione o tipo de atividade...</option>
-                  {activeActivityTypes.map(t => (
-                    <option key={t.id} value={t.id}>{t.name} {t.category ? `(${t.category})` : ''}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Responsável</label>
-                <select
-                  value={actAssigneeId}
-                  onChange={(e) => setActAssigneeId(e.target.value)}
-                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
-                >
-                  <option value="">Não atribuído</option>
-                  {db.users.filter(u => u.isActive).map(u => (
-                    <option key={u.id} value={u.id}>{u.username} ({u.role})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={handleSaveProjectActivity} className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-8 space-y-5">
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Duração Prevista (Horas)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="Ex: 2.5"
-                    value={actEstimatedDuration}
-                    onChange={(e) => setActEstimatedDuration(e.target.value)}
-                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Status</label>
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Tipo de Atividade *</label>
                   <select
-                    value={actStatus}
-                    onChange={(e) => setActStatus(e.target.value as ProjectStatus)}
+                    required
+                    value={actTypeId}
+                    onChange={(e) => setActTypeId(e.target.value)}
                     className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
                   >
-                    {Object.values(ProjectStatus).map(activityStatus => (
-                      <option key={activityStatus} value={activityStatus}>{activityStatus}</option>
+                    <option value="">Selecione o tipo de atividade...</option>
+                    {activeActivityTypes.map(t => (
+                      <option key={t.id} value={t.id}>{t.name} {t.category ? `(${t.category})` : ''}</option>
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Início Planejado</label>
-                  <input
-                    type="date"
-                    required
-                    value={actStartDate}
-                    min={editingProject?.startDate}
-                    max={editingProject?.deliveryDate}
-                    onInvalid={(e) => e.currentTarget.setCustomValidity(`Esta atividade deve estar dentro do período do projeto. ${editingProject ? getProjectPeriodLabel(editingProject) : ''}`)}
-                    onInput={(e) => e.currentTarget.setCustomValidity('')}
-                    onChange={(e) => setActStartDate(e.target.value)}
-                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
-                  />
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Responsável</label>
+                  <select
+                    value={actAssigneeId}
+                    onChange={(e) => setActAssigneeId(e.target.value)}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                  >
+                    <option value="">Não atribuído</option>
+                    {db.users.filter(u => u.isActive).map(u => (
+                      <option key={u.id} value={u.id}>{u.username} ({u.role})</option>
+                    ))}
+                  </select>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Conclusão Planejada</label>
-                  <input
-                    type="date"
-                    required
-                    value={actDeliveryDate}
-                    min={editingProject?.startDate}
-                    max={editingProject?.deliveryDate}
-                    onInvalid={(e) => e.currentTarget.setCustomValidity(`Esta atividade deve estar dentro do período do projeto. ${editingProject ? getProjectPeriodLabel(editingProject) : ''}`)}
-                    onInput={(e) => e.currentTarget.setCustomValidity('')}
-                    onChange={(e) => setActDeliveryDate(e.target.value)}
-                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
-                  />
-                </div>
-              </div>
 
-              {editingProject && (
-                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 px-1">
-                  {getProjectPeriodLabel(editingProject)}
-                </p>
-              )}
-
-              {/* BLOCO COMPACTO DE ANÁLISE DE CAPACIDADE */}
-              {actStartDate && actDeliveryDate && (
-                <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/50 dark:border-white/5 p-4 rounded-2xl space-y-3 transition-colors text-xs">
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                      <span className="block text-[8px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Capacidade Janela</span>
-                      <span className="text-xs font-black text-slate-800 dark:text-slate-100">
-                        {formatDecimalHours(capacityAnalysis.windowCapacity)}
-                      </span>
-                    </div>
-                    <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                      <span className="block text-[8px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Estimativa</span>
-                      <span className="text-xs font-black text-slate-800 dark:text-slate-100">
-                        {formatDecimalHours(capacityAnalysis.estimate)}
-                      </span>
-                    </div>
-                    <div className={`p-2 rounded-xl border ${
-                      capacityAnalysis.isOverallocated 
-                        ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' 
-                        : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
-                    }`}>
-                      <span className="block text-[8px] font-black uppercase tracking-widest mb-1 opacity-70">
-                        {capacityAnalysis.isOverallocated ? 'Déficit' : 'Margem'}
-                      </span>
-                      <span className="text-xs font-black">
-                        {formatDecimalHours(Math.abs(capacityAnalysis.balance))}
-                      </span>
-                    </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Duração Prevista (Horas)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Ex: 2.5"
+                      value={actEstimatedDuration}
+                      onChange={(e) => setActEstimatedDuration(e.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                    />
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Status</label>
+                    <select
+                      value={actStatus}
+                      onChange={(e) => setActStatus(e.target.value as ProjectStatus)}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                    >
+                      {Object.values(ProjectStatus).map(activityStatus => (
+                        <option key={activityStatus} value={activityStatus}>{activityStatus}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-                  {/* Alerta de excede capacidade regular (Erro) */}
-                  {capacityAnalysis.isOverallocated && (
-                    <div className="bg-rose-500/10 text-rose-500 border border-rose-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
-                      <span className="mt-0.5">⚠️</span>
-                      <div>
-                        <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Erro de Planejamento</p>
-                        <p>Esta atividade exige mais horas do que o período planejado comporta. Amplie o período ou revise a duração estimada.</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Início Planejado</label>
+                    <input
+                      type="date"
+                      required
+                      value={actStartDate}
+                      min={editingProject?.startDate}
+                      max={editingProject?.deliveryDate}
+                      onInvalid={(e) => e.currentTarget.setCustomValidity(`Esta atividade deve estar dentro do período do projeto. ${editingProject ? getProjectPeriodLabel(editingProject) : ''}`)}
+                      onInput={(e) => e.currentTarget.setCustomValidity('')}
+                      onChange={(e) => setActStartDate(e.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Conclusão Planejada</label>
+                    <input
+                      type="date"
+                      required
+                      value={actDeliveryDate}
+                      min={editingProject?.startDate}
+                      max={editingProject?.deliveryDate}
+                      onInvalid={(e) => e.currentTarget.setCustomValidity(`Esta atividade deve estar dentro do período do projeto. ${editingProject ? getProjectPeriodLabel(editingProject) : ''}`)}
+                      onInput={(e) => e.currentTarget.setCustomValidity('')}
+                      onChange={(e) => setActDeliveryDate(e.target.value)}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                    />
+                  </div>
+                </div>
+
+                {editingProject && (
+                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 px-1">
+                    {getProjectPeriodLabel(editingProject)}
+                  </p>
+                )}
+
+                {/* BLOCO COMPACTO DE ANÁLISE DE CAPACIDADE */}
+                {actStartDate && actDeliveryDate && (
+                  <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/50 dark:border-white/5 p-4 rounded-2xl space-y-3 transition-colors text-xs">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                        <span className="block text-[8px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Capacidade Janela</span>
+                        <span className="text-xs font-black text-slate-800 dark:text-slate-100">
+                          {formatDecimalHours(capacityAnalysis.windowCapacity)}
+                        </span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                        <span className="block text-[8px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Estimativa</span>
+                        <span className="text-xs font-black text-slate-800 dark:text-slate-100">
+                          {formatDecimalHours(capacityAnalysis.estimate)}
+                        </span>
+                      </div>
+                      <div className={`p-2 rounded-xl border ${
+                        capacityAnalysis.isOverallocated 
+                          ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' 
+                          : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
+                      }`}>
+                        <span className="block text-[8px] font-black uppercase tracking-widest mb-1 opacity-70">
+                          {capacityAnalysis.isOverallocated ? 'Déficit' : 'Margem'}
+                        </span>
+                        <span className="text-xs font-black">
+                          {formatDecimalHours(Math.abs(capacityAnalysis.balance))}
+                        </span>
                       </div>
                     </div>
-                  )}
 
-                  {/* Alerta de janela muito ampla (Aviso) */}
-                  {!capacityAnalysis.isOverallocated && capacityAnalysis.estimate > 0 && capacityAnalysis.windowCapacity > capacityAnalysis.estimate * 3 && (
-                    <div className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
-                      <span className="mt-0.5">ℹ️</span>
-                      <div>
-                        <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Aviso de Dimensionamento</p>
-                        <p>Esta atividade possui uma janela significativamente maior que a duração estimada.</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Alerta de capacidade real do responsável */}
-                  {actAssigneeId && capacityAnalysis.hasRealCapacityIssue && !capacityAnalysis.isOverallocated && (
-                    <div className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
-                      <span className="mt-0.5">⚠️</span>
-                      <div>
-                        <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Sobrecarga do Responsável</p>
-                        <p>ATENÇÃO: o responsável não possui capacidade disponível suficiente neste período.</p>
-                        <div className="mt-1 flex flex-wrap gap-x-3 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400">
-                          <span>Necessário: {formatDecimalHours(capacityAnalysis.estimate)}</span>
-                          <span>Disponível: {formatDecimalHours(capacityAnalysis.assigneeAvailableHours)}</span>
-                          <span>Déficit: {formatDecimalHours(capacityAnalysis.deficitReal)}</span>
+                    {/* Alerta de excede capacidade regular (Erro) */}
+                    {capacityAnalysis.isOverallocated && (
+                      <div className="bg-rose-500/10 text-rose-500 border border-rose-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
+                        <span className="mt-0.5">⚠️</span>
+                        <div>
+                          <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Erro de Planejamento</p>
+                          <p>Esta atividade exige mais horas do que o período planejado comporta. Amplie o período ou revise a duração estimada.</p>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
 
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Observações</label>
-                <textarea
-                  value={actNotes}
-                  onChange={(e) => setActNotes(e.target.value)}
-                  className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium min-h-[80px] resize-none transition-colors"
-                  placeholder="Instruções adicionais para esta atividade..."
-                />
+                    {/* Alerta de janela muito ampla (Aviso) */}
+                    {!capacityAnalysis.isOverallocated && capacityAnalysis.estimate > 0 && capacityAnalysis.windowCapacity > capacityAnalysis.estimate * 3 && (
+                      <div className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
+                        <span className="mt-0.5">ℹ️</span>
+                        <div>
+                          <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Aviso de Dimensionamento</p>
+                          <p>Esta atividade possui uma janela significativamente maior que a duração estimada.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Alerta de capacidade real do responsável */}
+                    {actAssigneeId && capacityAnalysis.hasRealCapacityIssue && !capacityAnalysis.isOverallocated && (
+                      <div className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
+                        <span className="mt-0.5">⚠️</span>
+                        <div>
+                          <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Sobrecarga do Responsável</p>
+                          <p>ATENÇÃO: o responsável não possui capacidade disponível suficiente neste período.</p>
+                          <div className="mt-1 flex flex-wrap gap-x-3 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400">
+                            <span>Necessário: {formatDecimalHours(capacityAnalysis.estimate)}</span>
+                            <span>Disponível: {formatDecimalHours(capacityAnalysis.assigneeAvailableHours)}</span>
+                            <span>Déficit: {formatDecimalHours(capacityAnalysis.deficitReal)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Observações</label>
+                  <textarea
+                    value={actNotes}
+                    onChange={(e) => setActNotes(e.target.value)}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium min-h-[80px] resize-none transition-colors"
+                    placeholder="Instruções adicionais para esta atividade..."
+                  />
+                </div>
               </div>
 
-              <div className="pt-4 flex space-x-3">
+              <div className="px-8 py-6 border-t border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/30 flex space-x-3 transition-colors">
                 <button
                   type="button"
                   onClick={() => setShowActivityModal(false)}
