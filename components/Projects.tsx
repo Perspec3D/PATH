@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry } from '../types';
-import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
+import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, fetchOperationalMetricsDataset, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
@@ -452,7 +452,7 @@ export const Projects: React.FC<ProjectsProps> = ({
     e.preventDefault();
     if (!editingProject) return;
     if (!isCurrentProjectRevision(editingProject)) {
-      alert('Revisões históricas são somente para consulta.');
+      alert('Revisões inativas são somente para consulta.');
       return;
     }
     if (!actTypeId) {
@@ -582,7 +582,7 @@ export const Projects: React.FC<ProjectsProps> = ({
 
   const handleDeleteProjectAct = async (activity: ProjectActivity) => {
     if (isHistoricalRevision) {
-      alert('Revisões históricas são somente para consulta.');
+      alert('Revisões inativas são somente para consulta.');
       return;
     }
     if (confirm(`Tem certeza que deseja excluir a atividade "${activity.name}"?`)) {
@@ -729,7 +729,7 @@ export const Projects: React.FC<ProjectsProps> = ({
 
   const handleStartOrResumeActivity = async (activity: ProjectActivity, pauseCurrent = false) => {
     if (isHistoricalRevision) {
-      alert('Não é possível iniciar atividades em uma revisão histórica.');
+      alert('Não é possível iniciar atividades em uma revisão inativa.');
       return;
     }
     if (!validateActivityAssignee(activity)) return;
@@ -985,7 +985,7 @@ export const Projects: React.FC<ProjectsProps> = ({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isHistoricalRevision) {
-      alert('Revisões históricas são somente para consulta.');
+      alert('Revisões inativas são somente para consulta.');
       return;
     }
     const client = db.clients.find((c: Client) => c.id === clientId);
@@ -1162,6 +1162,77 @@ export const Projects: React.FC<ProjectsProps> = ({
       setIsCreatingRevision(false);
     }
   };
+
+  const handleReactivateRevision = async (targetProject: Project) => {
+    const familyId = getProjectFamilyId(targetProject);
+    if (!familyId) return;
+
+    const currentActive = db.projects.find(
+      p => getProjectFamilyId(p) === familyId && isCurrentProjectRevision(p)
+    );
+
+    if (currentActive) {
+      try {
+        const hasActiveSessions = await hasActiveWorkSessionsForProject(
+          currentUser.workspaceId,
+          currentActive.id
+        );
+        if (hasActiveSessions) {
+          alert(
+            "Existe uma atividade em execução na revisão atual.\nPause a atividade antes de trocar a revisão ativa."
+          );
+          return;
+        }
+      } catch (err) {
+        console.error("Erro ao verificar sessões ativas:", err);
+      }
+    }
+
+    if (!window.confirm(`Deseja reativar a revisão ${targetProject.revision}? A revisão ativa atual será inativada.`)) {
+      return;
+    }
+
+    try {
+      const updatedProject = await reactivateProjectRevision(
+        familyId,
+        targetProject.id,
+        currentUser.id
+      );
+
+      const updatedProjects = db.projects.map(p => {
+        if (getProjectFamilyId(p) === familyId) {
+          return {
+            ...p,
+            isCurrentRevision: p.id === targetProject.id
+          };
+        }
+        return p;
+      });
+
+      setDb({ ...db, projects: updatedProjects });
+
+      if (editingProject && getProjectFamilyId(editingProject) === familyId) {
+        const nextEditingProject = updatedProjects.find(p => p.id === targetProject.id) || null;
+        if (nextEditingProject) {
+          openEdit(nextEditingProject);
+        } else {
+          setShowModal(false);
+        }
+      }
+
+      alert(`Revisão ${targetProject.revision} reativada com sucesso!`);
+    } catch (err: any) {
+      const message = `${err?.message || ''} ${err?.details || ''}`;
+      if (message.includes('ACTIVE_WORK_SESSION_MUST_BE_PAUSED')) {
+        alert(
+          "Existe uma atividade em execução na revisão atual.\nPause a atividade antes de trocar a revisão ativa."
+        );
+      } else {
+        alert("Erro ao reativar a revisão: " + (err?.message || "Erro desconhecido"));
+      }
+    }
+  };
+
 
   const handleCreateFolder = async () => {
     if (!clientId) {
@@ -1423,8 +1494,17 @@ export const Projects: React.FC<ProjectsProps> = ({
                       </button>
                       <div className="mt-1.5 flex flex-wrap items-center gap-2">
                         <span className={`rounded-md px-2 py-0.5 text-[8px] font-black uppercase tracking-widest ${isHistorical ? 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
-                          {isHistorical ? 'Revisão histórica' : 'Atual'}
+                          {isHistorical ? 'INATIVA' : 'ATIVA'}
                         </span>
+                        {isHistorical && currentUser.role !== UserRole.VIEWER && (
+                          <button
+                            type="button"
+                            onClick={() => handleReactivateRevision(project)}
+                            className="text-[8px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 px-2 py-0.5 rounded-md transition-all active:scale-95"
+                          >
+                            Reativar esta revisão
+                          </button>
+                        )}
                         {!isHistorical && familyRevisions.length > 1 && (
                           <button
                             type="button"
@@ -1515,8 +1595,17 @@ export const Projects: React.FC<ProjectsProps> = ({
                   <div className="mt-1 flex items-center gap-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">{editingProject.revision}</span>
                     <span className={`rounded-md px-2 py-0.5 text-[8px] font-black uppercase tracking-widest ${isHistoricalRevision ? 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
-                      {isHistoricalRevision ? 'Revisão histórica' : 'Atual'}
+                      {isHistoricalRevision ? 'INATIVA' : 'ATIVA'}
                     </span>
+                    {isHistoricalRevision && currentUser.role !== UserRole.VIEWER && (
+                      <button
+                        type="button"
+                        onClick={() => handleReactivateRevision(editingProject)}
+                        className="text-[8px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 px-2 py-0.5 rounded-md transition-all active:scale-95"
+                      >
+                        Reativar esta revisão
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

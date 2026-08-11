@@ -243,7 +243,7 @@ export const Gantt: React.FC<GanttProps> = ({
     const parentProject = allProjects.find(p => p.id === activity.projectId);
     const isHistorical = parentProject ? !isCurrentProjectRevision(parentProject) : false;
     if (isHistorical) {
-      alert('Não é possível iniciar atividades em uma revisão histórica.');
+      alert('Não é possível iniciar atividades em uma revisão inativa.');
       return;
     }
     if (!validateActivityAssignee(activity)) return;
@@ -401,7 +401,7 @@ export const Gantt: React.FC<GanttProps> = ({
     e.preventDefault();
     if (!editingProject) return;
     if (!isCurrentProjectRevision(editingProject)) {
-      alert('Revisões históricas são somente para consulta.');
+      alert('Revisões inativas são somente para consulta.');
       return;
     }
 
@@ -1377,10 +1377,10 @@ export const Gantt: React.FC<GanttProps> = ({
             </div>
 
             <div className="p-7 space-y-6">
-              {/* Banner Revisão Histórica */}
+              {/* Banner Revisão Inativa */}
               {selectedQuickViewActivity && !isCurrentProjectRevision(selectedQuickViewActivity.parentProject) && (
                 <div className="bg-slate-100 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider text-center border border-slate-250 dark:border-slate-700/50">
-                  ⚠️ Revisão Histórica (Somente Consulta)
+                  ⚠️ Revisão Inativa (Somente Consulta)
                 </div>
               )}
 

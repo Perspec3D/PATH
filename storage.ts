@@ -245,6 +245,57 @@ export const createProjectRevision = async (
   return mapProject(row);
 };
 
+export const reactivateProjectRevision = async (
+  familyId: string,
+  targetProjectId: string,
+  actorInternalUserId: string
+): Promise<Project> => {
+  const { data, error } = await supabase.rpc('reactivate_project_revision', {
+    p_family_id: familyId,
+    p_target_project_id: targetProjectId,
+    p_actor_internal_user_id: actorInternalUserId
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error('PROJECT_REVISION_REACTIVATE_WITHOUT_RESULT');
+  return mapProject(row);
+};
+
+export const hasActiveWorkSessionsForProject = async (
+  workspaceId: string,
+  projectId: string
+): Promise<boolean> => {
+  const { data: activities, error: actError } = await supabase
+    .from('project_activities')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .eq('project_id', projectId);
+  if (actError || !activities || activities.length === 0) return false;
+
+  const activityIds = activities.map(a => a.id);
+
+  const { data: executions, error: execError } = await supabase
+    .from('activity_executions')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .in('project_activity_id', activityIds);
+  if (execError || !executions || executions.length === 0) return false;
+
+  const executionIds = executions.map(e => e.id);
+
+  const { count, error: countError } = await supabase
+    .from('work_sessions')
+    .select('id', { count: 'exact', head: true })
+    .eq('workspace_id', workspaceId)
+    .in('activity_execution_id', executionIds)
+    .is('ended_at', null);
+
+  if (countError) throw countError;
+  return (count || 0) > 0;
+};
+
+
+
 export const deleteProject = async (projectId: string) => {
   const { error } = await supabase.from('projects').delete().eq('id', projectId);
   if (error) throw error;
