@@ -515,6 +515,7 @@ export const Projects: React.FC<ProjectsProps> = ({
       deliveryDate: actDeliveryDate || undefined,
       notes: actNotes || undefined,
       estimatedDurationHours: duration,
+      estimatedCurrentHours: editingActivity ? (editingActivity.estimatedCurrentHours ?? duration) : duration,
       orderIndex: orderIdx,
       actualStartDate: editingActivity?.actualStartDate,
       actualEndDate: editingActivity?.actualEndDate,
@@ -579,6 +580,43 @@ export const Projects: React.FC<ProjectsProps> = ({
       } else {
         alert("Erro ao salvar atividade: " + err.message);
       }
+    }
+  };
+
+  const handleUpdateCurrentEstimate = async (activity: ProjectActivity) => {
+    if (isHistoricalRevision) {
+      alert('Revisões inativas são somente para consulta.');
+      return;
+    }
+    const currentVal = activity.estimatedCurrentHours ?? activity.estimatedDurationHours ?? 0;
+    const newEstStr = prompt(`Atualizar Estimativa Atual para a atividade "${activity.name}":`, currentVal.toString());
+    if (newEstStr === null) return; // cancel
+    const newEst = parseFloat(newEstStr);
+    if (isNaN(newEst) || newEst < 0) {
+      alert("Por favor, digite um número válido.");
+      return;
+    }
+    const updatedActivity = {
+      ...activity,
+      estimatedCurrentHours: newEst
+    };
+    try {
+      await syncProjectActivity(updatedActivity);
+      if (editingProject) {
+        await loadProjectActivities(editingProject.id);
+        await loadForecastDataset();
+        await logAction(
+          currentUser.workspaceId,
+          currentUser,
+          LogModule.PROJECTS,
+          LogAction.UPDATE,
+          `${currentUser.username} atualizou a estimativa atual da atividade ${activity.name} de ${currentVal}h para ${newEst}h no projeto ${editingProject.code}`,
+          editingProject.code
+        );
+      }
+    } catch (err: any) {
+      console.error("Erro ao atualizar estimativa atual:", err);
+      alert("Erro ao atualizar estimativa: " + err.message);
     }
   };
 
@@ -2057,18 +2095,57 @@ export const Projects: React.FC<ProjectsProps> = ({
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[10px] text-slate-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
-                                  <span>Responsável: <strong className="text-slate-700 dark:text-slate-300">{assignee ? assignee.username : 'Não atribuído'}</strong></span>
-                                  {activity.estimatedDurationHours !== undefined && (
-                                    <span>Estimado: <strong className="text-slate-700 dark:text-slate-300">{activity.estimatedDurationHours}h</strong></span>
-                                  )}
-                                  {activityOvertimeMs !== null && activityOvertimeMs > 0 && (
-                                    <span>Horas extras: <strong className="text-slate-700 dark:text-slate-300">{formatElapsedTime(activityOvertimeMs)}</strong></span>
-                                  )}
-                                  {(activity.startDate || activity.deliveryDate) && (
-                                    <span>Prazo: <strong className="text-slate-700 dark:text-slate-300">{formatDate(activity.startDate)} até {formatDate(activity.deliveryDate)}</strong></span>
-                                  )}
-                                </div>
+                                {activity.estimatedDurationHours !== undefined && (() => {
+                                   const accountedMs = getAccountedOperationalMs(activity.id) || 0;
+                                   const accountedHours = accountedMs / 3_600_000;
+                                   const origEst = activity.estimatedDurationHours || 0;
+                                   const currentEst = activity.estimatedCurrentHours ?? activity.estimatedDurationHours ?? 0;
+                                   const remainingDemand = Math.max(currentEst - accountedHours, 0);
+                                   
+                                   const consumptionRate = currentEst > 0 ? (accountedHours / currentEst) : 0;
+                                   const isExceeded = accountedHours >= currentEst && currentEst > 0 && activity.status !== ProjectStatus.DONE;
+                                   const isNearLimit = consumptionRate >= 0.8 && consumptionRate < 1.0 && activity.status !== ProjectStatus.DONE;
+
+                                   return (
+                                     <div className="flex flex-col gap-1 mt-1 text-[10px] text-slate-500">
+                                       <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                         <span>Responsável: <strong className="text-slate-700 dark:text-slate-300">{assignee ? assignee.username : 'Não atribuído'}</strong></span>
+                                         {activityOvertimeMs !== null && activityOvertimeMs > 0 && (
+                                           <span>Horas extras: <strong className="text-slate-700 dark:text-slate-300">{formatElapsedTime(activityOvertimeMs)}</strong></span>
+                                         )}
+                                         {(activity.startDate || activity.deliveryDate) && (
+                                           <span>Prazo: <strong className="text-slate-700 dark:text-slate-300">{formatDate(activity.startDate)} até {formatDate(activity.deliveryDate)}</strong></span>
+                                         )}
+                                       </div>
+                                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
+                                         <span>Estimativa Original: <strong className="text-slate-700 dark:text-slate-300">{origEst}h</strong></span>
+                                         <span className="inline-flex items-center gap-1.5">
+                                           Estimativa Atual: <strong className="text-slate-700 dark:text-slate-200">{currentEst}h</strong>
+                                           {!isHistoricalRevision && (
+                                             <button
+                                               type="button"
+                                               onClick={() => handleUpdateCurrentEstimate(activity)}
+                                               className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 text-[8px] font-black text-indigo-600 dark:text-indigo-400 rounded hover:bg-slate-300 dark:hover:bg-slate-700 uppercase tracking-widest transition-all"
+                                             >
+                                               [ Atualizar ]
+                                             </button>
+                                           )}
+                                         </span>
+                                         <span>Demanda Restante: <strong className="text-slate-700 dark:text-slate-300">{remainingDemand.toFixed(1)}h</strong></span>
+                                         {isExceeded && (
+                                           <span className="px-1.5 py-0.5 bg-rose-500/10 border border-rose-500/20 text-[8px] font-black text-rose-600 dark:text-rose-400 rounded-md uppercase tracking-wider animate-pulse">
+                                             ⚠ ESTIMATIVA EXCEDIDA
+                                           </span>
+                                         )}
+                                         {isNearLimit && (
+                                           <span className="px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/20 text-[8px] font-black text-amber-600 dark:text-amber-400 rounded-md uppercase tracking-wider">
+                                             ⚠ Estimativa próxima do limite
+                                           </span>
+                                         )}
+                                       </div>
+                                     </div>
+                                   );
+                                 })()}
                                 {activity.notes && (
                                   <p className="mt-1.5 break-words text-[10px] italic text-slate-400" title={activity.notes}>
                                     Obs: {activity.notes}

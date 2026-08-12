@@ -3,7 +3,7 @@ import { ProjectStatus, Project, InternalUser, Client, ProjectActivity } from '.
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 import { AppDB, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
-import { calculateNetWorkdayMs } from '../utils/operationalTime';
+import { calculateNetWorkdayMs, calculateRegularOperationalMs, calculateOvertimeMs } from '../utils/operationalTime';
 import { InfoTooltip } from './InfoTooltip';
 import { isCurrentProjectRevision } from '../utils/projectRevision';
 import {
@@ -831,7 +831,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           // Ignorar se não possuir datas planejadas
           if (!pa.startDate || !pa.deliveryDate) return;
 
-          // Se a estimativa for nula ou indefinida, é sinalizada como Sem Estimativa
+          // Se a estimativa original for nula ou indefinida, é sinalizada como Sem Estimativa
           if (pa.estimatedDurationHours === undefined || pa.estimatedDurationHours === null) {
             const actStart = new Date(pa.startDate + 'T00:00:00');
             const actEnd = new Date(pa.deliveryDate + 'T23:59:59');
@@ -843,25 +843,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
             return;
           }
 
-          const estHours = pa.estimatedDurationHours;
+          const currentEst = pa.estimatedCurrentHours ?? pa.estimatedDurationHours ?? 0;
 
-          // 1. Encontrar o número total de dias úteis da atividade dentro de seu intervalo planejado
+          // Calcular tempo contabilizado
+          const activityExecutions = forecastDataset?.executions.filter(e => e.projectActivityId === pa.id) || [];
+          const executionIds = new Set(activityExecutions.map(e => e.id));
+          const activitySessions = forecastDataset?.sessions.filter(s => executionIds.has(s.activityExecutionId)) || [];
+          const activityOvertime = forecastDataset?.overtimeEntries.filter(o => o.projectActivityId === pa.id) || [];
+
+          const regularMs = calculateRegularOperationalMs(activitySessions, db.company || undefined, Date.now()) || 0;
+          const overtimeMs = calculateOvertimeMs(activityOvertime.map(o => o.authorizedHours)) || 0;
+          const tempoContabilizado = (regularMs + overtimeMs) / 3_600_000;
+
+          const demandaRestante = Math.max(currentEst - tempoContabilizado, 0);
+
           const actStart = new Date(pa.startDate + 'T00:00:00');
           const actEnd = new Date(pa.deliveryDate + 'T23:59:59');
 
-          let totalActivityWorkDays = 0;
-          let tempDay = new Date(actStart);
-          while (tempDay <= actEnd) {
-            const dow = tempDay.getDay();
-            if (companyWorkDays.includes(dow)) {
-              totalActivityWorkDays++;
+          // 1. Encontrar o número total de dias úteis restantes da atividade (de hoje em diante, ou do startDate se for futuro)
+          const remainingPeriodStart = actStart > today ? actStart : today;
+          const remainingPeriodEnd = actEnd;
+
+          let remainingActivityWorkDays = 0;
+          if (remainingPeriodStart <= remainingPeriodEnd) {
+            let tempDay = new Date(remainingPeriodStart);
+            while (tempDay <= remainingPeriodEnd) {
+              const dow = tempDay.getDay();
+              if (companyWorkDays.includes(dow)) {
+                remainingActivityWorkDays++;
+              }
+              tempDay.setDate(tempDay.getDate() + 1);
             }
-            tempDay.setDate(tempDay.getDate() + 1);
           }
 
-          if (totalActivityWorkDays === 0) return;
-
-          const dailyLoad = estHours / totalActivityWorkDays;
+          let dailyLoad = 0;
+          if (remainingActivityWorkDays > 0) {
+            dailyLoad = demandaRestante / remainingActivityWorkDays;
+          } else if (selectedWeekOffset === 0) {
+            dailyLoad = demandaRestante;
+          }
 
           // 2. Distribuir a carga pelos dias do intervalo que caem na semana selecionada e que são >= hoje (se for S0)
           const effectiveCountStart = (selectedWeekOffset === 0 && today > startOfWeek) ? today : startOfWeek;
@@ -869,29 +889,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           const overlapEnd = actEnd < endOfWeek ? actEnd : endOfWeek;
 
           let userActivityDaysInSelectedWeek = 0;
-          if (overlapStart <= overlapEnd) {
-            let dayRunner = new Date(overlapStart);
-            while (dayRunner <= overlapEnd) {
-              const dow = dayRunner.getDay();
-              if (companyWorkDays.includes(dow)) {
-                userActivityDaysInSelectedWeek++;
+          if (remainingActivityWorkDays > 0) {
+            if (overlapStart <= overlapEnd) {
+              let dayRunner = new Date(overlapStart);
+              while (dayRunner <= overlapEnd) {
+                const dow = dayRunner.getDay();
+                if (companyWorkDays.includes(dow)) {
+                  userActivityDaysInSelectedWeek++;
+                }
+                dayRunner.setDate(dayRunner.getDate() + 1);
               }
-              dayRunner.setDate(dayRunner.getDate() + 1);
             }
+          } else if (selectedWeekOffset === 0) {
+            // Atividade atrasada: aloca a demanda inteira na semana atual S0
+            userActivityDaysInSelectedWeek = 1;
           }
 
           const hoursInSelectedWeek = userActivityDaysInSelectedWeek * dailyLoad;
           userPlannedHours += hoursInSelectedWeek;
 
-          if (hoursInSelectedWeek > 0) {
+          // Se a estimativa for excedida mas a atividade continua aberta, ela deve ser exibida no tooltip de capacidade com 0h restantes
+          if (hoursInSelectedWeek > 0 || (tempoContabilizado >= currentEst && userActivityDaysInSelectedWeek > 0)) {
             const parentProject = projects.find(p => p.id === pa.projectId);
             detailList.push({
               projectCode: parentProject?.code || 'ATIVIDADES',
               activityName: pa.name,
               hours: hoursInSelectedWeek,
               start: pa.startDate,
-              end: pa.deliveryDate
-            });
+              end: pa.deliveryDate,
+              isExceeded: tempoContabilizado >= currentEst,
+              tempoContabilizado,
+              currentEst
+            } as any);
           }
         });
 
@@ -1230,8 +1259,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                   Capacidade Operacional da Equipe
                   <InfoTooltip
                     title="Saturação da Equipe"
-                    content="Percentual de ocupação baseado na jornada regular configurada para o Workspace. Soma as horas estimadas de todas as atividades ativas alocadas na semana selecionada."
-                    calculation="(Horas_Planejadas_Semana / Horas_Disponíveis_Semana) * 100"
+                    content="Compara a demanda restante das atividades com as horas de jornada disponíveis no período. A demanda restante considera a estimativa atual menos o tempo já contabilizado."
+                    calculation="demandaRestante = MAX(estimativaAtual - tempoContabilizado, 0)"
                     position="bottom"
                   />
                 </h3>
@@ -1316,7 +1345,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 <div className="grid grid-cols-2 gap-x-12 gap-y-6">
                   {dashboard2Logics.teamCapacity.userDetails.map((u: any) => {
                     const tooltipContent = u.details && u.details.length > 0
-                      ? u.details.map((d: any) => `[${d.projectCode}] ${d.activityName}: ${formatCapacityHours(d.hours)} (${d.start} a ${d.end})`).join('\n')
+                      ? u.details.map((d: any) => {
+                          if (d.isExceeded) {
+                            return `[${d.projectCode}] ${d.activityName}: ⚠ EXCEDIDO (Contab.: ${d.tempoContabilizado.toFixed(1)}h / Est. Atual: ${d.currentEst.toFixed(1)}h) (${d.start} a ${d.end})`;
+                          }
+                          return `[${d.projectCode}] ${d.activityName}: ${formatCapacityHours(d.hours)} (${d.start} a ${d.end})`;
+                        }).join('\n')
                       : 'Sem atividades planejadas';
                     return (
                       <div key={u.id} className="group/user" title={tooltipContent}>

@@ -213,6 +213,7 @@ export interface ProjectActivity {
   deliveryDate?: string;
   notes?: string;
   estimatedDurationHours?: number;
+  estimatedCurrentHours?: number;
   orderIndex: number;
   actualStartDate?: string;
   actualEndDate?: string;
