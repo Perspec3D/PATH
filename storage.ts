@@ -261,6 +261,38 @@ export const reactivateProjectRevision = async (
   return mapProject(row);
 };
 
+export const activateProjectRevisionSimultaneously = async (
+  familyId: string,
+  targetProjectId: string,
+  actorInternalUserId: string
+): Promise<Project> => {
+  const { data, error } = await supabase.rpc('activate_project_revision_simultaneously', {
+    p_family_id: familyId,
+    p_target_project_id: targetProjectId,
+    p_actor_internal_user_id: actorInternalUserId
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error('PROJECT_REVISION_ACTIVATE_WITHOUT_RESULT');
+  return mapProject(row);
+};
+
+export const deactivateProjectRevision = async (
+  familyId: string,
+  targetProjectId: string,
+  actorInternalUserId: string
+): Promise<Project> => {
+  const { data, error } = await supabase.rpc('deactivate_project_revision', {
+    p_family_id: familyId,
+    p_target_project_id: targetProjectId,
+    p_actor_internal_user_id: actorInternalUserId
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error('PROJECT_REVISION_DEACTIVATE_WITHOUT_RESULT');
+  return mapProject(row);
+};
+
 export const hasActiveWorkSessionsForProject = async (
   workspaceId: string,
   projectId: string

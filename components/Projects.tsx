@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry } from '../types';
-import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, fetchOperationalMetricsDataset, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject } from '../storage';
+import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, fetchOperationalMetricsDataset, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
@@ -238,6 +238,8 @@ export const Projects: React.FC<ProjectsProps> = ({
         .filter(project => getProjectFamilyId(project) === getProjectFamilyId(editingProject))
         .sort((a, b) => getProjectRevisionNumber(b) - getProjectRevisionNumber(a))
     : [];
+  const editingActiveRevisions = editingFamilyRevisions.filter(isCurrentProjectRevision);
+  const showMultipleActiveWarning = editingActiveRevisions.length > 1;
   const nextRevisionNumber = editingFamilyRevisions.length > 0
     ? Math.max(...editingFamilyRevisions.map(getProjectRevisionNumber)) + 1
     : 1;
@@ -1167,19 +1169,19 @@ export const Projects: React.FC<ProjectsProps> = ({
     const familyId = getProjectFamilyId(targetProject);
     if (!familyId) return;
 
-    const currentActive = db.projects.find(
+    const activeRevisions = db.projects.filter(
       p => getProjectFamilyId(p) === familyId && isCurrentProjectRevision(p)
     );
 
-    if (currentActive) {
+    for (const activeRev of activeRevisions) {
       try {
         const hasActiveSessions = await hasActiveWorkSessionsForProject(
           currentUser.workspaceId,
-          currentActive.id
+          activeRev.id
         );
         if (hasActiveSessions) {
           alert(
-            "Existe uma atividade em execução na revisão atual.\nPause a atividade antes de trocar a revisão ativa."
+            `Existe uma atividade em execução na revisão ${activeRev.revision}.\nPause a atividade antes de trocar a revisão ativa.`
           );
           return;
         }
@@ -1188,7 +1190,7 @@ export const Projects: React.FC<ProjectsProps> = ({
       }
     }
 
-    if (!window.confirm(`Deseja reativar a revisão ${targetProject.revision}? A revisão ativa atual será inativada.`)) {
+    if (!window.confirm(`Deseja reativar a revisão ${targetProject.revision}? Todas as outras revisões ativas desta família serão inativadas.`)) {
       return;
     }
 
@@ -1225,10 +1227,101 @@ export const Projects: React.FC<ProjectsProps> = ({
       const message = `${err?.message || ''} ${err?.details || ''}`;
       if (message.includes('ACTIVE_WORK_SESSION_MUST_BE_PAUSED')) {
         alert(
-          "Existe uma atividade em execução na revisão atual.\nPause a atividade antes de trocar a revisão ativa."
+          "Existe uma atividade em execução em alguma revisão ativa.\nPause a atividade antes de trocar a revisão ativa."
         );
       } else {
         alert("Erro ao reativar a revisão: " + (err?.message || "Erro desconhecido"));
+      }
+    }
+  };
+
+  const handleActivateSimultaneously = async (targetProject: Project) => {
+    const familyId = getProjectFamilyId(targetProject);
+    if (!familyId) return;
+
+    if (!window.confirm(`Deseja ativar a revisão ${targetProject.revision} simultaneamente com as outras revisões ativas?`)) {
+      return;
+    }
+
+    try {
+      const updatedProject = await activateProjectRevisionSimultaneously(
+        familyId,
+        targetProject.id,
+        currentUser.id
+      );
+
+      const updatedProjects = db.projects.map(p => {
+        if (p.id === targetProject.id) {
+          return { ...p, isCurrentRevision: true };
+        }
+        return p;
+      });
+
+      setDb({ ...db, projects: updatedProjects });
+
+      if (editingProject && editingProject.id === targetProject.id) {
+        setEditingProject({ ...editingProject, isCurrentRevision: true });
+      }
+
+      alert(`Revisão ${targetProject.revision} ativada simultaneamente com sucesso!`);
+    } catch (err: any) {
+      alert("Erro ao ativar simultaneamente: " + (err?.message || "Erro desconhecido"));
+    }
+  };
+
+  const handleDeactivateRevision = async (targetProject: Project) => {
+    const familyId = getProjectFamilyId(targetProject);
+    if (!familyId) return;
+
+    // Check for active work sessions on this project (revision) before deactivating
+    try {
+      const hasActiveSessions = await hasActiveWorkSessionsForProject(
+        currentUser.workspaceId,
+        targetProject.id
+      );
+      if (hasActiveSessions) {
+        alert(
+          "Existe uma atividade em execução nesta revisão.\n\nPause ou conclua a atividade antes de desativar a revisão."
+        );
+        return;
+      }
+    } catch (err) {
+      console.error("Erro ao verificar sessões ativas:", err);
+    }
+
+    if (!window.confirm(`Deseja desativar a revisão ${targetProject.revision}? Ela deixará de consumir capacidade e de participar do forecast.`)) {
+      return;
+    }
+
+    try {
+      const updatedProject = await deactivateProjectRevision(
+        familyId,
+        targetProject.id,
+        currentUser.id
+      );
+
+      const updatedProjects = db.projects.map(p => {
+        if (p.id === targetProject.id) {
+          return { ...p, isCurrentRevision: false };
+        }
+        return p;
+      });
+
+      setDb({ ...db, projects: updatedProjects });
+
+      if (editingProject && editingProject.id === targetProject.id) {
+        setEditingProject({ ...editingProject, isCurrentRevision: false });
+      }
+
+      alert(`Revisão ${targetProject.revision} desativada com sucesso!`);
+    } catch (err: any) {
+      const message = `${err?.message || ''} ${err?.details || ''}`;
+      if (message.includes('ACTIVE_WORK_SESSION_MUST_BE_PAUSED')) {
+        alert(
+          "Existe uma atividade em execução nesta revisão.\n\nPause ou conclua a atividade antes de desativar a revisão."
+        );
+      } else {
+        alert("Erro ao desativar a revisão: " + (err?.message || "Erro desconhecido"));
       }
     }
   };
@@ -1464,6 +1557,8 @@ export const Projects: React.FC<ProjectsProps> = ({
                 const dateStyle = getDeliveryDateStyle(project.deliveryDate || '', project.status);
                 const familyId = getProjectFamilyId(project);
                 const familyRevisions = db.projects.filter(item => getProjectFamilyId(item) === familyId);
+                const activeRevisionsInFamily = familyRevisions.filter(isCurrentProjectRevision);
+                const hasSimultaneousActive = activeRevisionsInFamily.length > 1;
                 const isHistorical = !isCurrentProjectRevision(project);
                 const isExpanded = expandedFamilyIds.includes(familyId);
 
@@ -1496,6 +1591,11 @@ export const Projects: React.FC<ProjectsProps> = ({
                         <span className={`rounded-md px-2 py-0.5 text-[8px] font-black uppercase tracking-widest ${isHistorical ? 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
                           {isHistorical ? 'INATIVA' : 'ATIVA'}
                         </span>
+                        {!isHistorical && hasSimultaneousActive && (
+                          <span className="rounded-md px-2 py-0.5 text-[8px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                            <span>⚠</span> <span>{activeRevisionsInFamily.length} REVISÕES ATIVAS</span>
+                          </span>
+                        )}
                         {isHistorical && currentUser.role !== UserRole.VIEWER && (
                           <button
                             type="button"
@@ -1505,7 +1605,25 @@ export const Projects: React.FC<ProjectsProps> = ({
                             Reativar esta revisão
                           </button>
                         )}
-                        {!isHistorical && familyRevisions.length > 1 && (
+                        {isHistorical && currentUser.role === UserRole.ADMIN && (
+                          <button
+                            type="button"
+                            onClick={() => handleActivateSimultaneously(project)}
+                            className="text-[8px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/40 px-2 py-0.5 rounded-md transition-all active:scale-95 border border-amber-200 dark:border-amber-900/30"
+                          >
+                            Ativar Simultaneamente
+                          </button>
+                        )}
+                        {!isHistorical && currentUser.role === UserRole.ADMIN && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeactivateRevision(project)}
+                            className="text-[8px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 px-2 py-0.5 rounded-md transition-all active:scale-95 border border-rose-200 dark:border-rose-900/30"
+                          >
+                            Desativar Revisão
+                          </button>
+                        )}
+                        {familyRevisions.length > 1 && (
                           <button
                             type="button"
                             onClick={() => setExpandedFamilyIds(current => current.includes(familyId) ? current.filter(id => id !== familyId) : [...current, familyId])}
@@ -1592,7 +1710,7 @@ export const Projects: React.FC<ProjectsProps> = ({
                   {currentUser.role === UserRole.VIEWER || isHistoricalRevision ? 'Visualizar Detalhes' : (editingProject ? 'Editar Detalhes' : 'Novo Projeto')}
                 </h3>
                 {editingProject && (
-                  <div className="mt-1 flex items-center gap-2">
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">{editingProject.revision}</span>
                     <span className={`rounded-md px-2 py-0.5 text-[8px] font-black uppercase tracking-widest ${isHistoricalRevision ? 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'}`}>
                       {isHistoricalRevision ? 'INATIVA' : 'ATIVA'}
@@ -1606,6 +1724,24 @@ export const Projects: React.FC<ProjectsProps> = ({
                         Reativar esta revisão
                       </button>
                     )}
+                    {isHistoricalRevision && currentUser.role === UserRole.ADMIN && (
+                      <button
+                        type="button"
+                        onClick={() => handleActivateSimultaneously(editingProject)}
+                        className="text-[8px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/40 px-2 py-0.5 rounded-md transition-all active:scale-95 border border-amber-200 dark:border-amber-900/30"
+                      >
+                        Ativar Simultaneamente
+                      </button>
+                    )}
+                    {!isHistoricalRevision && currentUser.role === UserRole.ADMIN && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeactivateRevision(editingProject)}
+                        className="text-[8px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 px-2 py-0.5 rounded-md transition-all active:scale-95 border border-rose-200 dark:border-rose-900/30"
+                      >
+                        Desativar Revisão
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1614,6 +1750,17 @@ export const Projects: React.FC<ProjectsProps> = ({
               </button>
             </div>
             <form onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-8 dark:bg-[#0f172a] transition-colors">
+              {showMultipleActiveWarning && (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-slate-800 dark:text-slate-200">
+                  <div className="flex items-center space-x-2 text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-1">
+                    <span>⚠</span>
+                    <span>Múltiplas revisões desta família estão ativas</span>
+                  </div>
+                  <p className="text-xs font-medium">
+                    As seguintes revisões estão ativas simultaneamente: {editingActiveRevisions.map(r => r.revision).sort().join(', ')}
+                  </p>
+                </div>
+              )}
               {/* Conteúdo do Formulário */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-2">
                 <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50 flex items-center space-x-3 transition-colors">
