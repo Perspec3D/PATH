@@ -36,6 +36,7 @@ export const Projects: React.FC<ProjectsProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [clientFilter, setClientFilter] = useState<string>('ALL');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('ALL');
+  const [projectsPage, setProjectsPage] = useState(1);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -355,8 +356,13 @@ export const Projects: React.FC<ProjectsProps> = ({
   };
 
   useEffect(() => {
+    if (!showModal || !editingProject) {
+      return;
+    }
+
+    setForecastDataset(null);
     loadForecastDataset();
-  }, [currentUser.workspaceId]);
+  }, [showModal, editingProject?.id, currentUser.workspaceId]);
 
   const loadActiveWorkContext = async () => {
     try {
@@ -1493,6 +1499,40 @@ export const Projects: React.FC<ProjectsProps> = ({
         : [family.current]);
   }, [db.projects, search, statusFilter, clientFilter, assigneeFilter, expandedFamilyIds]);
 
+  const PROJECTS_PER_PAGE = 50;
+  const projectsPageCount = Math.max(1, Math.ceil(filteredProjects.length / PROJECTS_PER_PAGE));
+  const paginatedProjects = useMemo(() => {
+    const start = (projectsPage - 1) * PROJECTS_PER_PAGE;
+    return filteredProjects.slice(start, start + PROJECTS_PER_PAGE);
+  }, [filteredProjects, projectsPage]);
+
+  useEffect(() => {
+    setProjectsPage(1);
+  }, [search, statusFilter, clientFilter, assigneeFilter]);
+
+  useEffect(() => {
+    if (projectsPage > projectsPageCount) setProjectsPage(projectsPageCount);
+  }, [projectsPage, projectsPageCount]);
+
+  const clientById = useMemo(
+    () => new Map(db.clients.map(client => [client.id, client])),
+    [db.clients]
+  );
+  const userById = useMemo(
+    () => new Map(db.users.map(user => [user.id, user])),
+    [db.users]
+  );
+  const revisionsByFamilyId = useMemo(() => {
+    const families = new Map<string, Project[]>();
+    for (const project of db.projects) {
+      const familyId = getProjectFamilyId(project);
+      const revisions = families.get(familyId);
+      if (revisions) revisions.push(project);
+      else families.set(familyId, [project]);
+    }
+    return families;
+  }, [db.projects]);
+
   const getStatusColor = (s: ProjectStatus) => {
     switch (s) {
       case ProjectStatus.DONE: return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
@@ -1588,13 +1628,13 @@ export const Projects: React.FC<ProjectsProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors">
-              {filteredProjects.map((project: Project) => {
-                const client = db.clients.find((c: Client) => c.id === project.clientId);
-                const assignee = db.users.find((u: InternalUser) => u.id === project.assigneeId);
+              {paginatedProjects.map((project: Project) => {
+                const client = clientById.get(project.clientId);
+                const assignee = userById.get(project.assigneeId);
                 const workingDays = calculateWorkingDays(project.startDate || '', project.deliveryDate || '');
                 const dateStyle = getDeliveryDateStyle(project.deliveryDate || '', project.status);
                 const familyId = getProjectFamilyId(project);
-                const familyRevisions = db.projects.filter(item => getProjectFamilyId(item) === familyId);
+                const familyRevisions = revisionsByFamilyId.get(familyId) || [];
                 const activeRevisionsInFamily = familyRevisions.filter(isCurrentProjectRevision);
                 const hasSimultaneousActive = activeRevisionsInFamily.length > 1;
                 const isHistorical = !isCurrentProjectRevision(project);
@@ -1612,7 +1652,7 @@ export const Projects: React.FC<ProjectsProps> = ({
                           onClick={() => project.photoUrl && setShowImageZoom(project.photoUrl)}
                         >
                           {project.photoUrl ? (
-                            <img src={project.photoUrl} className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-700 shadow-lg mx-auto transition-colors" />
+                            <img src={project.photoUrl} loading="lazy" decoding="async" className="w-8 h-8 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-700 shadow-lg mx-auto transition-colors" />
                           ) : (
                             <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-300 dark:text-slate-600 border border-slate-100 dark:border-slate-700/50 mx-auto transition-colors">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -1736,6 +1776,34 @@ export const Projects: React.FC<ProjectsProps> = ({
           </table>
           {filteredProjects.length === 0 && <div className="py-24 text-center text-slate-600 font-black uppercase tracking-[0.2em] text-xs">Nenhum projeto encontrado</div>}
         </div>
+        {filteredProjects.length > PROJECTS_PER_PAGE && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/30">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+              {((projectsPage - 1) * PROJECTS_PER_PAGE) + 1}–{Math.min(projectsPage * PROJECTS_PER_PAGE, filteredProjects.length)} de {filteredProjects.length} projetos
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setProjectsPage(page => Math.max(1, page - 1))}
+                disabled={projectsPage === 1}
+                className="px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:border-indigo-400 transition-colors"
+              >
+                Anterior
+              </button>
+              <span className="min-w-20 text-center text-[10px] font-black uppercase tracking-widest text-slate-500">
+                {projectsPage} / {projectsPageCount}
+              </span>
+              <button
+                type="button"
+                onClick={() => setProjectsPage(page => Math.min(projectsPageCount, page + 1))}
+                disabled={projectsPage === projectsPageCount}
+                className="px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:border-indigo-400 transition-colors"
+              >
+                Próxima
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MODAL: Cadastro/Edição de Projeto */}
