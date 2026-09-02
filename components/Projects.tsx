@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry } from '../types';
-import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, fetchOperationalMetricsDataset, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision } from '../storage';
+import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, logActionsBatch, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
@@ -232,13 +232,61 @@ export const Projects: React.FC<ProjectsProps> = ({
   const [isSavingOvertime, setIsSavingOvertime] = useState(false);
   const [usePrefix, setUsePrefix] = useState(false);
   const [codePrefix, setCodePrefix] = useState('');
+  // Memoized maps for instant O(1) lookups during rendering
+  const clientMap = useMemo(() => {
+    const map = new Map<string, Client>();
+    db.clients.forEach(c => map.set(c.id, c));
+    return map;
+  }, [db.clients]);
+
+  const userMap = useMemo(() => {
+    const map = new Map<string, InternalUser>();
+    db.users.forEach(u => map.set(u.id, u));
+    return map;
+  }, [db.users]);
+
+  const { familyRevisionsMap, activeRevisionsCountMap } = useMemo(() => {
+    const revMap = new Map<string, Project[]>();
+    const countMap = new Map<string, number>();
+    for (const project of db.projects) {
+      const familyId = getProjectFamilyId(project);
+      const list = revMap.get(familyId);
+      if (list) {
+        list.push(project);
+      } else {
+        revMap.set(familyId, [project]);
+      }
+      if (isCurrentProjectRevision(project)) {
+        countMap.set(familyId, (countMap.get(familyId) || 0) + 1);
+      }
+    }
+    return { familyRevisionsMap: revMap, activeRevisionsCountMap: countMap };
+  }, [db.projects]);
+
+  const sortedClients = useMemo(() => {
+    return [...db.clients].sort((a, b) => parseInt(a.code || '0') - parseInt(b.code || '0'));
+  }, [db.clients]);
+
+  const activeClients = useMemo(() => {
+    return sortedClients.filter((c: any) => c.status === 'ACTIVE');
+  }, [sortedClients]);
+
+  const activeUsers = useMemo(() => {
+    return db.users.filter(u => u.isActive);
+  }, [db.users]);
+
   const isHistoricalRevision = Boolean(editingProject && !isCurrentProjectRevision(editingProject));
-  const editingFamilyRevisions = editingProject
-    ? db.projects
-        .filter(project => getProjectFamilyId(project) === getProjectFamilyId(editingProject))
-        .sort((a, b) => getProjectRevisionNumber(b) - getProjectRevisionNumber(a))
-    : [];
-  const editingActiveRevisions = editingFamilyRevisions.filter(isCurrentProjectRevision);
+  const editingFamilyRevisions = useMemo(() => {
+    if (!editingProject) return [];
+    const familyId = getProjectFamilyId(editingProject);
+    const list = familyRevisionsMap.get(familyId) || [];
+    return [...list].sort((a, b) => getProjectRevisionNumber(b) - getProjectRevisionNumber(a));
+  }, [editingProject, familyRevisionsMap]);
+
+  const editingActiveRevisions = useMemo(() => {
+    return editingFamilyRevisions.filter(isCurrentProjectRevision);
+  }, [editingFamilyRevisions]);
+
   const showMultipleActiveWarning = editingActiveRevisions.length > 1;
   const nextRevisionNumber = editingFamilyRevisions.length > 0
     ? Math.max(...editingFamilyRevisions.map(getProjectRevisionNumber)) + 1
@@ -247,21 +295,21 @@ export const Projects: React.FC<ProjectsProps> = ({
   const hasRunningOperationalSession = Boolean(activeWorkContext)
     || workSessions.some(session => session.endedAt === undefined);
 
-  const deliveryForecasts = useMemo(() => forecastDataset
-    ? buildProjectDeliveryForecasts({
-        projects: db.projects,
-        users: db.users,
-        activities: forecastDataset.activities,
-        executions: forecastDataset.executions,
-        sessions: forecastDataset.sessions,
-        overtimeEntries: forecastDataset.overtimeEntries,
-        company: db.company || undefined,
-        nowMs: Date.now()
-      })
-    : [], [forecastDataset, db.projects, db.users, db.company]);
-  const editingProjectForecast = editingProject
-    ? deliveryForecasts.find(forecast => forecast.projectId === editingProject.id)
-    : undefined;
+  // Forecast calculated strictly on-demand for the currently edited project
+  const editingProjectForecast = useMemo(() => {
+    if (!editingProject || !forecastDataset || forecastDataset.activities.length === 0) return undefined;
+    const forecasts = buildProjectDeliveryForecasts({
+      projects: [editingProject],
+      users: db.users,
+      activities: forecastDataset.activities,
+      executions: forecastDataset.executions,
+      sessions: forecastDataset.sessions,
+      overtimeEntries: forecastDataset.overtimeEntries,
+      company: db.company || undefined,
+      nowMs: Date.now()
+    });
+    return forecasts.find(forecast => forecast.projectId === editingProject.id);
+  }, [forecastDataset, editingProject, db.users, db.company]);
 
   const resetForm = () => {
     setName('');
@@ -277,6 +325,7 @@ export const Projects: React.FC<ProjectsProps> = ({
     setActivityExecutions([]);
     setWorkSessions([]);
     setOvertimeEntries([]);
+    setForecastDataset(null);
     setUsePrefix(false);
     setCodePrefix('');
     setEditingProject(null);
@@ -290,7 +339,8 @@ export const Projects: React.FC<ProjectsProps> = ({
     return `${parts[2]}/${parts[1]}/${parts[0]}`;
   };
 
-  const calculateWorkingDays = (startStr: string, endStr: string) => {
+  // Fast O(1) working days calculation
+  const calculateWorkingDays = (startStr: string, endStr: string): string => {
     if (!startStr || !endStr) return '---';
     const [sy, sm, sd] = startStr.split('-').map(Number);
     const [ey, em, ed] = endStr.split('-').map(Number);
@@ -298,14 +348,17 @@ export const Projects: React.FC<ProjectsProps> = ({
     const end = new Date(ey, em - 1, ed);
     if (isNaN(start.getTime()) || isNaN(end.getTime())) return '---';
     if (start > end) return '0 dias';
-    let count = 0;
-    const curDate = new Date(start.getTime());
-    while (curDate <= end) {
-      const dayOfWeek = curDate.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) count++;
-      curDate.setDate(curDate.getDate() + 1);
+
+    const totalDays = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+    const fullWeeks = Math.floor(totalDays / 7);
+    let workDays = fullWeeks * 5;
+    const startDay = start.getDay();
+
+    for (let i = 0; i < totalDays % 7; i++) {
+      const d = (startDay + i) % 7;
+      if (d !== 0 && d !== 6) workDays++;
     }
-    return `${count} ${count === 1 ? 'dia' : 'dias'}`;
+    return `${workDays} ${workDays === 1 ? 'dia' : 'dias'}`;
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -343,19 +396,6 @@ export const Projects: React.FC<ProjectsProps> = ({
       }
     };
     loadActiveTypes();
-  }, [currentUser.workspaceId]);
-
-  const loadForecastDataset = async () => {
-    try {
-      const data = await fetchOperationalMetricsDataset(currentUser.workspaceId);
-      setForecastDataset(data);
-    } catch (err) {
-      console.error('Erro ao carregar previsão de entrega:', err);
-    }
-  };
-
-  useEffect(() => {
-    loadForecastDataset();
   }, [currentUser.workspaceId]);
 
   const loadActiveWorkContext = async () => {
@@ -396,12 +436,15 @@ export const Projects: React.FC<ProjectsProps> = ({
     }
   }, [initialEditingActivity]);
 
+  // Live second timer is strictly active only when viewing modal/pending activity with running session
+  const needsLiveClock = (showModal || Boolean(pendingActivity)) && hasRunningOperationalSession;
+
   useEffect(() => {
-    if (!hasRunningOperationalSession) return;
+    if (!needsLiveClock) return;
     setClockNow(Date.now());
     const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [activeWorkContext?.session.id, hasRunningOperationalSession]);
+  }, [activeWorkContext?.session.id, needsLiveClock]);
 
   const loadProjectActivities = async (projectId: string) => {
     setIsLoadingActivities(true);
@@ -424,16 +467,29 @@ export const Projects: React.FC<ProjectsProps> = ({
             })
           : [];
         setWorkSessions(sessions);
+        setForecastDataset({
+          activities: sortedActivities,
+          executions,
+          sessions,
+          overtimeEntries: entries
+        });
       } else {
         setActivityExecutions([]);
         setWorkSessions([]);
         setOvertimeEntries([]);
+        setForecastDataset({
+          activities: [],
+          executions: [],
+          sessions: [],
+          overtimeEntries: []
+        });
       }
     } catch (err) {
       console.error("Erro ao carregar atividades do projeto:", err);
       setActivityExecutions([]);
       setWorkSessions([]);
       setOvertimeEntries([]);
+      setForecastDataset(null);
     } finally {
       setIsLoadingActivities(false);
     }
@@ -570,7 +626,6 @@ export const Projects: React.FC<ProjectsProps> = ({
       );
 
       await loadProjectActivities(editingProject.id);
-      await loadForecastDataset();
       setShowActivityModal(false);
       resetActForm();
     } catch (err: any) {
@@ -604,7 +659,6 @@ export const Projects: React.FC<ProjectsProps> = ({
       await syncProjectActivity(updatedActivity);
       if (editingProject) {
         await loadProjectActivities(editingProject.id);
-        await loadForecastDataset();
         await logAction(
           currentUser.workspaceId,
           currentUser,
@@ -641,7 +695,6 @@ export const Projects: React.FC<ProjectsProps> = ({
             editingProject.code
           );
           await loadProjectActivities(editingProject.id);
-          await loadForecastDataset();
         }
       } catch (err: any) {
         alert("Erro ao excluir atividade: " + err.message);
@@ -764,7 +817,6 @@ export const Projects: React.FC<ProjectsProps> = ({
     if (editingProject) {
       await loadProjectActivities(editingProject.id);
     }
-    await loadForecastDataset();
   };
 
   const handleStartOrResumeActivity = async (activity: ProjectActivity, pauseCurrent = false) => {
@@ -1116,11 +1168,13 @@ export const Projects: React.FC<ProjectsProps> = ({
         }, `o projeto ${projectData.code}`);
 
         if (diffLogs.length > 0) {
-          for (const log of diffLogs) {
-             await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} ${log}`, projectData.code);
-          }
+          const logEntries = diffLogs.map(log => ({
+            details: `${currentUser.username} ${log}`,
+            itemId: projectData.code
+          }));
+          await logActionsBatch(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, logEntries);
         } else {
-           await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} atualizou o projeto ${projectData.code}`, projectData.code);
+          await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.UPDATE, `${currentUser.username} atualizou o projeto ${projectData.code}`, projectData.code);
         }
       } else {
         newProjects = [...db.projects, savedProject];
@@ -1467,18 +1521,14 @@ export const Projects: React.FC<ProjectsProps> = ({
   };
 
   const filteredProjects = useMemo(() => {
-    const families = new Map<string, Project[]>();
-    db.projects.forEach(project => {
-      const familyId = getProjectFamilyId(project);
-      families.set(familyId, [...(families.get(familyId) || []), project]);
-    });
+    const searchLower = search.toLowerCase();
 
-    return Array.from(families.entries())
+    return Array.from(familyRevisionsMap.entries())
       .map(([familyId, revisions]) => {
         const ordered = [...revisions].sort((a, b) => getProjectRevisionNumber(b) - getProjectRevisionNumber(a));
         const current = ordered.find(isCurrentProjectRevision) || ordered[0];
         const matchesFamily = ordered.some(project => {
-          const matchesSearch = project.name.toLowerCase().includes(search.toLowerCase()) || project.code.includes(search);
+          const matchesSearch = !search || project.name.toLowerCase().includes(searchLower) || project.code.toLowerCase().includes(searchLower);
           const matchesStatus = statusFilter === 'ALL' || project.status === statusFilter;
           const matchesClient = clientFilter === 'ALL' || project.clientId === clientFilter;
           const matchesAssignee = assigneeFilter === 'ALL' || project.assigneeId === assigneeFilter;
@@ -1491,7 +1541,7 @@ export const Projects: React.FC<ProjectsProps> = ({
       .flatMap(family => expandedFamilyIds.includes(family.familyId)
         ? [family.current, ...family.ordered.filter(project => project.id !== family.current.id)]
         : [family.current]);
-  }, [db.projects, search, statusFilter, clientFilter, assigneeFilter, expandedFamilyIds]);
+  }, [familyRevisionsMap, search, statusFilter, clientFilter, assigneeFilter, expandedFamilyIds]);
 
   const getStatusColor = (s: ProjectStatus) => {
     switch (s) {
@@ -1506,7 +1556,7 @@ export const Projects: React.FC<ProjectsProps> = ({
 
   const getPreviewCode = () => {
     if (editingProject) return editingProject.code;
-    const client = db.clients.find((c: Client) => c.id === clientId);
+    const client = clientMap.get(clientId);
     if (!client) return "---";
     const baseSeq = customCode || getNextGlobalProjectSeq(db.projects);
     const seq = baseSeq.toString().padStart(6, '0');
@@ -1555,9 +1605,7 @@ export const Projects: React.FC<ProjectsProps> = ({
           onChange={(e) => setClientFilter(e.target.value)}
         >
           <option value="ALL">Cliente: Todos</option>
-          {[...db.clients]
-            .sort((a, b) => parseInt(a.code) - parseInt(b.code))
-            .map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
+          {sortedClients.map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
         </select>
         <select
           className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer transition-colors"
@@ -1565,7 +1613,7 @@ export const Projects: React.FC<ProjectsProps> = ({
           onChange={(e) => setAssigneeFilter(e.target.value)}
         >
           <option value="ALL">Responsável: Todos</option>
-          {db.users.filter(u => u.isActive).map(u => (
+          {activeUsers.map(u => (
             <option key={u.id} value={u.id}>{u.username.split(' ')[0]}</option>
           ))}
         </select>
@@ -1589,14 +1637,14 @@ export const Projects: React.FC<ProjectsProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors">
               {filteredProjects.map((project: Project) => {
-                const client = db.clients.find((c: Client) => c.id === project.clientId);
-                const assignee = db.users.find((u: InternalUser) => u.id === project.assigneeId);
+                const client = clientMap.get(project.clientId);
+                const assignee = userMap.get(project.assigneeId || '');
                 const workingDays = calculateWorkingDays(project.startDate || '', project.deliveryDate || '');
                 const dateStyle = getDeliveryDateStyle(project.deliveryDate || '', project.status);
                 const familyId = getProjectFamilyId(project);
-                const familyRevisions = db.projects.filter(item => getProjectFamilyId(item) === familyId);
-                const activeRevisionsInFamily = familyRevisions.filter(isCurrentProjectRevision);
-                const hasSimultaneousActive = activeRevisionsInFamily.length > 1;
+                const familyRevisions = familyRevisionsMap.get(familyId) || [];
+                const activeCount = activeRevisionsCountMap.get(familyId) || 0;
+                const hasSimultaneousActive = activeCount > 1;
                 const isHistorical = !isCurrentProjectRevision(project);
                 const isExpanded = expandedFamilyIds.includes(familyId);
 
@@ -1631,7 +1679,7 @@ export const Projects: React.FC<ProjectsProps> = ({
                         </span>
                         {!isHistorical && hasSimultaneousActive && (
                           <span className="rounded-md px-2 py-0.5 text-[8px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                            <span>⚠</span> <span>{activeRevisionsInFamily.length} REVISÕES ATIVAS</span>
+                            <span>⚠</span> <span>{activeCount} REVISÕES ATIVAS</span>
                           </span>
                         )}
                         {isHistorical && currentUser.role !== UserRole.VIEWER && (
@@ -1861,17 +1909,14 @@ export const Projects: React.FC<ProjectsProps> = ({
                     <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Cliente *</label>
                     <select required value={clientId} disabled={!!editingProject || currentUser.role === UserRole.VIEWER} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors disabled:opacity-60" onChange={(e) => setClientId(e.target.value)}>
                       <option value="">Selecione o Cliente...</option>
-                      {[...db.clients]
-                        .filter((c: any) => c.status === 'ACTIVE')
-                        .sort((a, b) => parseInt(a.code) - parseInt(b.code))
-                        .map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
+                      {activeClients.map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Responsável *</label>
                     <select required value={assigneeId} disabled={currentUser.role === UserRole.VIEWER || isHistoricalRevision} className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors disabled:opacity-60" onChange={(e) => setAssigneeId(e.target.value)}>
                       <option value="">Selecione um usuário...</option>
-                      {db.users.filter((u: any) => u.isActive).map((u: InternalUser) => <option key={u.id} value={u.id}>{u.username} ({u.role})</option>)}
+                      {activeUsers.map((u: InternalUser) => <option key={u.id} value={u.id}>{u.username} ({u.role})</option>)}
                     </select>
                   </div>
                   <div>

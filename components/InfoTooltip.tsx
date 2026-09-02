@@ -33,7 +33,7 @@ const useFloatingTooltipPosition = <T extends HTMLElement>(
   anchorRef: React.RefObject<T | null>,
   tooltipRef: React.RefObject<HTMLDivElement | null>,
   isOpen: boolean,
-  preferredPosition: 'top' | 'bottom'
+  preferredPosition: string = 'top'
 ) => {
   const [tooltipPosition, setTooltipPosition] = useState<TooltipPosition>(INITIAL_POSITION);
 
@@ -48,7 +48,7 @@ const useFloatingTooltipPosition = <T extends HTMLElement>(
     const availableBelow = window.innerHeight - anchorRect.bottom - VIEWPORT_MARGIN;
     const requiredHeight = tooltipRect.height + TRIGGER_GAP;
 
-    let placement = preferredPosition;
+    let placement: 'top' | 'bottom' = preferredPosition === 'bottom' ? 'bottom' : 'top';
     if (placement === 'top' && availableAbove < requiredHeight && availableBelow > availableAbove) {
       placement = 'bottom';
     } else if (placement === 'bottom' && availableBelow < requiredHeight && availableAbove > availableBelow) {

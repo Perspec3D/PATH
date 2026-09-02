@@ -58,10 +58,10 @@ const App: React.FC = () => {
 
   // Keep companySession in sync with db.company changes
   useEffect(() => {
-    if (db.company && JSON.stringify(db.company) !== JSON.stringify(companySession)) {
+    if (db.company && db.company !== companySession) {
       setCompanySession(db.company);
     }
-  }, [db.company]);
+  }, [db.company, companySession]);
 
   // Sync with Supabase on Login
   useEffect(() => {
@@ -107,7 +107,7 @@ const App: React.FC = () => {
             projects: remoteData.projects || [],
             tasks: remoteData.tasks || [],
           });
-          if (mergedCompany && JSON.stringify(mergedCompany) !== JSON.stringify(companySession)) {
+          if (mergedCompany && mergedCompany !== companySession) {
             setCompanySession(mergedCompany);
           }
         } catch (err) {

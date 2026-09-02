@@ -53,30 +53,35 @@ export const fetchAllData = async (companyId?: string, forceRefresh = false): Pr
     return memoryCache.data;
   }
 
-  // Optimize Egress by requesting explicit columns and adding the explicit workspace_id filter
-  const { data: clients } = await supabase.from('clients')
-    .select('id, workspace_id, code, name, type, status, photo_url, cpf_cnpj, email, phone, zip_code, address, number, neighborhood, city, state, complement, contacts')
-    .eq('workspace_id', companyId);
+  // Optimize Egress by requesting explicit columns and parallelizing queries
+  const [
+    { data: clients },
+    { data: projects },
+    { data: teamTasks },
+    { data: users },
+    profileRes
+  ] = await Promise.all([
+    supabase.from('clients')
+      .select('id, workspace_id, code, name, type, status, photo_url, cpf_cnpj, email, phone, zip_code, address, number, neighborhood, city, state, complement, contacts')
+      .eq('workspace_id', companyId),
+    supabase.from('projects')
+      .select('id, workspace_id, family_id, revision_number, is_current_revision, client_id, assignee_id, code, name, photo_url, revision, status, start_date, delivery_date, due_date, notes, created_at, project_families(code, name)')
+      .eq('workspace_id', companyId),
+    supabase.from('team_tasks')
+      .select('id, workspace_id, title, type, assignee_id, start_date, end_date, description, created_at, start_time, end_time, reminder, reminder_dismissed, snooze_until, invited_users, reminder_state')
+      .eq('workspace_id', companyId),
+    supabase.from('internal_users')
+      .select('id, workspace_id, username, password_hash, role, is_active, must_change_password')
+      .eq('workspace_id', companyId),
+    companyId
+      ? supabase.from('profiles')
+          .select('id, name, email, license_status, trial_start, user_limit, subscription_id, subscription_end, logo_url, work_start_time, work_end_time, lunch_duration_minutes, work_days')
+          .eq('id', companyId)
+          .maybeSingle()
+      : Promise.resolve({ data: null })
+  ]);
 
-  const { data: projects } = await supabase.from('projects')
-    .select('id, workspace_id, family_id, revision_number, is_current_revision, client_id, assignee_id, code, name, photo_url, revision, status, start_date, delivery_date, due_date, notes, created_at, project_families(code, name)')
-    .eq('workspace_id', companyId);
-
-  const { data: teamTasks } = await supabase.from('team_tasks')
-    .select('id, workspace_id, title, type, assignee_id, start_date, end_date, description, created_at, start_time, end_time, reminder, reminder_dismissed, snooze_until, invited_users, reminder_state')
-    .eq('workspace_id', companyId);
-
-  const { data: users } = await supabase.from('internal_users')
-    .select('id, workspace_id, username, password_hash, role, is_active, must_change_password')
-    .eq('workspace_id', companyId);
-
-  let profile = null;
-  if (companyId) {
-    const { data } = await supabase.from('profiles')
-      .select('id, name, email, license_status, trial_start, user_limit, subscription_id, subscription_end, logo_url, work_start_time, work_end_time, lunch_duration_minutes, work_days')
-      .eq('id', companyId).maybeSingle();
-    profile = data;
-  }
+  const profile = profileRes?.data || null;
 
   // Map snake_case from DB to camelCase in types
   const result = {
@@ -440,6 +445,28 @@ export const logAction = async (workspaceId: string, user: InternalUser, module:
   if (error) console.error("Error logging action:", error);
 };
 
+export const logActionsBatch = async (
+  workspaceId: string,
+  user: InternalUser,
+  module: LogModule,
+  action: LogAction,
+  entries: { details: string; itemId?: string }[]
+) => {
+  if (!entries || entries.length === 0) return;
+  const rows = entries.map(e => ({
+    workspace_id: workspaceId,
+    user_id: user.id,
+    user_name: user.username,
+    user_role: user.role,
+    module: module,
+    action: action,
+    details: e.details,
+    item_id: e.itemId || null
+  }));
+  const { error } = await supabase.from('logs').insert(rows);
+  if (error) console.error("Error logging action batch:", error);
+};
+
 export const fetchLogs = async (workspaceId: string): Promise<SystemLog[]> => {
   const { data, error } = await supabase.from('logs')
     .select('*')
@@ -781,7 +808,21 @@ export const fetchActivityOvertimeEntries = async (
 };
 
 export const fetchOperationalMetricsDataset = async (workspaceId: string): Promise<OperationalMetricsDataset> => {
-  const activities = await fetchProjectActivities(workspaceId);
+  const [activities, executions, sessions, overtimeEntries] = await Promise.all([
+    fetchProjectActivities(workspaceId),
+    fetchActivityExecutions(workspaceId),
+    fetchWorkSessions(workspaceId),
+    fetchActivityOvertimeEntries(workspaceId)
+  ]);
+
+  return { activities, executions, sessions, overtimeEntries };
+};
+
+export const fetchProjectOperationalDataset = async (
+  workspaceId: string,
+  projectId: string
+): Promise<OperationalMetricsDataset> => {
+  const activities = await fetchProjectActivities(workspaceId, projectId);
   const projectActivityIds = activities.map(activity => activity.id);
 
   if (projectActivityIds.length === 0) {
