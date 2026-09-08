@@ -545,31 +545,73 @@ export const Gantt: React.FC<GanttProps> = ({
     );
   }, [allProjects]);
 
-  // Janela Temporal Dinâmica
+  // Janela Temporal Dinâmica Abrangente (Projetos, Atividades, Tarefas de Equipe e Hoje)
   const { timelineDates, minDate } = useMemo(() => {
     const today = new Date();
     today.setHours(12, 0, 0, 0);
-    if (activeProjects.length === 0) {
-      const start = new Date(today); start.setDate(today.getDate() - 5);
-      const end = new Date(today); end.setDate(today.getDate() + 5);
-      const timeline: Date[] = [];
-      let cur = new Date(start);
-      while (cur <= end) { timeline.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
-      return { timelineDates: timeline, minDate: start };
+
+    const allDateTimestamps: number[] = [today.getTime()];
+
+    // 1. Datas de projetos ativos
+    activeProjects.forEach(p => {
+      if (p.startDate) {
+        const s = new Date(p.startDate + 'T12:00:00').getTime();
+        if (!isNaN(s)) allDateTimestamps.push(s);
+      }
+      if (p.deliveryDate) {
+        const e = new Date(p.deliveryDate + 'T12:00:00').getTime();
+        if (!isNaN(e)) allDateTimestamps.push(e);
+      }
+    });
+
+    // 2. Datas de atividades de projetos ativos
+    const activeProjectIds = new Set(activeProjects.map(p => p.id));
+    (projectActivities || []).forEach(pa => {
+      if (activeProjectIds.has(pa.projectId) && !isProjectActivityClosed(pa.status)) {
+        if (pa.startDate) {
+          const s = new Date(pa.startDate + 'T12:00:00').getTime();
+          if (!isNaN(s)) allDateTimestamps.push(s);
+        }
+        if (pa.deliveryDate) {
+          const e = new Date(pa.deliveryDate + 'T12:00:00').getTime();
+          if (!isNaN(e)) allDateTimestamps.push(e);
+        }
+      }
+    });
+
+    // 3. Datas de tarefas de equipe (db.tasks)
+    (db.tasks || []).forEach(t => {
+      if (t.startDate) {
+        const s = new Date(t.startDate + 'T12:00:00').getTime();
+        if (!isNaN(s)) allDateTimestamps.push(s);
+      }
+      if (t.endDate) {
+        const e = new Date(t.endDate + 'T12:00:00').getTime();
+        if (!isNaN(e)) allDateTimestamps.push(e);
+      }
+    });
+
+    let min = new Date(Math.min(...allDateTimestamps));
+    let max = new Date(Math.max(...allDateTimestamps));
+
+    // Margem de segurança antes e depois
+    min.setDate(min.getDate() - 7);
+    max.setDate(max.getDate() + 7);
+
+    // Janela mínima de 30 dias para preenchimento confortável da timeline
+    const diffDays = Math.round((max.getTime() - min.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 30) {
+      max.setDate(min.getDate() + 30);
     }
-    const dates = activeProjects.map(p => ({
-      start: p.startDate ? new Date(p.startDate + 'T12:00:00') : today,
-      end: p.deliveryDate ? new Date(p.deliveryDate + 'T12:00:00') : today
-    }));
-    let min = new Date(Math.min(...dates.map(d => d.start.getTime()), today.getTime()));
-    let max = new Date(Math.max(...dates.map(d => d.end.getTime()), today.getTime()));
-    min.setDate(min.getDate() - 5);
-    max.setDate(max.getDate() + 5);
+
     const timeline: Date[] = [];
     let current = new Date(min);
-    while (current <= max) { timeline.push(new Date(current)); current.setDate(current.getDate() + 1); }
+    while (current <= max) {
+      timeline.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
     return { timelineDates: timeline, minDate: min };
-  }, [activeProjects]);
+  }, [activeProjects, projectActivities, db.tasks]);
 
   const getStatusColor = (status: ProjectStatus | string) => {
     switch (status) {
@@ -597,7 +639,10 @@ export const Gantt: React.FC<GanttProps> = ({
     return colors[Math.abs(hash) % colors.length];
   };
 
+  const sidebarWidth = 320;
   const dayWidth = 64;
+  const timelineWidth = timelineDates.length * dayWidth;
+  const totalWidth = sidebarWidth + timelineWidth;
   const todayStr = new Date().toDateString();
 
   if (viewMode === 'selector') {
@@ -723,20 +768,20 @@ export const Gantt: React.FC<GanttProps> = ({
 
       <div className="bg-white dark:bg-[#1e293b] rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-slate-700 p-3 overflow-hidden relative transition-colors duration-500">
         <div className="overflow-auto max-h-[calc(100vh-240px)] rounded-[24px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700/50 scrollbar-track-transparent">
-          <div style={{ minWidth: `${320 + timelineDates.length * dayWidth}px` }} className="flex flex-col pb-64">
+          <div style={{ width: `${totalWidth}px`, minWidth: `${totalWidth}px` }} className="flex flex-col pb-64">
             {/* HEADER FIXO (TOP E LEFT) */}
-            <div className="flex sticky top-0 z-50 bg-white dark:bg-[#1e293b] transition-colors">
+            <div style={{ width: `${totalWidth}px`, minWidth: `${totalWidth}px` }} className="flex sticky top-0 z-50 bg-white dark:bg-[#1e293b] transition-colors border-b border-slate-200 dark:border-slate-700/80">
               {/* Canto superior esquerdo fixo */}
-              <div className="w-80 border-r border-b border-slate-100 dark:border-slate-700/80 px-6 h-16 flex items-center shrink-0 sticky left-0 z-[60] bg-slate-50/80 dark:bg-slate-800/80 backdrop-blur-md transition-colors">
-                <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-400">
+              <div className="w-80 border-r border-slate-200 dark:border-slate-700/80 px-6 h-16 flex items-center shrink-0 sticky left-0 z-50 bg-slate-50 dark:bg-slate-800 transition-colors">
+                <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                   {viewMode === 'flow' ? 'Projetos Ativos' : 'Equipe / Atribuições'}
                 </span>
               </div>
 
               {/* Cabeçalho de Datas fixo no Topo */}
-              <div className="flex border-b border-slate-100 dark:border-slate-700/80 bg-slate-50/50 dark:bg-slate-800/50 flex-1 h-16 relative transition-colors">
+              <div style={{ width: `${timelineWidth}px`, minWidth: `${timelineWidth}px` }} className="flex bg-slate-50/70 dark:bg-slate-800/70 shrink-0 h-16 relative transition-colors">
                 {/* Hoje Highlight no Header */}
-                <div className="absolute inset-0 flex pointer-events-none z-10">
+                <div className="absolute inset-0 flex pointer-events-none z-10" style={{ width: `${timelineWidth}px` }}>
                   {timelineDates.map((date, i) => {
                     const isToday = date.toDateString() === todayStr;
                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
@@ -745,12 +790,12 @@ export const Gantt: React.FC<GanttProps> = ({
                     );
                   })}
                 </div>
-                <div className="flex items-stretch relative z-20">
+                <div className="flex items-stretch h-full relative z-20" style={{ width: `${timelineWidth}px` }}>
                   {timelineDates.map((date, idx) => {
                     const isToday = date.toDateString() === todayStr;
                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                     return (
-                      <div key={idx} style={{ width: `${dayWidth}px` }} className={`shrink-0 flex flex-col items-center justify-center border-r border-slate-100 dark:border-slate-700/80 ${isToday ? 'bg-orange-500/20' : isWeekend ? 'bg-indigo-50/50 dark:bg-indigo-500/10' : ''} transition-colors`}>
+                      <div key={idx} style={{ width: `${dayWidth}px` }} className={`shrink-0 h-full flex flex-col items-center justify-center border-r border-slate-200 dark:border-slate-700/80 ${isToday ? 'bg-orange-500/20' : isWeekend ? 'bg-indigo-50/50 dark:bg-indigo-500/10' : ''} transition-colors`}>
                         <span className={`text-[10px] font-black ${isToday ? 'text-orange-600 dark:text-orange-400 scale-110' : isWeekend ? 'text-slate-400 dark:text-slate-400' : 'text-slate-600 dark:text-slate-200'}`}>
                           {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                         </span>
@@ -765,7 +810,7 @@ export const Gantt: React.FC<GanttProps> = ({
             </div>
 
             {/* CONTEÚDO */}
-            <div className="flex flex-col divide-y divide-slate-700/80 relative">
+            <div style={{ width: `${totalWidth}px`, minWidth: `${totalWidth}px` }} className="flex flex-col divide-y divide-slate-200 dark:divide-slate-700/80 relative">
               {viewMode === 'flow' ? (
                 activeProjects.map((project: Project) => {
                   const client = allClients.find((c: Client) => c.id === project.clientId);
@@ -784,9 +829,9 @@ export const Gantt: React.FC<GanttProps> = ({
                   return (
                     <React.Fragment key={project.id}>
                       {/* LINHA DO PROJETO PAI */}
-                      <div className="flex group/row hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors relative hover:z-[60]">
+                      <div style={{ width: `${totalWidth}px`, minWidth: `${totalWidth}px` }} className="flex group/row hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors relative">
                         {/* Sidebar Projeto: FIXO NA ESQUERDA */}
-                        <div className="w-80 px-6 h-20 flex items-center border-r border-slate-100 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-sm group hover:bg-slate-50 dark:hover:bg-slate-800 transition-all border-l-4 border-transparent">
+                        <div className="w-80 px-6 h-20 flex items-center border-r border-slate-200 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white dark:bg-[#1e293b] group hover:bg-slate-50 dark:hover:bg-slate-800 transition-all border-l-4 border-transparent">
                           {hasActivities ? (
                             <button
                               onClick={() => toggleExpand(project.id)}
@@ -810,13 +855,13 @@ export const Gantt: React.FC<GanttProps> = ({
                         </div>
 
                         {/* Timeline Row */}
-                        <div className="flex-1 h-20 relative bg-slate-50/10 dark:bg-slate-900/10 overflow-visible transition-colors">
-                          <div className="absolute inset-0 flex pointer-events-none z-10">
+                        <div style={{ width: `${timelineWidth}px`, minWidth: `${timelineWidth}px` }} className="h-20 relative bg-slate-50/10 dark:bg-slate-900/10 shrink-0 transition-colors">
+                          <div className="absolute inset-0 flex pointer-events-none z-10" style={{ width: `${timelineWidth}px` }}>
                             {timelineDates.map((date, i) => {
                               const isToday = date.toDateString() === todayStr;
                               const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                               return (
-                                <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 ${isToday ? 'bg-orange-500/10 border-x border-orange-500/30' : isWeekend ? 'bg-indigo-50/20 dark:bg-indigo-500/[0.02]' : ''}`}></div>
+                                <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-200 dark:border-slate-700/80 shrink-0 ${isToday ? 'bg-orange-500/10 border-x border-orange-500/30' : isWeekend ? 'bg-indigo-50/20 dark:bg-indigo-500/[0.02]' : ''}`}></div>
                               );
                             })}
                           </div>
@@ -872,9 +917,9 @@ export const Gantt: React.FC<GanttProps> = ({
                           }
 
                           return (
-                            <div key={st.id} className="flex group/sub hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors relative hover:z-[55] bg-slate-100/30 dark:bg-slate-900/20">
+                            <div key={st.id} style={{ width: `${totalWidth}px`, minWidth: `${totalWidth}px` }} className="flex group/sub hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors relative bg-slate-100/30 dark:bg-slate-900/20">
                               {/* Sidebar da atividade do projeto */}
-                              <div className="w-80 pl-16 pr-6 h-12 flex flex-col justify-center border-r border-slate-100 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-sm border-l-4 border-indigo-500/10 transition-colors">
+                              <div className="w-80 pl-16 pr-6 h-12 flex flex-col justify-center border-r border-slate-200 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white dark:bg-[#1e293b] border-l-4 border-indigo-500/10 transition-colors">
                                 <h5 className="text-[11px] font-bold text-slate-600 dark:text-slate-400 truncate leading-tight transition-colors">{st.name}</h5>
                                 <p className="text-[8px] text-slate-400 dark:text-slate-600 font-black uppercase tracking-widest mt-0.5 transition-colors">
                                   {allUsers.find(u => u.id === st.assigneeId)?.username.split(' ')[0] || 'S/ RESP.'}
@@ -882,13 +927,13 @@ export const Gantt: React.FC<GanttProps> = ({
                               </div>
 
                               {/* Timeline da atividade do projeto */}
-                              <div className="flex-1 h-12 relative bg-slate-50/5 dark:bg-slate-900/5 overflow-visible transition-colors">
-                                <div className="absolute inset-0 flex pointer-events-none z-10">
+                              <div style={{ width: `${timelineWidth}px`, minWidth: `${timelineWidth}px` }} className="h-12 relative bg-slate-50/5 dark:bg-slate-900/5 shrink-0 transition-colors">
+                                <div className="absolute inset-0 flex pointer-events-none z-10" style={{ width: `${timelineWidth}px` }}>
                                   {timelineDates.map((date, i) => {
                                     const isToday = date.toDateString() === todayStr;
                                     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                                     return (
-                                      <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/40 shrink-0 ${isToday ? 'bg-orange-500/5 transition-colors' : isWeekend ? 'bg-indigo-50/10 dark:bg-indigo-500/[0.01]' : ''}`}></div>
+                                      <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-200 dark:border-slate-700/40 shrink-0 ${isToday ? 'bg-orange-500/5 transition-colors' : isWeekend ? 'bg-indigo-50/10 dark:bg-indigo-500/[0.01]' : ''}`}></div>
                                     );
                                   })}
                                 </div>
@@ -1027,10 +1072,10 @@ export const Gantt: React.FC<GanttProps> = ({
                   const rowHeight = Math.max(112, totalLanes * 42 + 40); // Increased lane height to 42px for better spacing
 
                   return (
-                    <div className="flex group/user relative hover:bg-slate-800/20 transition-all duration-300 hover:z-[60]" key={user.id}>
+                    <div style={{ width: `${totalWidth}px`, minWidth: `${totalWidth}px` }} className="flex group/user relative hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors" key={user.id}>
                       {/* Sidebar Usuário */}
                       <div
-                        className="w-80 px-6 flex items-center border-r border-slate-100 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white/95 dark:bg-[#1e293b]/95 backdrop-blur-sm group hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer border-l-4 border-transparent hover:border-emerald-500/40"
+                        className="w-80 px-6 flex items-center border-r border-slate-200 dark:border-slate-700/80 shrink-0 sticky left-0 z-40 bg-white dark:bg-[#1e293b] group hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer border-l-4 border-transparent hover:border-emerald-500/40"
                         onClick={() => setViewingUserCarga({ user, assignments: allAssignments, distinctCount: distinctProjectsCount })}
                         style={{ height: `${rowHeight}px` }}
                       >
@@ -1061,15 +1106,15 @@ export const Gantt: React.FC<GanttProps> = ({
                       </div>
 
                       {/* Timeline Usuário */}
-                      <div style={{ height: `${rowHeight}px` }} className="flex-1 relative bg-slate-50/10 dark:bg-slate-900/10 overflow-visible transition-colors">
+                      <div style={{ width: `${timelineWidth}px`, minWidth: `${timelineWidth}px`, height: `${rowHeight}px` }} className="relative bg-slate-50/10 dark:bg-slate-900/10 shrink-0 transition-colors">
                         {/* Background Grid & Conflict Highlight */}
-                        <div className="absolute inset-0 flex pointer-events-none z-10">
+                        <div className="absolute inset-0 flex pointer-events-none z-10" style={{ width: `${timelineWidth}px` }}>
                           {timelineDates.map((date, i) => {
                             const isConflict = conflictMap.has(date.toDateString());
                             const isToday = date.toDateString() === todayStr;
                             const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                             return (
-                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-100 dark:border-slate-700/80 shrink-0 transition-colors duration-500 ${isConflict ? 'bg-red-500/10' : ''} ${isToday ? 'bg-orange-500/10 shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : isWeekend && !isConflict ? 'bg-indigo-50/30 dark:bg-indigo-500/[0.03]' : ''}`}>
+                              <div key={i} style={{ width: `${dayWidth}px` }} className={`h-full border-r border-slate-200 dark:border-slate-700/80 shrink-0 transition-colors duration-500 ${isConflict ? 'bg-red-500/10' : ''} ${isToday ? 'bg-orange-500/10 shadow-[inset_0_0_20px_rgba(249,115,22,0.1)]' : isWeekend && !isConflict ? 'bg-indigo-50/30 dark:bg-indigo-500/[0.03]' : ''}`}>
                               </div>
                             );
                           })}
@@ -1131,7 +1176,7 @@ export const Gantt: React.FC<GanttProps> = ({
                             >
                             <div
                               style={{ left: `${offset}px`, width: `${width}px`, top: `${topPos}px` }}
-                              className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 hover:z-50 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
+                              className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 hover:z-30 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
                               onClick={() => {
                                 if (task.type === 'project') openEdit(task);
                                 else if (task.type === 'projectActivity' && task.parentProject) setSelectedQuickViewActivity(task);
