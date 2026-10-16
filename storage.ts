@@ -1,4 +1,4 @@
-import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, WorkSession, ActivityOvertimeEntry, ActivityTransitionResult, ActiveWorkSessionContext } from './types';
+import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, WorkSession, ActivityOvertimeEntry, ActivityTransitionResult, ActiveWorkSessionContext, ProjectActivityEvent } from './types';
 import { supabase } from './lib/supabase';
 
 export interface AppDB {
@@ -582,14 +582,16 @@ export const fetchProjectActivities = async (workspaceId: string, projectId?: st
     status: pa.status,
     startDate: pa.start_date || undefined,
     deliveryDate: pa.delivery_date || undefined,
+    originalDeliveryDate: pa.original_delivery_date || pa.delivery_date || undefined,
     notes: pa.notes || undefined,
+    blockedReason: pa.blocked_reason || undefined,
     estimatedDurationHours: pa.estimated_duration_hours !== null ? Number(pa.estimated_duration_hours) : undefined,
     estimatedCurrentHours: pa.estimated_current_hours !== null ? Number(pa.estimated_current_hours) : undefined,
     orderIndex: pa.order_index,
     actualStartDate: pa.actual_start_date || undefined,
     actualEndDate: pa.actual_end_date || undefined,
     conclusionResponsibleId: pa.conclusion_responsible_id || undefined,
-    deadlineChangesCount: pa.deadline_changes_count,
+    deadlineChangesCount: pa.deadline_changes_count || 0,
     deadlineAtConclusion: pa.deadline_at_conclusion || undefined,
     createdAt: new Date(pa.created_at).getTime(),
     updatedAt: new Date(pa.updated_at).getTime()
@@ -607,19 +609,125 @@ export const syncProjectActivity = async (activity: ProjectActivity) => {
     status: activity.status,
     start_date: activity.startDate || null,
     delivery_date: activity.deliveryDate || null,
+    original_delivery_date: activity.originalDeliveryDate || activity.deliveryDate || null,
     notes: activity.notes || null,
+    blocked_reason: activity.blockedReason || null,
     estimated_duration_hours: activity.estimatedDurationHours !== undefined ? activity.estimatedDurationHours : null,
     estimated_current_hours: activity.estimatedCurrentHours !== undefined ? activity.estimatedCurrentHours : null,
     order_index: activity.orderIndex,
     actual_start_date: activity.actualStartDate || null,
     actual_end_date: activity.actualEndDate || null,
     conclusion_responsible_id: activity.conclusionResponsibleId || null,
-    deadline_changes_count: activity.deadlineChangesCount,
+    deadline_changes_count: activity.deadlineChangesCount || 0,
     deadline_at_conclusion: activity.deadlineAtConclusion || null,
     created_at: activity.createdAt ? new Date(activity.createdAt).toISOString() : new Date().toISOString(),
     updated_at: new Date().toISOString()
   });
   if (error) throw error;
+};
+
+export const fetchProjectActivityEvents = async (
+  workspaceId: string,
+  activityId: string
+): Promise<ProjectActivityEvent[]> => {
+  const { data, error } = await supabase.from('project_activity_events')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .eq('activity_id', activityId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error("Error fetching activity events:", error);
+    return [];
+  }
+
+  return (data || []).map((e: any) => ({
+    id: e.id,
+    workspaceId: e.workspace_id,
+    activityId: e.activity_id,
+    eventType: e.event_type,
+    fromStatus: e.from_status || undefined,
+    toStatus: e.to_status || undefined,
+    details: e.details || undefined,
+    metadata: e.metadata || {},
+    actorId: e.actor_id || undefined,
+    actorName: e.actor_name || undefined,
+    createdAt: new Date(e.created_at).getTime()
+  }));
+};
+
+export const fetchProjectActivitiesEventsBatch = async (
+  workspaceId: string,
+  activityIds: string[]
+): Promise<Record<string, ProjectActivityEvent[]>> => {
+  if (!activityIds || activityIds.length === 0) return {};
+  const { data, error } = await supabase.from('project_activity_events')
+    .select('*')
+    .eq('workspace_id', workspaceId)
+    .in('activity_id', activityIds)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error("Error fetching activity events batch:", error);
+    return {};
+  }
+
+  const map: Record<string, ProjectActivityEvent[]> = {};
+  for (const raw of data || []) {
+    const event: ProjectActivityEvent = {
+      id: raw.id,
+      workspaceId: raw.workspace_id,
+      activityId: raw.activity_id,
+      eventType: raw.event_type,
+      fromStatus: raw.from_status || undefined,
+      toStatus: raw.to_status || undefined,
+      details: raw.details || undefined,
+      metadata: raw.metadata || {},
+      actorId: raw.actor_id || undefined,
+      actorName: raw.actor_name || undefined,
+      createdAt: new Date(raw.created_at).getTime()
+    };
+    if (!map[event.activityId]) {
+      map[event.activityId] = [];
+    }
+    map[event.activityId].push(event);
+  }
+  return map;
+};
+
+export const logProjectActivityEvent = async (
+  event: Omit<ProjectActivityEvent, 'id' | 'createdAt'>
+): Promise<ProjectActivityEvent | null> => {
+  const { data, error } = await supabase.from('project_activity_events').insert({
+    workspace_id: event.workspaceId,
+    activity_id: event.activityId,
+    event_type: event.eventType,
+    from_status: event.fromStatus || null,
+    to_status: event.toStatus || null,
+    details: event.details || null,
+    metadata: event.metadata || {},
+    actor_id: event.actorId || null,
+    actor_name: event.actorName || null
+  }).select('*').single();
+
+  if (error) {
+    console.error("Error logging activity event:", error);
+    return null;
+  }
+
+  return {
+    id: data.id,
+    workspaceId: data.workspace_id,
+    activityId: data.activity_id,
+    eventType: data.event_type,
+    fromStatus: data.from_status || undefined,
+    toStatus: data.to_status || undefined,
+    details: data.details || undefined,
+    metadata: data.metadata || {},
+    actorId: data.actor_id || undefined,
+    actorName: data.actor_name || undefined,
+    createdAt: new Date(data.created_at).getTime()
+  };
 };
 
 export const deleteProjectActivity = async (activityId: string) => {

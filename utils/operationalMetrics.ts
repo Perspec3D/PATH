@@ -6,7 +6,7 @@ import type {
   ProjectActivity,
   WorkSession
 } from '../types';
-import { ProjectStatus, ActivityExecutionStatus } from '../types';
+import { ProjectStatus, ActivityExecutionStatus, ActivityCanonicalStatus } from '../types';
 import { calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from './operationalTime';
 import { isProjectActivityCompleted } from './projectActivityStatus';
 
@@ -23,7 +23,7 @@ export interface ActivityOperationalMetric {
   activityName: string;
   projectId: string;
   internalUserId?: string;
-  status: ProjectStatus;
+  status: ProjectStatus | ActivityCanonicalStatus | string;
   isCompleted: boolean;
   estimatedMs: number | null;
   regularMs: number | null;

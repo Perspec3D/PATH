@@ -1,12 +1,13 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActivityOvertimeEntry, WorkSession, ActiveWorkSessionContext, ActivityType, LogModule, LogAction } from '../types';
-import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivities, fetchActivityExecutions, fetchActivityOvertimeEntries, fetchWorkSessions, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, logAction, fetchActivityTypes } from '../storage';
+import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActivityOvertimeEntry, WorkSession, ActiveWorkSessionContext, ActivityType, LogModule, LogAction, ActivityCanonicalStatus } from '../types';
+import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivities, syncProjectActivity, logProjectActivityEvent, fetchActivityExecutions, fetchActivityOvertimeEntries, fetchWorkSessions, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, logAction, fetchActivityTypes } from '../storage';
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 import { HoverTooltipPortal } from './InfoTooltip';
 import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, isValidDateRange } from '../utils/projectDateIntegrity';
 import { isCurrentProjectRevision } from '../utils/projectRevision';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
+import { normalizeActivityStatus, getActivityStatusBadge, formatDisplayDate, getTodayDateString, evaluateDeadlineStatus, calculateCalendarDurationDays, calculateDaysDifference, createActivityEventPayload, isActivityCompleted, isActivityInProgress, isActivityBlocked, isActivityToDo } from '../utils/activityOperationalModel';
 
 interface GanttProps {
   db: AppDB;
@@ -224,19 +225,320 @@ export const Gantt: React.FC<GanttProps> = ({
     }
   }, [selectedQuickViewActivity?.id]);
 
-  const hasRunningOperationalSession = Boolean(activeWorkContext?.session.startedAt);
-  useEffect(() => {
-    if (!hasRunningOperationalSession) return;
-    setClockNow(Date.now());
-    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [activeWorkContext?.session.id, hasRunningOperationalSession]);
-
   const refreshActivityExecutionState = async (activityId: string) => {
     const context = await fetchActiveWorkSessionContext(currentUser.workspaceId, currentUser.id);
     setActiveWorkContext(context);
     await loadQuickViewData(activityId);
     loadProjectActivitiesConsolidated();
+  };
+
+  const handleStartActivitySimplified = async (activity: ProjectActivity) => {
+    const parentProject = allProjects.find(p => p.id === activity.projectId);
+    const isHistorical = parentProject ? !isCurrentProjectRevision(parentProject) : false;
+    if (isHistorical) {
+      alert('Não é possível alterar atividades em uma revisão inativa.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+    if (activityActionId === activity.id) return;
+    setActivityActionId(activity.id);
+
+    try {
+      const today = getTodayDateString();
+      const prevStatus = activity.status;
+      const newActualStartDate = activity.actualStartDate || today;
+
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        status: ActivityCanonicalStatus.IN_PROGRESS,
+        actualStartDate: newActualStartDate,
+        blockedReason: undefined,
+        updatedAt: Date.now()
+      };
+
+      await syncProjectActivity(updatedActivity);
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'STARTED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+            details: `${currentUser.username} iniciou a atividade em ${formatDisplayDate(newActualStartDate)}`,
+            metadata: { actualStartDate: newActualStartDate }
+          }
+        )
+      );
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} iniciou a atividade ${activity.name} no projeto ${parentProject?.code || ''}`,
+        parentProject?.code
+      );
+
+      setSelectedQuickViewActivity((prev: any) => prev ? { ...prev, ...updatedActivity } : null);
+      await loadProjectActivitiesConsolidated();
+    } catch (err: any) {
+      console.error('Erro ao iniciar atividade:', err);
+      alert('Erro ao iniciar atividade: ' + (err.message || 'Erro inesperado'));
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
+  const handleBlockActivitySimplified = async (activity: ProjectActivity) => {
+    const parentProject = allProjects.find(p => p.id === activity.projectId);
+    const isHistorical = parentProject ? !isCurrentProjectRevision(parentProject) : false;
+    if (isHistorical) {
+      alert('Não é possível alterar atividades em uma revisão inativa.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+    const reason = window.prompt('Informe o motivo do bloqueio:', activity.blockedReason || '')?.trim();
+    if (!reason) return;
+    if (activityActionId === activity.id) return;
+    setActivityActionId(activity.id);
+
+    try {
+      const prevStatus = activity.status;
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        status: ActivityCanonicalStatus.BLOCKED,
+        blockedReason: reason,
+        updatedAt: Date.now()
+      };
+
+      await syncProjectActivity(updatedActivity);
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'BLOCKED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.BLOCKED,
+            details: `Atividade bloqueada: ${reason}`,
+            metadata: { blockedReason: reason }
+          }
+        )
+      );
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} bloqueou a atividade ${activity.name}: ${reason}`,
+        parentProject?.code
+      );
+
+      setSelectedQuickViewActivity((prev: any) => prev ? { ...prev, ...updatedActivity } : null);
+      await loadProjectActivitiesConsolidated();
+    } catch (err: any) {
+      console.error('Erro ao bloquear atividade:', err);
+      alert('Erro ao bloquear atividade: ' + (err.message || 'Erro inesperado'));
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
+  const handleResumeActivitySimplified = async (activity: ProjectActivity) => {
+    const parentProject = allProjects.find(p => p.id === activity.projectId);
+    const isHistorical = parentProject ? !isCurrentProjectRevision(parentProject) : false;
+    if (isHistorical) {
+      alert('Não é possível alterar atividades em uma revisão inativa.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+    if (activityActionId === activity.id) return;
+    setActivityActionId(activity.id);
+
+    try {
+      const prevStatus = activity.status;
+      const prevReason = activity.blockedReason;
+
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        status: ActivityCanonicalStatus.IN_PROGRESS,
+        blockedReason: undefined,
+        updatedAt: Date.now()
+      };
+
+      await syncProjectActivity(updatedActivity);
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'RESUMED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+            details: `${currentUser.username} retomou a atividade.${prevReason ? ` (Bloqueio anterior: ${prevReason})` : ''}`,
+            metadata: { previousBlockedReason: prevReason }
+          }
+        )
+      );
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} retomou a atividade ${activity.name} no projeto ${parentProject?.code || ''}`,
+        parentProject?.code
+      );
+
+      setSelectedQuickViewActivity((prev: any) => prev ? { ...prev, ...updatedActivity } : null);
+      await loadProjectActivitiesConsolidated();
+    } catch (err: any) {
+      console.error('Erro ao retomar atividade:', err);
+      alert('Erro ao retomar atividade: ' + (err.message || 'Erro inesperado'));
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
+  const handleCompleteActivitySimplified = async (activity: ProjectActivity) => {
+    const parentProject = allProjects.find(p => p.id === activity.projectId);
+    const isHistorical = parentProject ? !isCurrentProjectRevision(parentProject) : false;
+    if (isHistorical) {
+      alert('Não é possível alterar atividades em uma revisão inativa.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+    const defaultDate = activity.actualEndDate || getTodayDateString();
+    const actualEnd = window.prompt('Informe a data real de conclusão (AAAA-MM-DD):', defaultDate)?.trim();
+    if (!actualEnd) return;
+    if (activityActionId === activity.id) return;
+    setActivityActionId(activity.id);
+
+    try {
+      const prevStatus = activity.status;
+      const actualStart = activity.actualStartDate || activity.startDate || actualEnd;
+
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        status: ActivityCanonicalStatus.COMPLETED,
+        actualEndDate: actualEnd,
+        actualStartDate: actualStart,
+        conclusionResponsibleId: currentUser.id,
+        deadlineAtConclusion: activity.deliveryDate,
+        blockedReason: undefined,
+        updatedAt: Date.now()
+      };
+
+      await syncProjectActivity(updatedActivity);
+
+      const leadDays = calculateCalendarDurationDays(actualStart, actualEnd);
+      const deviation = calculateDaysDifference(actualEnd, activity.deliveryDate);
+      const deviationLabel = deviation === 0 ? 'no prazo' : deviation !== null && deviation > 0 ? `${deviation}d de atraso` : `${Math.abs(deviation || 0)}d adiantada`;
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'COMPLETED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.COMPLETED,
+            details: `Concluída em ${formatDisplayDate(actualEnd)} (${deviationLabel}, Lead Time: ${leadDays}d)`,
+            metadata: {
+              actualStartDate: actualStart,
+              actualEndDate: actualEnd,
+              leadTimeDays: leadDays,
+              deviationDays: deviation
+            }
+          }
+        )
+      );
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} concluiu a atividade ${activity.name} em ${formatDisplayDate(actualEnd)} no projeto ${parentProject?.code || ''}`,
+        parentProject?.code
+      );
+
+      setSelectedQuickViewActivity((prev: any) => prev ? { ...prev, ...updatedActivity } : null);
+      await loadProjectActivitiesConsolidated();
+    } catch (err: any) {
+      console.error('Erro ao concluir atividade:', err);
+      alert('Erro ao concluir atividade: ' + (err.message || 'Erro inesperado'));
+    } finally {
+      setActivityActionId(null);
+    }
+  };
+
+  const handleReopenActivitySimplified = async (activity: ProjectActivity) => {
+    const parentProject = allProjects.find(p => p.id === activity.projectId);
+    const isHistorical = parentProject ? !isCurrentProjectRevision(parentProject) : false;
+    if (isHistorical) {
+      alert('Não é possível alterar atividades em uma revisão inativa.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+    if (!window.confirm(`Deseja reabrir a atividade "${activity.name}"? Ela retornará para EM ANDAMENTO.`)) return;
+    if (activityActionId === activity.id) return;
+    setActivityActionId(activity.id);
+
+    try {
+      const prevStatus = activity.status;
+      const prevEndDate = activity.actualEndDate;
+
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        status: ActivityCanonicalStatus.IN_PROGRESS,
+        actualEndDate: undefined,
+        updatedAt: Date.now()
+      };
+
+      await syncProjectActivity(updatedActivity);
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'REOPENED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+            details: `Atividade reaberta por ${currentUser.username} (Conclusão anterior: ${formatDisplayDate(prevEndDate)})`,
+            metadata: { previousEndDate: prevEndDate }
+          }
+        )
+      );
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} reabriu a atividade ${activity.name} no projeto ${parentProject?.code || ''}`,
+        parentProject?.code
+      );
+
+      setSelectedQuickViewActivity((prev: any) => prev ? { ...prev, ...updatedActivity } : null);
+      await loadProjectActivitiesConsolidated();
+    } catch (err: any) {
+      console.error('Erro ao reabrir atividade:', err);
+      alert('Erro ao reabrir atividade: ' + (err.message || 'Erro inesperado'));
+    } finally {
+      setActivityActionId(null);
+    }
   };
 
   const handleStartOrResumeActivity = async (activity: ProjectActivity, pauseCurrent = false) => {
@@ -960,8 +1262,9 @@ export const Gantt: React.FC<GanttProps> = ({
                                     }
                                   >
                                     <div
+                                      onClick={() => setSelectedQuickViewActivity(st)}
                                       style={{ left: `${stOffset}px`, width: `${stWidth}px` }}
-                                      className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm transition-all duration-300 hover:brightness-125 z-20 ${getStatusColor(st.status)} opacity-80 hover:opacity-100 flex items-center px-2`}
+                                      className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(st.status)} opacity-80 hover:opacity-100 flex items-center px-2`}
                                     >
                                       <div className={`w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 ${getProjectMarkerColor(project.id)}`} />
                                       <span className="text-[7px] font-black text-white/90 truncate uppercase tracking-tighter">
@@ -1430,182 +1733,177 @@ export const Gantt: React.FC<GanttProps> = ({
               )}
 
               {/* Atividade Info */}
-              <div className="space-y-1">
-                <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">
-                  {selectedQuickViewActivity.name}
-                </h3>
-                <div className="flex items-center gap-2">
-                  <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(selectedQuickViewActivity.status)} text-white`}>
-                    {selectedQuickViewActivity.status}
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Categoria: {activeActivityTypes.find(t => t.id === selectedQuickViewActivity.activityTypeId)?.category || 'Geral'}
-                  </span>
-                </div>
-              </div>
+              {(() => {
+                const statusBadge = getActivityStatusBadge(selectedQuickViewActivity.status);
+                const deadlineEvaluation = evaluateDeadlineStatus(selectedQuickViewActivity);
+                const hasRescheduled = Boolean(selectedQuickViewActivity.originalDeliveryDate && selectedQuickViewActivity.deliveryDate && selectedQuickViewActivity.originalDeliveryDate !== selectedQuickViewActivity.deliveryDate);
+                const leadDays = selectedQuickViewActivity.actualStartDate && selectedQuickViewActivity.actualEndDate
+                  ? calculateCalendarDurationDays(selectedQuickViewActivity.actualStartDate, selectedQuickViewActivity.actualEndDate)
+                  : null;
 
-              {/* Bloco de Planejamento */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-white/5 p-5 rounded-2xl text-xs transition-colors">
-                <div>
-                  <p className="text-[9px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Responsável</p>
-                  <p className="font-bold text-slate-800 dark:text-slate-250">
-                    {db.users.find(u => u.id === selectedQuickViewActivity.assigneeId)?.username || 'Não atribuído'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Estimado</p>
-                  <p className="font-bold text-slate-800 dark:text-slate-250">
-                    {selectedQuickViewActivity.estimatedDurationHours !== undefined && selectedQuickViewActivity.estimatedDurationHours > 0 
-                      ? `${selectedQuickViewActivity.estimatedDurationHours}h` 
-                      : 'Sem estimativa'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[9px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Período Planejado</p>
-                  <p className="font-bold text-slate-800 dark:text-slate-250">
-                    {formatDate(selectedQuickViewActivity.startDate)} até {formatDate(selectedQuickViewActivity.deliveryDate)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Bloco Operacional */}
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-white/5 p-4 rounded-2xl text-center">
-                    <p className="text-[8px] font-black text-slate-455 dark:text-slate-500 uppercase tracking-widest mb-1">Tempo Contabilizado</p>
-                    <p className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-1">
-                      {formatElapsedTime(getAccountedOperationalMs(selectedQuickViewActivity.id))}
-                    </p>
-                  </div>
-                  <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-white/5 p-4 rounded-2xl text-center">
-                    <p className="text-[8px] font-black text-slate-455 dark:text-slate-500 uppercase tracking-widest mb-1">Horas Extras</p>
-                    <p className="text-xs font-mono font-bold text-slate-900 dark:text-white mt-1">
-                      {formatElapsedTime(getActivityOvertimeMs(selectedQuickViewActivity.id))}
-                    </p>
-                  </div>
-                  <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-white/5 p-4 rounded-2xl text-center">
-                    <p className="text-[8px] font-black text-slate-455 dark:text-slate-500 uppercase tracking-widest mb-1">Saldo Estimado</p>
-                    <p className={`text-xs font-mono font-bold mt-1 ${
-                      selectedQuickViewActivity.estimatedDurationHours !== undefined && selectedQuickViewActivity.estimatedDurationHours > 0
-                        ? (selectedQuickViewActivity.estimatedDurationHours - getAccountedOperationalMs(selectedQuickViewActivity.id) / (1000 * 60 * 60) < 0
-                          ? 'text-rose-600 dark:text-rose-400'
-                          : 'text-emerald-600 dark:text-emerald-400')
-                        : 'text-slate-400 dark:text-slate-500'
-                    }`}>
-                      {selectedQuickViewActivity.estimatedDurationHours !== undefined && selectedQuickViewActivity.estimatedDurationHours > 0
-                        ? formatDecimalHours(selectedQuickViewActivity.estimatedDurationHours - getAccountedOperationalMs(selectedQuickViewActivity.id) / (1000 * 60 * 60))
-                        : 'Sem estimativa'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Sessão Ativa */}
-                {activeWorkContext && activeWorkContext.activity.id === selectedQuickViewActivity.id && (
-                  <div className="flex items-center justify-between px-5 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                      </span>
-                      <span className="font-bold uppercase tracking-wider text-[10px]">Atividade em Execução</span>
-                    </div>
-                    <span className="font-medium text-[10px]">
-                      Desde: {formatSessionStartedAt(activeWorkContext.session.startedAt)}
-                    </span>
-                  </div>
-                )}
-
-                {/* Bloco de Pausas */}
-                {(selectedQuickViewActivity.status === ProjectStatus.IN_PROGRESS ||
-                  selectedQuickViewActivity.status === ProjectStatus.PAUSED ||
-                  selectedQuickViewActivity.status === ProjectStatus.DONE ||
-                  getActivitySessions(selectedQuickViewActivity.id).length > 0) && (
-                  (() => {
-                    const isPaused = selectedQuickViewActivity.status === ProjectStatus.PAUSED ||
-                      getOpenExecution(selectedQuickViewActivity.id)?.status === ActivityExecutionStatus.PAUSED;
-                    const pauseMetrics = calculatePauseMetrics(
-                      getActivitySessions(selectedQuickViewActivity.id),
-                      db.company,
-                      clockNow,
-                      isPaused
-                    );
-                    return (
-                      <div className="flex flex-wrap gap-2 text-[10px] items-center mt-4">
-                        <div className="flex-1 min-w-[200px] px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-white/5 text-slate-600 dark:border-slate-400 inline-flex flex-wrap items-center gap-x-4 gap-y-1.5 font-medium transition-colors">
-                          <span className="font-black uppercase tracking-widest text-[8px] border-b sm:border-b-0 sm:border-r border-slate-300 dark:border-slate-700 pb-1 sm:pb-0 sm:pr-4">Pausas</span>
-                          <span>Quantidade: <strong className="text-slate-800 dark:text-slate-200">{pauseMetrics.count}</strong></span>
-                          <span>Tempo em pausa: <strong className="text-slate-800 dark:text-slate-200">{formatPauseDuration(pauseMetrics.totalMs)}</strong></span>
-                          <span>Média: <strong className="text-slate-800 dark:text-slate-200">{formatPauseAverage(pauseMetrics.averageMs)}</strong></span>
+                return (
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                          {selectedQuickViewActivity.name}
+                        </h3>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${statusBadge.badgeBg} ${statusBadge.badgeText} ${statusBadge.badgeBorder}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dotBg}`} />
+                            {statusBadge.label}
+                          </span>
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-bold border ${deadlineEvaluation.badgeStyle}`}>
+                            {deadlineEvaluation.label}
+                          </span>
                         </div>
-                        {isPaused && pauseMetrics.currentPauseMs > 0 && (
-                          <div className="px-4 py-3 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 font-bold uppercase tracking-wider inline-flex items-center gap-2">
-                            <span className="relative flex h-1.5 w-1.5">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
-                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-purple-500" />
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                        Categoria: {activeActivityTypes.find(t => t.id === selectedQuickViewActivity.activityTypeId)?.category || 'Geral'}
+                      </p>
+                    </div>
+
+                    {/* Bloco de Informações e Prazos */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-white/5 p-4 rounded-2xl text-xs transition-colors">
+                      <div>
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Responsável</p>
+                        <p className="font-bold text-slate-800 dark:text-slate-200">
+                          {db.users.find(u => u.id === selectedQuickViewActivity.assigneeId)?.username || 'Não atribuído'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Início</p>
+                        <p className="font-bold text-slate-800 dark:text-slate-200">
+                          {selectedQuickViewActivity.actualStartDate ? (
+                            <>Real: {formatDisplayDate(selectedQuickViewActivity.actualStartDate)}</>
+                          ) : selectedQuickViewActivity.startDate ? (
+                            <>Plan: {formatDisplayDate(selectedQuickViewActivity.startDate)}</>
+                          ) : (
+                            <span className="text-slate-400">Não definido</span>
+                          )}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Previsão Término</p>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <strong className="font-bold text-slate-800 dark:text-slate-200">{formatDisplayDate(selectedQuickViewActivity.deliveryDate)}</strong>
+                          {hasRescheduled && (
+                            <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[8px] font-bold rounded">
+                              (Orig: {formatDisplayDate(selectedQuickViewActivity.originalDeliveryDate)})
                             </span>
-                            <span>Pausa Atual: </span>
-                            <span className="font-mono text-[11px] font-bold">{formatPauseDuration(pauseMetrics.currentPauseMs)}</span>
-                          </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Conclusão Real se Concluída */}
+                    {isActivityCompleted(selectedQuickViewActivity.status) && (
+                      <div className="px-4 py-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs flex items-center justify-between text-emerald-700 dark:text-emerald-300">
+                        <span className="font-bold">Concluída em: {formatDisplayDate(selectedQuickViewActivity.actualEndDate)}</span>
+                        {leadDays !== null && (
+                          <span className="text-[10px] font-black uppercase">Lead Time: {leadDays} {leadDays === 1 ? 'dia' : 'dias'}</span>
                         )}
                       </div>
-                    );
-                  })()
-                )}
-              </div>
+                    )}
+
+                    {/* Motivo do Bloqueio se Bloqueada */}
+                    {isActivityBlocked(selectedQuickViewActivity.status) && (
+                      <div className="px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-2xl text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                        <span className="text-base">⚠️</span>
+                        <div>
+                          <span className="font-black text-[9px] uppercase tracking-wider block">Motivo do Bloqueio:</span>
+                          <p className="mt-0.5 text-xs">{selectedQuickViewActivity.blockedReason || 'Não especificado'}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Observações */}
+                    {selectedQuickViewActivity.notes && (
+                      <p className="text-[11px] italic text-slate-400 break-words px-1">
+                        Obs: {selectedQuickViewActivity.notes}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Footer Actions */}
             <div className="px-7 py-5 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-white/5 flex flex-wrap items-center gap-3">
-              {/* Botoes Operacionais */}
-              {isCurrentProjectRevision(selectedQuickViewActivity.parentProject) && selectedQuickViewActivity.status !== ProjectStatus.DONE && selectedQuickViewActivity.status !== ProjectStatus.CANCELED && (
+              {/* Botoes Operacionais Simplificados */}
+              {isCurrentProjectRevision(selectedQuickViewActivity.parentProject) && currentUser.role !== UserRole.VIEWER && (
                 <div className="flex gap-2">
-                  {activeWorkContext && activeWorkContext.activity.id === selectedQuickViewActivity.id ? (
+                  {isActivityToDo(selectedQuickViewActivity.status) && (
+                    <button
+                      type="button"
+                      onClick={() => handleStartActivitySimplified(selectedQuickViewActivity)}
+                      disabled={activityActionId === selectedQuickViewActivity.id}
+                      className="px-4 py-2.5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/15 transition disabled:opacity-50"
+                    >
+                      {activityActionId === selectedQuickViewActivity.id ? 'Iniciando...' : 'Iniciar'}
+                    </button>
+                  )}
+
+                  {isActivityInProgress(selectedQuickViewActivity.status) && (
                     <>
                       <button
                         type="button"
-                        onClick={() => handlePauseActivity(selectedQuickViewActivity, getOpenExecution(selectedQuickViewActivity.id))}
+                        onClick={() => handleBlockActivitySimplified(selectedQuickViewActivity)}
                         disabled={activityActionId === selectedQuickViewActivity.id}
                         className="px-4 py-2.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-xl border border-amber-500/20 hover:bg-amber-500 hover:text-white transition disabled:opacity-50"
                       >
-                        Pausar
+                        Bloquear
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleCompleteActivity(selectedQuickViewActivity, getOpenExecution(selectedQuickViewActivity.id))}
+                        onClick={() => handleCompleteActivitySimplified(selectedQuickViewActivity)}
                         disabled={activityActionId === selectedQuickViewActivity.id}
                         className="px-4 py-2.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-600/15 transition disabled:opacity-50"
                       >
                         Concluir
                       </button>
                     </>
-                  ) : (
+                  )}
+
+                  {isActivityBlocked(selectedQuickViewActivity.status) && (
                     <>
                       <button
                         type="button"
-                        onClick={() => handleStartOrResumeActivity(selectedQuickViewActivity)}
+                        onClick={() => handleResumeActivitySimplified(selectedQuickViewActivity)}
                         disabled={activityActionId === selectedQuickViewActivity.id}
-                        className="px-4 py-2.5 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/15 transition disabled:opacity-50"
+                        className="px-4 py-2.5 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-600/15 transition disabled:opacity-50"
                       >
-                        {selectedQuickViewActivity.status === ProjectStatus.PAUSED ? 'Retomar' : 'Iniciar'}
+                        {activityActionId === selectedQuickViewActivity.id ? 'Retomando...' : 'Retomar'}
                       </button>
-                      {(selectedQuickViewActivity.status === ProjectStatus.IN_PROGRESS || selectedQuickViewActivity.status === ProjectStatus.PAUSED) && (
-                        <button
-                          type="button"
-                          onClick={() => handleCompleteActivity(selectedQuickViewActivity, getOpenExecution(selectedQuickViewActivity.id))}
-                          disabled={activityActionId === selectedQuickViewActivity.id}
-                          className="px-4 py-2.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-600/15 transition disabled:opacity-50"
-                        >
-                          Concluir
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleCompleteActivitySimplified(selectedQuickViewActivity)}
+                        disabled={activityActionId === selectedQuickViewActivity.id}
+                        className="px-4 py-2.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-emerald-700 shadow-lg shadow-emerald-600/15 transition disabled:opacity-50"
+                      >
+                        Concluir
+                      </button>
                     </>
+                  )}
+
+                  {isActivityCompleted(selectedQuickViewActivity.status) && (
+                    <button
+                      type="button"
+                      onClick={() => handleReopenActivitySimplified(selectedQuickViewActivity)}
+                      disabled={activityActionId === selectedQuickViewActivity.id}
+                      className="px-4 py-2.5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-600 hover:text-white transition disabled:opacity-50"
+                    >
+                      Reabrir
+                    </button>
                   )}
                 </div>
               )}
 
               <div className="flex-1" />
 
-              {isCurrentProjectRevision(selectedQuickViewActivity.parentProject) && (
+              {isCurrentProjectRevision(selectedQuickViewActivity.parentProject) && currentUser.role !== UserRole.VIEWER && (
                 <button
                   type="button"
                   onClick={() => {

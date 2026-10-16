@@ -1,12 +1,13 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry } from '../types';
-import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, logActionsBatch, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision } from '../storage';
+import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry, ActivityCanonicalStatus, ActivityDeadlineStatus, ProjectActivityEvent } from '../types';
+import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, logActionsBatch, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision, fetchProjectActivityEvents, fetchProjectActivitiesEventsBatch, logProjectActivityEvent } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
 import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, getProjectPeriodLabel, isActivityWithinProjectPeriod, isValidDateRange } from '../utils/projectDateIntegrity';
 import { getProjectFamilyId, getProjectRevisionNumber, isCurrentProjectRevision } from '../utils/projectRevision';
+import { normalizeActivityStatus, isActivityCompleted, isActivityInProgress, isActivityBlocked, isActivityToDo, getActivityStatusBadge, formatDisplayDate, getTodayDateString, evaluateDeadlineStatus, calculateActivityManagerialMetrics, calculateCalendarDurationDays, calculateDaysDifference, createActivityEventPayload } from '../utils/activityOperationalModel';
 
 interface ProjectsProps {
   db: AppDB;
@@ -73,12 +74,28 @@ export const Projects: React.FC<ProjectsProps> = ({
   const [editingActivity, setEditingActivity] = useState<ProjectActivity | null>(null);
   const [actTypeId, setActTypeId] = useState('');
   const [actAssigneeId, setActAssigneeId] = useState('');
-  const [actStatus, setActStatus] = useState<ProjectStatus>(ProjectStatus.QUEUE);
+  const [actStatus, setActStatus] = useState<ProjectStatus | ActivityCanonicalStatus | string>(ActivityCanonicalStatus.TO_DO);
   const [actEstimatedDuration, setActEstimatedDuration] = useState('');
   const [actStartDate, setActStartDate] = useState('');
   const [actDeliveryDate, setActDeliveryDate] = useState('');
+  const [actBlockedReason, setActBlockedReason] = useState('');
+  const [actActualStartDate, setActActualStartDate] = useState('');
+  const [actActualEndDate, setActActualEndDate] = useState('');
   const [actNotes, setActNotes] = useState('');
   const [allWorkspaceActivities, setAllWorkspaceActivities] = useState<ProjectActivity[]>([]);
+
+  // Operational Model & Event History States
+  const [projectActivitiesEvents, setProjectActivitiesEvents] = useState<Record<string, ProjectActivityEvent[]>>({});
+  const [historyModalActivity, setHistoryModalActivity] = useState<ProjectActivity | null>(null);
+  const [activityHistoryEvents, setActivityHistoryEvents] = useState<ProjectActivityEvent[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [blockingDialogActivity, setBlockingDialogActivity] = useState<ProjectActivity | null>(null);
+  const [blockingReasonInput, setBlockingReasonInput] = useState('');
+  const [completingDialogActivity, setCompletingDialogActivity] = useState<ProjectActivity | null>(null);
+  const [completionDateInput, setCompletionDateInput] = useState('');
+  const [reopeningDialogActivity, setReopeningDialogActivity] = useState<ProjectActivity | null>(null);
+  const [reopeningReasonInput, setReopeningReasonInput] = useState('');
+  const [transitioningActivityId, setTransitioningActivityId] = useState<string | null>(null);
 
   useEffect(() => {
     if (showActivityModal) {
@@ -436,16 +453,6 @@ export const Projects: React.FC<ProjectsProps> = ({
     }
   }, [initialEditingActivity]);
 
-  // Live second timer is strictly active only when viewing modal/pending activity with running session
-  const needsLiveClock = (showModal || Boolean(pendingActivity)) && hasRunningOperationalSession;
-
-  useEffect(() => {
-    if (!needsLiveClock) return;
-    setClockNow(Date.now());
-    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [activeWorkContext?.session.id, needsLiveClock]);
-
   const loadProjectActivities = async (projectId: string) => {
     setIsLoadingActivities(true);
     try {
@@ -455,12 +462,14 @@ export const Projects: React.FC<ProjectsProps> = ({
 
       if (sortedActivities.length > 0) {
         const activityIds = sortedActivities.map(activity => activity.id);
-        const [executions, entries] = await Promise.all([
+        const [executions, entries, eventsBatch] = await Promise.all([
           fetchActivityExecutions(currentUser.workspaceId, { projectActivityIds: activityIds }),
-          fetchActivityOvertimeEntries(currentUser.workspaceId, { projectActivityIds: activityIds })
+          fetchActivityOvertimeEntries(currentUser.workspaceId, { projectActivityIds: activityIds }),
+          fetchProjectActivitiesEventsBatch(currentUser.workspaceId, activityIds)
         ]);
         setActivityExecutions(executions);
         setOvertimeEntries(entries);
+        setProjectActivitiesEvents(eventsBatch);
         const sessions = executions.length > 0
           ? await fetchWorkSessions(currentUser.workspaceId, {
               activityExecutionIds: executions.map(execution => execution.id)
@@ -477,6 +486,7 @@ export const Projects: React.FC<ProjectsProps> = ({
         setActivityExecutions([]);
         setWorkSessions([]);
         setOvertimeEntries([]);
+        setProjectActivitiesEvents({});
         setForecastDataset({
           activities: [],
           executions: [],
@@ -489,6 +499,7 @@ export const Projects: React.FC<ProjectsProps> = ({
       setActivityExecutions([]);
       setWorkSessions([]);
       setOvertimeEntries([]);
+      setProjectActivitiesEvents({});
       setForecastDataset(null);
     } finally {
       setIsLoadingActivities(false);
@@ -498,12 +509,371 @@ export const Projects: React.FC<ProjectsProps> = ({
   const resetActForm = () => {
     setActTypeId('');
     setActAssigneeId('');
-    setActStatus(ProjectStatus.QUEUE);
+    setActStatus(ActivityCanonicalStatus.TO_DO);
     setActEstimatedDuration('');
     setActStartDate('');
     setActDeliveryDate('');
+    setActBlockedReason('');
+    setActActualStartDate('');
+    setActActualEndDate('');
     setActNotes('');
     setEditingActivity(null);
+  };
+
+  const handleStartActivitySimplified = async (activity: ProjectActivity) => {
+    if (isHistoricalRevision) {
+      alert('Revisões inativas são somente para consulta.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+    if (transitioningActivityId === activity.id) return;
+    setTransitioningActivityId(activity.id);
+
+    try {
+      const today = getTodayDateString();
+      const prevStatus = activity.status;
+      const newActualStartDate = activity.actualStartDate || today;
+
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        status: ActivityCanonicalStatus.IN_PROGRESS,
+        actualStartDate: newActualStartDate,
+        blockedReason: undefined,
+        updatedAt: Date.now()
+      };
+
+      await syncProjectActivity(updatedActivity);
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'STARTED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+            details: `${currentUser.username} iniciou a atividade em ${formatDisplayDate(newActualStartDate)}`,
+            metadata: { actualStartDate: newActualStartDate }
+          }
+        )
+      );
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} iniciou a atividade ${activity.name} no projeto ${editingProject?.code || ''}`,
+        editingProject?.code
+      );
+
+      setProjectActivities(prev => prev.map(a => a.id === activity.id ? updatedActivity : a));
+      if (editingProject) {
+        await loadProjectActivities(editingProject.id);
+      }
+    } catch (err: any) {
+      console.error('Erro ao iniciar atividade:', err);
+      alert('Erro ao iniciar atividade: ' + (err.message || 'Erro inesperado'));
+    } finally {
+      setTransitioningActivityId(null);
+    }
+  };
+
+  const openBlockingDialog = (activity: ProjectActivity) => {
+    if (isHistoricalRevision) {
+      alert('Revisões inativas são somente para consulta.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+    setBlockingDialogActivity(activity);
+    setBlockingReasonInput(activity.blockedReason || '');
+  };
+
+  const confirmBlockActivity = async () => {
+    if (!blockingDialogActivity) return;
+    if (!blockingReasonInput.trim()) {
+      alert('Por favor, informe o motivo do bloqueio.');
+      return;
+    }
+    const activity = blockingDialogActivity;
+    if (transitioningActivityId === activity.id) return;
+    setTransitioningActivityId(activity.id);
+
+    try {
+      const prevStatus = activity.status;
+      const reason = blockingReasonInput.trim();
+
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        status: ActivityCanonicalStatus.BLOCKED,
+        blockedReason: reason,
+        updatedAt: Date.now()
+      };
+
+      await syncProjectActivity(updatedActivity);
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'BLOCKED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.BLOCKED,
+            details: `Atividade bloqueada: ${reason}`,
+            metadata: { blockedReason: reason }
+          }
+        )
+      );
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} bloqueou a atividade ${activity.name}: ${reason}`,
+        editingProject?.code
+      );
+
+      setBlockingDialogActivity(null);
+      setBlockingReasonInput('');
+      setProjectActivities(prev => prev.map(a => a.id === activity.id ? updatedActivity : a));
+      if (editingProject) {
+        await loadProjectActivities(editingProject.id);
+      }
+    } catch (err: any) {
+      console.error('Erro ao bloquear atividade:', err);
+      alert('Erro ao bloquear atividade: ' + (err.message || 'Erro inesperado'));
+    } finally {
+      setTransitioningActivityId(null);
+    }
+  };
+
+  const handleResumeActivitySimplified = async (activity: ProjectActivity) => {
+    if (isHistoricalRevision) {
+      alert('Revisões inativas são somente para consulta.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+    if (transitioningActivityId === activity.id) return;
+    setTransitioningActivityId(activity.id);
+
+    try {
+      const prevStatus = activity.status;
+      const prevReason = activity.blockedReason;
+
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        status: ActivityCanonicalStatus.IN_PROGRESS,
+        blockedReason: undefined,
+        updatedAt: Date.now()
+      };
+
+      await syncProjectActivity(updatedActivity);
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'RESUMED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+            details: `${currentUser.username} retomou a atividade.${prevReason ? ` (Bloqueio anterior: ${prevReason})` : ''}`,
+            metadata: { previousBlockedReason: prevReason }
+          }
+        )
+      );
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} retomou a atividade ${activity.name} no projeto ${editingProject?.code || ''}`,
+        editingProject?.code
+      );
+
+      setProjectActivities(prev => prev.map(a => a.id === activity.id ? updatedActivity : a));
+      if (editingProject) {
+        await loadProjectActivities(editingProject.id);
+      }
+    } catch (err: any) {
+      console.error('Erro ao retomar atividade:', err);
+      alert('Erro ao retomar atividade: ' + (err.message || 'Erro inesperado'));
+    } finally {
+      setTransitioningActivityId(null);
+    }
+  };
+
+  const openCompletionDialog = (activity: ProjectActivity) => {
+    if (isHistoricalRevision) {
+      alert('Revisões inativas são somente para consulta.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+    setCompletingDialogActivity(activity);
+    setCompletionDateInput(activity.actualEndDate || getTodayDateString());
+  };
+
+  const confirmCompleteActivity = async () => {
+    if (!completingDialogActivity) return;
+    const activity = completingDialogActivity;
+    if (!completionDateInput) {
+      alert('Informe a data de conclusão real.');
+      return;
+    }
+    if (transitioningActivityId === activity.id) return;
+    setTransitioningActivityId(activity.id);
+
+    try {
+      const prevStatus = activity.status;
+      const actualEnd = completionDateInput;
+      const actualStart = activity.actualStartDate || activity.startDate || actualEnd;
+
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        status: ActivityCanonicalStatus.COMPLETED,
+        actualEndDate: actualEnd,
+        actualStartDate: actualStart,
+        conclusionResponsibleId: currentUser.id,
+        deadlineAtConclusion: activity.deliveryDate,
+        blockedReason: undefined,
+        updatedAt: Date.now()
+      };
+
+      await syncProjectActivity(updatedActivity);
+
+      const leadDays = calculateCalendarDurationDays(actualStart, actualEnd);
+      const deviation = calculateDaysDifference(actualEnd, activity.deliveryDate);
+      const deviationLabel = deviation === 0 ? 'no prazo' : deviation !== null && deviation > 0 ? `${deviation}d de atraso` : `${Math.abs(deviation || 0)}d adiantada`;
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'COMPLETED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.COMPLETED,
+            details: `Concluída em ${formatDisplayDate(actualEnd)} (${deviationLabel}, Lead Time: ${leadDays}d)`,
+            metadata: {
+              actualStartDate: actualStart,
+              actualEndDate: actualEnd,
+              leadTimeDays: leadDays,
+              deviationDays: deviation
+            }
+          }
+        )
+      );
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} concluiu a atividade ${activity.name} em ${formatDisplayDate(actualEnd)} no projeto ${editingProject?.code || ''}`,
+        editingProject?.code
+      );
+
+      setCompletingDialogActivity(null);
+      setCompletionDateInput('');
+      setProjectActivities(prev => prev.map(a => a.id === activity.id ? updatedActivity : a));
+      if (editingProject) {
+        await loadProjectActivities(editingProject.id);
+      }
+    } catch (err: any) {
+      console.error('Erro ao concluir atividade:', err);
+      alert('Erro ao concluir atividade: ' + (err.message || 'Erro inesperado'));
+    } finally {
+      setTransitioningActivityId(null);
+    }
+  };
+
+  const openReopenDialog = (activity: ProjectActivity) => {
+    if (isHistoricalRevision) {
+      alert('Revisões inativas são somente para consulta.');
+      return;
+    }
+    if (!validateActivityAssignee(activity)) return;
+    setReopeningDialogActivity(activity);
+    setReopeningReasonInput('');
+  };
+
+  const confirmReopenActivity = async () => {
+    if (!reopeningDialogActivity) return;
+    const activity = reopeningDialogActivity;
+    if (transitioningActivityId === activity.id) return;
+    setTransitioningActivityId(activity.id);
+
+    try {
+      const prevStatus = activity.status;
+      const prevEndDate = activity.actualEndDate;
+      const reason = reopeningReasonInput.trim();
+
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        status: ActivityCanonicalStatus.IN_PROGRESS,
+        actualEndDate: undefined,
+        updatedAt: Date.now()
+      };
+
+      await syncProjectActivity(updatedActivity);
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'REOPENED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+            details: `Atividade reaberta por ${currentUser.username}.${reason ? ` Motivo: ${reason}` : ''} (Conclusão anterior: ${formatDisplayDate(prevEndDate)})`,
+            metadata: { previousEndDate: prevEndDate, reopenReason: reason }
+          }
+        )
+      );
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} reabriu a atividade ${activity.name} no projeto ${editingProject?.code || ''}`,
+        editingProject?.code
+      );
+
+      setReopeningDialogActivity(null);
+      setReopeningReasonInput('');
+      setProjectActivities(prev => prev.map(a => a.id === activity.id ? updatedActivity : a));
+      if (editingProject) {
+        await loadProjectActivities(editingProject.id);
+      }
+    } catch (err: any) {
+      console.error('Erro ao reabrir atividade:', err);
+      alert('Erro ao reabrir atividade: ' + (err.message || 'Erro inesperado'));
+    } finally {
+      setTransitioningActivityId(null);
+    }
+  };
+
+  const openHistoryModal = async (activity: ProjectActivity) => {
+    setHistoryModalActivity(activity);
+    setIsLoadingHistory(true);
+    try {
+      const events = await fetchProjectActivityEvents(currentUser.workspaceId, activity.id);
+      setActivityHistoryEvents(events);
+    } catch (err) {
+      console.error('Erro ao carregar histórico da atividade:', err);
+      setActivityHistoryEvents([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
   };
 
   const handleSaveProjectActivity = async (e: React.FormEvent) => {
@@ -528,17 +898,6 @@ export const Projects: React.FC<ProjectsProps> = ({
       return;
     }
 
-    if (capacityAnalysis.isOverallocated) {
-      alert(
-        `Esta atividade exige mais horas do que o período planejado comporta.\n\n` +
-        `Estimativa: ${formatDecimalHours(capacityAnalysis.estimate)}\n` +
-        `Capacidade regular da janela: ${formatDecimalHours(capacityAnalysis.windowCapacity)}\n` +
-        `Déficit: ${formatDecimalHours(Math.abs(capacityAnalysis.balance))}\n\n` +
-        `Orientação: Amplie o período da atividade ou revise a duração estimada.`
-      );
-      return;
-    }
-
     const selectedType = activeActivityTypes.find(t => t.id === actTypeId);
     if (!selectedType) return;
 
@@ -550,7 +909,6 @@ export const Projects: React.FC<ProjectsProps> = ({
 
     // Calculate order_index
     let orderIdx = editingActivity?.orderIndex || 0;
-
     if (newAssigneeId !== originalAssigneeId) {
       if (newAssigneeId) {
         orderIdx = await getNextUserOrderIndex(currentUser.workspaceId, newAssigneeId);
@@ -559,6 +917,9 @@ export const Projects: React.FC<ProjectsProps> = ({
       }
     }
 
+    const canonicalStatus = normalizeActivityStatus(actStatus);
+    const today = getTodayDateString();
+
     const activityData: ProjectActivity = {
       id: editingActivity?.id || crypto.randomUUID(),
       workspaceId: currentUser.workspaceId,
@@ -566,48 +927,99 @@ export const Projects: React.FC<ProjectsProps> = ({
       activityTypeId: actTypeId,
       name: selectedType.name,
       assigneeId: newAssigneeId,
-      status: actStatus,
+      status: canonicalStatus,
       startDate: actStartDate || undefined,
       deliveryDate: actDeliveryDate || undefined,
+      originalDeliveryDate: editingActivity
+        ? (editingActivity.originalDeliveryDate || editingActivity.deliveryDate || actDeliveryDate)
+        : actDeliveryDate,
       notes: actNotes || undefined,
+      blockedReason: canonicalStatus === ActivityCanonicalStatus.BLOCKED ? (actBlockedReason || undefined) : undefined,
       estimatedDurationHours: duration,
       estimatedCurrentHours: editingActivity ? (editingActivity.estimatedCurrentHours ?? duration) : duration,
       orderIndex: orderIdx,
-      actualStartDate: editingActivity?.actualStartDate,
-      actualEndDate: editingActivity?.actualEndDate,
-      conclusionResponsibleId: editingActivity?.conclusionResponsibleId,
-      deadlineAtConclusion: editingActivity?.deadlineAtConclusion,
+      actualStartDate: actActualStartDate || editingActivity?.actualStartDate || (canonicalStatus === ActivityCanonicalStatus.IN_PROGRESS ? today : undefined),
+      actualEndDate: canonicalStatus === ActivityCanonicalStatus.COMPLETED
+        ? (actActualEndDate || editingActivity?.actualEndDate || today)
+        : undefined,
+      conclusionResponsibleId: canonicalStatus === ActivityCanonicalStatus.COMPLETED
+        ? (editingActivity?.conclusionResponsibleId || currentUser.id)
+        : undefined,
+      deadlineAtConclusion: canonicalStatus === ActivityCanonicalStatus.COMPLETED
+        ? (editingActivity?.deadlineAtConclusion || actDeliveryDate || undefined)
+        : undefined,
       deadlineChangesCount: editingActivity?.deadlineChangesCount || 0,
       createdAt: editingActivity?.createdAt || Date.now(),
       updatedAt: Date.now()
     };
 
+    let isRescheduled = false;
+    let oldEndDate = '';
     if (editingActivity) {
-      activityData.deadlineChangesCount = editingActivity.deadlineChangesCount || 0;
       if (actDeliveryDate && editingActivity.deliveryDate && actDeliveryDate !== editingActivity.deliveryDate) {
         activityData.deadlineChangesCount = (editingActivity.deadlineChangesCount || 0) + 1;
-      }
-      if (editingActivity.status !== ProjectStatus.DONE && actStatus === ProjectStatus.DONE) {
-        activityData.actualEndDate = new Date().toISOString().split('T')[0];
-        activityData.conclusionResponsibleId = currentUser.id;
-        activityData.deadlineAtConclusion = actDeliveryDate || undefined;
-      }
-      if (editingActivity.status === ProjectStatus.QUEUE && actStatus !== ProjectStatus.QUEUE) {
-        activityData.actualStartDate = new Date().toISOString().split('T')[0];
-      }
-    } else {
-      activityData.deadlineChangesCount = 0;
-      if (actStatus === ProjectStatus.DONE) {
-        activityData.actualEndDate = new Date().toISOString().split('T')[0];
-        activityData.conclusionResponsibleId = currentUser.id;
-        activityData.deadlineAtConclusion = actDeliveryDate || undefined;
-      } else if (actStatus !== ProjectStatus.QUEUE) {
-        activityData.actualStartDate = new Date().toISOString().split('T')[0];
+        isRescheduled = true;
+        oldEndDate = editingActivity.deliveryDate;
       }
     }
 
     try {
       await syncProjectActivity(activityData);
+
+      // Audit Events
+      if (!editingActivity) {
+        await logProjectActivityEvent(
+          createActivityEventPayload(
+            currentUser.workspaceId,
+            activityData.id,
+            'CREATED',
+            currentUser,
+            {
+              toStatus: canonicalStatus,
+              details: `Atividade criada: ${activityData.name} com previsão para ${formatDisplayDate(activityData.deliveryDate)}`,
+              metadata: {
+                startDate: activityData.startDate,
+                deliveryDate: activityData.deliveryDate,
+                assigneeId: activityData.assigneeId
+              }
+            }
+          )
+        );
+      } else {
+        if (isRescheduled) {
+          await logProjectActivityEvent(
+            createActivityEventPayload(
+              currentUser.workspaceId,
+              activityData.id,
+              'RESCHEDULED',
+              currentUser,
+              {
+                details: `Reprogramação de prazo: de ${formatDisplayDate(oldEndDate)} para ${formatDisplayDate(actDeliveryDate)}`,
+                metadata: {
+                  previousEndDate: oldEndDate,
+                  newEndDate: actDeliveryDate,
+                  changesCount: activityData.deadlineChangesCount
+                }
+              }
+            )
+          );
+        }
+        if (editingActivity.status !== canonicalStatus) {
+          await logProjectActivityEvent(
+            createActivityEventPayload(
+              currentUser.workspaceId,
+              activityData.id,
+              'UPDATED',
+              currentUser,
+              {
+                fromStatus: editingActivity.status,
+                toStatus: canonicalStatus,
+                details: `Status alterado de ${editingActivity.status} para ${canonicalStatus}`
+              }
+            )
+          );
+        }
+      }
 
       if (originalAssigneeId && originalAssigneeId !== newAssigneeId) {
         await reorderUserQueue(currentUser.workspaceId, originalAssigneeId);
@@ -637,6 +1049,7 @@ export const Projects: React.FC<ProjectsProps> = ({
       }
     }
   };
+
 
   const handleUpdateCurrentEstimate = async (activity: ProjectActivity) => {
     if (isHistoricalRevision) {
@@ -2095,252 +2508,251 @@ export const Projects: React.FC<ProjectsProps> = ({
                     {projectActivities.map((activity, index) => {
                       const assignee = db.users.find(u => u.id === activity.assigneeId);
                       const actType = activeActivityTypes.find(t => t.id === activity.activityTypeId);
-                      const isActiveForCurrentUser = activeWorkContext?.activity.id === activity.id && activeWorkContext.execution.internalUserId === currentUser.id;
-                      const execution = getOpenExecution(activity.id)
-                        || (isActiveForCurrentUser ? activeWorkContext.execution : undefined)
-                        || activityExecutions.find(item => item.projectActivityId === activity.id && item.internalUserId === currentUser.id);
-                      const isClosed = activity.status === ProjectStatus.DONE || activity.status === ProjectStatus.CANCELED;
-                      const isPaused = activity.status === ProjectStatus.PAUSED || execution?.status === ActivityExecutionStatus.PAUSED;
-                      const isActionLoading = activityActionId === activity.id;
-                      const hasOperationalTime = activityExecutions.some(item => item.projectActivityId === activity.id)
-                        || overtimeEntries.some(entry => entry.projectActivityId === activity.id);
-                      const activityOvertimeMs = getActivityOvertimeMs(activity.id);
+                      const statusBadge = getActivityStatusBadge(activity.status);
+                      const events = projectActivitiesEvents[activity.id] || [];
+                      const metrics = calculateActivityManagerialMetrics(activity, events);
+                      const isTransitioning = transitioningActivityId === activity.id;
+                      const hasRescheduled = Boolean(activity.originalDeliveryDate && activity.deliveryDate && activity.originalDeliveryDate !== activity.deliveryDate);
+
                       return (
-                        <div key={activity.id} className="min-w-0 bg-slate-50 dark:bg-slate-900/80 p-4 sm:p-5 rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-indigo-500/30 transition-all group/task">
-                          <div className="flex min-w-0 flex-col gap-4">
-                            <div className="flex min-w-0 items-start gap-3">
-                              <div className="flex flex-col items-center space-y-0.5 mr-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleReorderProjectActivity(index, 'up')}
-                                  disabled={index === 0}
-                                  className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition ${index === 0 ? 'opacity-20 cursor-not-allowed' : 'text-slate-500 hover:text-indigo-600'}`}
-                                  title="Subir prioridade"
-                                >
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 15l7-7 7 7" /></svg>
-                                </button>
-                                <span className="text-[9px] font-black text-slate-400">{activity.orderIndex}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleReorderProjectActivity(index, 'down')}
-                                  disabled={index === projectActivities.length - 1}
-                                  className={`p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 transition ${index === projectActivities.length - 1 ? 'opacity-20 cursor-not-allowed' : 'text-slate-500 hover:text-indigo-600'}`}
-                                  title="Descer prioridade"
-                                >
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" /></svg>
-                                </button>
-                              </div>
+                        <div key={activity.id} className="min-w-0 bg-white dark:bg-slate-900/90 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm hover:border-indigo-500/40 transition-all group/task">
+                          {/* Header: Prioridade + Nome + Categoria + Badges de Status e Prazo */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                              {!isHistoricalRevision && (
+                                <div className="flex flex-col items-center space-y-0.5 pt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReorderProjectActivity(index, 'up')}
+                                    disabled={index === 0}
+                                    className={`p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition ${index === 0 ? 'opacity-20 cursor-not-allowed' : 'text-slate-400 hover:text-indigo-600'}`}
+                                    title="Subir prioridade"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 15l7-7 7 7" /></svg>
+                                  </button>
+                                  <span className="text-[9px] font-black text-slate-400 font-mono">{activity.orderIndex}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReorderProjectActivity(index, 'down')}
+                                    disabled={index === projectActivities.length - 1}
+                                    className={`p-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition ${index === projectActivities.length - 1 ? 'opacity-20 cursor-not-allowed' : 'text-slate-400 hover:text-indigo-600'}`}
+                                    title="Descer prioridade"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" /></svg>
+                                  </button>
+                                </div>
+                              )}
 
                               <div className="min-w-0 flex-1">
-                                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                  <span className="min-w-0 break-words font-bold text-sm text-slate-900 dark:text-slate-100">{activity.name}</span>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 break-words">{activity.name}</h4>
                                   {actType?.category && (
-                                    <span className="px-2 py-0.5 bg-slate-200 dark:bg-slate-800 text-[9px] font-black text-slate-500 dark:text-slate-400 rounded-md uppercase tracking-wider">
+                                    <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-[9px] font-black text-slate-500 dark:text-slate-400 rounded-md uppercase tracking-wider">
                                       {actType.category}
                                     </span>
                                   )}
                                 </div>
-                                {activity.estimatedDurationHours !== undefined && (() => {
-                                   const accountedMs = getAccountedOperationalMs(activity.id) || 0;
-                                   const accountedHours = accountedMs / 3_600_000;
-                                   const origEst = activity.estimatedDurationHours || 0;
-                                   const currentEst = activity.estimatedCurrentHours ?? activity.estimatedDurationHours ?? 0;
-                                   const remainingDemand = Math.max(currentEst - accountedHours, 0);
-                                   
-                                   const consumptionRate = currentEst > 0 ? (accountedHours / currentEst) : 0;
-                                   const isExceeded = accountedHours >= currentEst && currentEst > 0 && activity.status !== ProjectStatus.DONE;
-                                   const isNearLimit = consumptionRate >= 0.8 && consumptionRate < 1.0 && activity.status !== ProjectStatus.DONE;
 
-                                   return (
-                                     <div className="flex flex-col gap-1 mt-1 text-[10px] text-slate-500">
-                                       <div className="flex flex-wrap gap-x-4 gap-y-1">
-                                         <span>Responsável: <strong className="text-slate-700 dark:text-slate-300">{assignee ? assignee.username : 'Não atribuído'}</strong></span>
-                                         {activityOvertimeMs !== null && activityOvertimeMs > 0 && (
-                                           <span>Horas extras: <strong className="text-slate-700 dark:text-slate-300">{formatElapsedTime(activityOvertimeMs)}</strong></span>
-                                         )}
-                                         {(activity.startDate || activity.deliveryDate) && (
-                                           <span>Prazo: <strong className="text-slate-700 dark:text-slate-300">{formatDate(activity.startDate)} até {formatDate(activity.deliveryDate)}</strong></span>
-                                         )}
-                                       </div>
-                                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
-                                         <span>Estimativa Original: <strong className="text-slate-700 dark:text-slate-300">{origEst}h</strong></span>
-                                         <span className="inline-flex items-center gap-1.5">
-                                           Estimativa Atual: <strong className="text-slate-700 dark:text-slate-200">{currentEst}h</strong>
-                                           {!isHistoricalRevision && (
-                                             <button
-                                               type="button"
-                                               onClick={() => handleUpdateCurrentEstimate(activity)}
-                                               className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-800 text-[8px] font-black text-indigo-600 dark:text-indigo-400 rounded hover:bg-slate-300 dark:hover:bg-slate-700 uppercase tracking-widest transition-all"
-                                             >
-                                               [ Atualizar ]
-                                             </button>
-                                           )}
-                                         </span>
-                                         <span>Demanda Restante: <strong className="text-slate-700 dark:text-slate-300">{remainingDemand.toFixed(1)}h</strong></span>
-                                         {isExceeded && (
-                                           <span className="px-1.5 py-0.5 bg-rose-500/10 border border-rose-500/20 text-[8px] font-black text-rose-600 dark:text-rose-400 rounded-md uppercase tracking-wider animate-pulse">
-                                             ⚠ ESTIMATIVA EXCEDIDA
-                                           </span>
-                                         )}
-                                         {isNearLimit && (
-                                           <span className="px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/20 text-[8px] font-black text-amber-600 dark:text-amber-400 rounded-md uppercase tracking-wider">
-                                             ⚠ Estimativa próxima do limite
-                                           </span>
-                                         )}
-                                       </div>
-                                     </div>
-                                   );
-                                 })()}
-                                {activity.notes && (
-                                  <p className="mt-1.5 break-words text-[10px] italic text-slate-400" title={activity.notes}>
-                                    Obs: {activity.notes}
-                                  </p>
+                                {/* Responsável */}
+                                <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                                  <svg className="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                  </svg>
+                                  <span>Responsável: <strong className="font-semibold text-slate-700 dark:text-slate-200">{assignee ? assignee.username : 'Não atribuído'}</strong></span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Badges de Status Canônico e Prazo */}
+                            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${statusBadge.badgeBg} ${statusBadge.badgeText} ${statusBadge.badgeBorder}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dotBg}`} />
+                                {statusBadge.label}
+                              </span>
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-bold border ${metrics.isOverdue ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/25' : metrics.isUpcoming ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25' : metrics.isOnTime ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'}`}>
+                                {metrics.deadlineLabel}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Grade de Datas e Prazos */}
+                          <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-3 gap-2.5 py-2 px-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800/80 text-[11px]">
+                            <div>
+                              <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Início</span>
+                              <span className="text-slate-700 dark:text-slate-300">
+                                {activity.actualStartDate ? (
+                                  <>Real: <strong className="font-bold text-slate-900 dark:text-white">{formatDisplayDate(activity.actualStartDate)}</strong></>
+                                ) : activity.startDate ? (
+                                  <>Planejado: <strong className="font-bold">{formatDisplayDate(activity.startDate)}</strong></>
+                                ) : (
+                                  <span className="text-slate-400">Não definido</span>
                                 )}
-                                {isActiveForCurrentUser && activeWorkContext && (
-                                  <div className="mt-3 flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 sm:inline-flex">
-                                    <span className="relative flex h-2 w-2">
-                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                                    </span>
-                                    <span className="text-[9px] font-black uppercase tracking-widest">Tempo contabilizado</span>
-                                    <span className="whitespace-nowrap font-mono text-[11px] font-bold">{formatElapsedTime(getAccountedOperationalMs(activity.id))}</span>
-                                  </div>
-                                )}
-                                {!isActiveForCurrentUser && hasOperationalTime && (
-                                  activity.status === ProjectStatus.IN_PROGRESS
-                                  || isPaused
-                                  || activity.status === ProjectStatus.DONE
-                                ) && (
-                                  <div className="mt-3 flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 rounded-lg bg-slate-200/60 dark:bg-slate-800/70 border border-slate-300/60 dark:border-slate-700 text-slate-600 dark:text-slate-300 sm:inline-flex">
-                                    <span className="text-[9px] font-black uppercase tracking-widest">Tempo contabilizado</span>
-                                    <span className="whitespace-nowrap font-mono text-[11px] font-bold">{formatElapsedTime(getAccountedOperationalMs(activity.id))}</span>
-                                  </div>
-                                )}
-                                {(activity.status === ProjectStatus.IN_PROGRESS || isPaused || activity.status === ProjectStatus.DONE || hasOperationalTime) && (
-                                  (() => {
-                                    const pauseMetrics = calculatePauseMetrics(getActivitySessions(activity.id), db.company, clockNow, isPaused);
-                                    return (
-                                      <div className="mt-3 flex flex-wrap gap-2 text-[10px] items-center">
-                                        <div className="px-3 py-1.5 rounded-lg bg-slate-200/40 dark:bg-slate-800/50 border border-slate-300/40 dark:border-slate-700 text-slate-600 dark:text-slate-400 inline-flex flex-wrap items-center gap-x-3 gap-y-1 font-medium">
-                                          <span className="font-black uppercase tracking-widest text-[8px] border-b sm:border-b-0 sm:border-r border-slate-300 dark:border-slate-700 pb-1 sm:pb-0 sm:pr-3">Pausas</span>
-                                          <span>Quantidade: <strong className="text-slate-800 dark:text-slate-200">{pauseMetrics.count}</strong></span>
-                                          <span>Tempo em pausa: <strong className="text-slate-800 dark:text-slate-200">{formatPauseDuration(pauseMetrics.totalMs)}</strong></span>
-                                          <span>Média: <strong className="text-slate-800 dark:text-slate-200">{formatPauseAverage(pauseMetrics.averageMs)}</strong></span>
-                                        </div>
-                                        {isPaused && pauseMetrics.currentPauseMs > 0 && (
-                                          <div className="px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 font-bold uppercase tracking-wider inline-flex items-center gap-1.5">
-                                            <span className="relative flex h-1.5 w-1.5">
-                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
-                                              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-purple-500" />
-                                            </span>
-                                            <span>Pausa Atual: </span>
-                                            <span className="font-mono text-[11px] font-bold">{formatPauseDuration(pauseMetrics.currentPauseMs)}</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })()
+                              </span>
+                            </div>
+
+                            <div>
+                              <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Previsão Término</span>
+                              <div className="flex flex-wrap items-center gap-1">
+                                <strong className="font-bold text-slate-900 dark:text-white">{formatDisplayDate(activity.deliveryDate)}</strong>
+                                {hasRescheduled && (
+                                  <span className="px-1.5 py-0.2 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[8px] font-bold rounded" title={`Original: ${formatDisplayDate(activity.originalDeliveryDate)} (${metrics.deadlineChangesCount} reprogramações)`}>
+                                    (Orig: {formatDisplayDate(activity.originalDeliveryDate)})
+                                  </span>
                                 )}
                               </div>
                             </div>
 
-                            <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-slate-200/70 pt-3 dark:border-slate-800">
-                              {currentUser.role === UserRole.ADMIN && !isHistoricalRevision && (
-                                <button
-                                  type="button"
-                                  onClick={() => openOvertimeModal(activity)}
-                                  className="px-3 py-1.5 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 text-[9px] font-black uppercase tracking-widest rounded-lg border border-cyan-500/20 hover:bg-cyan-500 hover:text-white transition"
-                                >
-                                  Horas extras
-                                </button>
-                              )}
-                              {!isClosed && !isHistoricalRevision && (
-                                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                  {isActiveForCurrentUser ? (
+                            <div>
+                              <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Conclusão Real</span>
+                              <span className="text-slate-700 dark:text-slate-300">
+                                {activity.actualEndDate ? (
+                                  <>
+                                    <strong className="font-bold text-emerald-600 dark:text-emerald-400">{formatDisplayDate(activity.actualEndDate)}</strong>
+                                    {metrics.leadTimeRealizedDays !== null && (
+                                      <span className="ml-1 text-[9px] text-slate-400">({metrics.leadTimeRealizedDays}d lead time)</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-slate-400">Pendente</span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Motivo do Bloqueio se bloqueada */}
+                          {isActivityBlocked(activity.status) && (
+                            <div className="mt-2.5 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-300 text-xs flex items-start gap-2">
+                              <span className="text-sm">⚠️</span>
+                              <div className="flex-1">
+                                <span className="font-black text-[9px] uppercase tracking-wider block">Atividade Bloqueada:</span>
+                                <p className="mt-0.5 text-xs">{activity.blockedReason || 'Motivo de bloqueio não informado'}</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Anotações */}
+                          {activity.notes && (
+                            <p className="mt-2 text-[10px] italic text-slate-500 dark:text-slate-400 break-words">
+                              Obs: {activity.notes}
+                            </p>
+                          )}
+
+                          {/* Ações Operacionais */}
+                          <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {!isHistoricalRevision && (
+                                <>
+                                  {isActivityToDo(activity.status) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartActivitySimplified(activity)}
+                                      disabled={isTransitioning}
+                                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-sm transition disabled:opacity-50"
+                                    >
+                                      {isTransitioning ? 'Iniciando...' : 'Iniciar'}
+                                    </button>
+                                  )}
+
+                                  {isActivityInProgress(activity.status) && (
                                     <>
                                       <button
                                         type="button"
-                                        onClick={() => handlePauseActivity(activity, execution)}
-                                        disabled={isActionLoading}
-                                        className="px-3 py-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-black uppercase tracking-widest rounded-lg border border-amber-500/20 hover:bg-amber-500 hover:text-white transition disabled:opacity-50"
+                                        onClick={() => openBlockingDialog(activity)}
+                                        disabled={isTransitioning}
+                                        className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500 hover:text-white text-amber-600 dark:text-amber-400 text-[9px] font-black uppercase tracking-widest rounded-lg border border-amber-500/25 transition disabled:opacity-50"
                                       >
-                                        Pausar
+                                        Bloquear
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => handleCompleteActivity(activity, execution)}
-                                        disabled={isActionLoading}
-                                        className="px-3 py-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest rounded-lg border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition disabled:opacity-50"
+                                        onClick={() => openCompletionDialog(activity)}
+                                        disabled={isTransitioning}
+                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-sm transition disabled:opacity-50"
                                       >
                                         Concluir
                                       </button>
                                     </>
-                                  ) : (
+                                  )}
+
+                                  {isActivityBlocked(activity.status) && (
                                     <>
                                       <button
                                         type="button"
-                                        onClick={() => handleStartOrResumeActivity(activity)}
-                                        disabled={isActionLoading}
-                                        className="px-3 py-1.5 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-lg shadow-indigo-500/15 hover:bg-indigo-700 transition disabled:opacity-50"
+                                        onClick={() => handleResumeActivitySimplified(activity)}
+                                        disabled={isTransitioning}
+                                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-sm transition disabled:opacity-50"
                                       >
-                                        {isActionLoading ? 'Aguarde...' : (isPaused || execution ? 'Retomar' : 'Iniciar')}
+                                        {isTransitioning ? 'Retomando...' : 'Retomar'}
                                       </button>
-                                      {isPaused && execution && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleCompleteActivity(activity, execution)}
-                                          disabled={isActionLoading}
-                                          className="px-3 py-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-black uppercase tracking-widest rounded-lg border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition disabled:opacity-50"
-                                        >
-                                          Concluir
-                                        </button>
-                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => openCompletionDialog(activity)}
+                                        disabled={isTransitioning}
+                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg shadow-sm transition disabled:opacity-50"
+                                      >
+                                        Concluir
+                                      </button>
                                     </>
                                   )}
-                                </div>
+
+                                  {isActivityCompleted(activity.status) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openReopenDialog(activity)}
+                                      disabled={isTransitioning}
+                                      className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-indigo-600 hover:text-white text-slate-700 dark:text-slate-300 text-[9px] font-black uppercase tracking-widest rounded-lg transition disabled:opacity-50"
+                                    >
+                                      Reabrir
+                                    </button>
+                                  )}
+                                </>
                               )}
 
-                              <span className={`inline-block px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
-                                activity.status === ProjectStatus.DONE ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
-                                activity.status === ProjectStatus.IN_PROGRESS ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20' :
-                                activity.status === ProjectStatus.PAUSED ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' :
-                                activity.status === ProjectStatus.CANCELED ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' :
-                                'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700/50'
-                              }`}>
-                                {activity.status}
-                              </span>
-
-                              {currentUser.role !== UserRole.VIEWER && !isHistoricalRevision && (
-                                <div className="flex items-center space-x-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingActivity(activity);
-                                      setActTypeId(activity.activityTypeId || '');
-                                      setActAssigneeId(activity.assigneeId || '');
-                                      setActStatus(activity.status);
-                                      setActEstimatedDuration(activity.estimatedDurationHours !== undefined ? activity.estimatedDurationHours.toString() : '');
-                                      setActStartDate(activity.startDate || '');
-                                      setActDeliveryDate(activity.deliveryDate || '');
-                                      setActNotes(activity.notes || '');
-                                      setShowActivityModal(true);
-                                    }}
-                                    className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition"
-                                    title="Editar Atividade"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteProjectAct(activity)}
-                                    className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg transition"
-                                    title="Excluir Atividade"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                  </button>
-                                </div>
-                              )}
+                              {/* Histórico */}
+                              <button
+                                type="button"
+                                onClick={() => openHistoryModal(activity)}
+                                className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[9px] font-black uppercase tracking-widest rounded-lg transition inline-flex items-center gap-1"
+                                title="Histórico de auditoria"
+                              >
+                                <svg className="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                Histórico
+                              </button>
                             </div>
+
+                            {currentUser.role !== UserRole.VIEWER && !isHistoricalRevision && (
+                              <div className="flex items-center space-x-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingActivity(activity);
+                                    setActTypeId(activity.activityTypeId || '');
+                                    setActAssigneeId(activity.assigneeId || '');
+                                    setActStatus(normalizeActivityStatus(activity.status));
+                                    setActEstimatedDuration(activity.estimatedDurationHours !== undefined ? activity.estimatedDurationHours.toString() : '');
+                                    setActStartDate(activity.startDate || '');
+                                    setActDeliveryDate(activity.deliveryDate || '');
+                                    setActBlockedReason(activity.blockedReason || '');
+                                    setActActualStartDate(activity.actualStartDate || '');
+                                    setActActualEndDate(activity.actualEndDate || '');
+                                    setActNotes(activity.notes || '');
+                                    setShowActivityModal(true);
+                                  }}
+                                  className="p-1.5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition"
+                                  title="Editar Atividade"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteProjectAct(activity)}
+                                  className="p-1.5 text-rose-500 hover:bg-rose-500/10 rounded-lg transition"
+                                  title="Excluir Atividade"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -2496,39 +2908,41 @@ export const Projects: React.FC<ProjectsProps> = ({
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Duração Prevista (Horas)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="Ex: 2.5"
-                      value={actEstimatedDuration}
-                      onChange={(e) => setActEstimatedDuration(e.target.value)}
-                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Status</label>
-                    <select
-                      value={actStatus}
-                      onChange={(e) => setActStatus(e.target.value as ProjectStatus)}
-                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
-                    >
-                      {Object.values(ProjectStatus).map(activityStatus => (
-                        <option key={activityStatus} value={activityStatus}>{activityStatus}</option>
-                      ))}
-                    </select>
-                  </div>
+                {/* Status Canônico */}
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Status Operacional *</label>
+                  <select
+                    value={actStatus}
+                    onChange={(e) => setActStatus(e.target.value as ActivityCanonicalStatus)}
+                    className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none font-medium transition-colors"
+                  >
+                    <option value={ActivityCanonicalStatus.TO_DO}>A FAZER</option>
+                    <option value={ActivityCanonicalStatus.IN_PROGRESS}>EM ANDAMENTO</option>
+                    <option value={ActivityCanonicalStatus.BLOCKED}>BLOQUEADA</option>
+                    <option value={ActivityCanonicalStatus.COMPLETED}>CONCLUÍDA</option>
+                  </select>
                 </div>
 
+                {/* Motivo do Bloqueio (visível quando BLOQUEADA) */}
+                {actStatus === ActivityCanonicalStatus.BLOCKED && (
+                  <div>
+                    <label className="block text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2 px-1">Motivo do Bloqueio *</label>
+                    <textarea
+                      required
+                      value={actBlockedReason}
+                      onChange={(e) => setActBlockedReason(e.target.value)}
+                      className="w-full px-4 py-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-700/60 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-amber-500 outline-none font-medium min-h-[60px] resize-none"
+                      placeholder="Descreva o motivo que está impedindo o avanço desta atividade..."
+                    />
+                  </div>
+                )}
+
+                {/* Datas de Início Planejado e Previsão de Término */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Início Planejado</label>
                     <input
                       type="date"
-                      required
                       value={actStartDate}
                       min={editingProject?.startDate}
                       max={editingProject?.deliveryDate}
@@ -2539,7 +2953,7 @@ export const Projects: React.FC<ProjectsProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Conclusão Planejada</label>
+                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 px-1">Previsão Término *</label>
                     <input
                       type="date"
                       required
@@ -2554,80 +2968,31 @@ export const Projects: React.FC<ProjectsProps> = ({
                   </div>
                 </div>
 
+                {/* Referência do Prazo Original */}
+                {editingActivity && editingActivity.originalDeliveryDate && editingActivity.originalDeliveryDate !== actDeliveryDate && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-[10px] text-amber-700 dark:text-amber-300">
+                    <span>Previsão Original de Referência: <strong className="font-bold">{formatDisplayDate(editingActivity.originalDeliveryDate)}</strong></span>
+                    <p className="mt-0.5 text-[9px] opacity-80">Alterar a previsão registrará uma reprogramação no histórico de auditoria.</p>
+                  </div>
+                )}
+
+                {/* Data Real de Conclusão se CONCLUÍDA */}
+                {actStatus === ActivityCanonicalStatus.COMPLETED && (
+                  <div>
+                    <label className="block text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-2 px-1">Data Real de Conclusão</label>
+                    <input
+                      type="date"
+                      value={actActualEndDate || getTodayDateString()}
+                      onChange={(e) => setActActualEndDate(e.target.value)}
+                      className="w-full px-4 py-3 bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-700/60 rounded-xl text-xs text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 outline-none font-medium"
+                    />
+                  </div>
+                )}
+
                 {editingProject && (
                   <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 px-1">
                     {getProjectPeriodLabel(editingProject)}
                   </p>
-                )}
-
-                {/* BLOCO COMPACTO DE ANÁLISE DE CAPACIDADE */}
-                {actStartDate && actDeliveryDate && (
-                  <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200/50 dark:border-white/5 p-4 rounded-2xl space-y-3 transition-colors text-xs">
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <span className="block text-[8px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Capacidade Janela</span>
-                        <span className="text-xs font-black text-slate-800 dark:text-slate-100">
-                          {formatDecimalHours(capacityAnalysis.windowCapacity)}
-                        </span>
-                      </div>
-                      <div className="bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
-                        <span className="block text-[8px] font-black text-slate-450 dark:text-slate-500 uppercase tracking-widest mb-1">Estimativa</span>
-                        <span className="text-xs font-black text-slate-800 dark:text-slate-100">
-                          {formatDecimalHours(capacityAnalysis.estimate)}
-                        </span>
-                      </div>
-                      <div className={`p-2 rounded-xl border ${
-                        capacityAnalysis.isOverallocated 
-                          ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' 
-                          : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'
-                      }`}>
-                        <span className="block text-[8px] font-black uppercase tracking-widest mb-1 opacity-70">
-                          {capacityAnalysis.isOverallocated ? 'Déficit' : 'Margem'}
-                        </span>
-                        <span className="text-xs font-black">
-                          {formatDecimalHours(Math.abs(capacityAnalysis.balance))}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Alerta de excede capacidade regular (Erro) */}
-                    {capacityAnalysis.isOverallocated && (
-                      <div className="bg-rose-500/10 text-rose-500 border border-rose-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
-                        <span className="mt-0.5">⚠️</span>
-                        <div>
-                          <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Erro de Planejamento</p>
-                          <p>Esta atividade exige mais horas do que o período planejado comporta. Amplie o período ou revise a duração estimada.</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Alerta de janela muito ampla (Aviso) */}
-                    {!capacityAnalysis.isOverallocated && capacityAnalysis.estimate > 0 && capacityAnalysis.windowCapacity > capacityAnalysis.estimate * 3 && (
-                      <div className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
-                        <span className="mt-0.5">ℹ️</span>
-                        <div>
-                          <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Aviso de Dimensionamento</p>
-                          <p>Esta atividade possui uma janela significativamente maior que a duração estimada.</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Alerta de capacidade real do responsável */}
-                    {actAssigneeId && capacityAnalysis.hasRealCapacityIssue && !capacityAnalysis.isOverallocated && (
-                      <div className="bg-amber-500/10 text-amber-500 border border-amber-500/20 px-3 py-2 rounded-xl text-[10px] font-bold leading-relaxed flex items-start gap-2">
-                        <span className="mt-0.5">⚠️</span>
-                        <div>
-                          <p className="font-black uppercase tracking-wider text-[9px] mb-0.5">Sobrecarga do Responsável</p>
-                          <p>ATENÇÃO: o responsável não possui capacidade disponível suficiente neste período.</p>
-                          <div className="mt-1 flex flex-wrap gap-x-3 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400">
-                            <span>Necessário: {formatDecimalHours(capacityAnalysis.estimate)}</span>
-                            <span>Disponível: {formatDecimalHours(capacityAnalysis.assigneeAvailableHours)}</span>
-                            <span>Déficit: {formatDecimalHours(capacityAnalysis.deficitReal)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 )}
 
                 <div>
@@ -2940,6 +3305,311 @@ export const Projects: React.FC<ProjectsProps> = ({
                   Fechar Painel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Bloqueio de Atividade */}
+      {blockingDialogActivity && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-lg border border-slate-200 dark:border-white/10 overflow-hidden">
+            <div className="px-7 py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900 dark:text-white uppercase tracking-wider">Bloquear Atividade</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate max-w-xs">{blockingDialogActivity.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setBlockingDialogActivity(null);
+                  setBlockingReasonInput('');
+                }}
+                className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="p-7 space-y-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                  Motivo do Bloqueio *
+                </label>
+                <textarea
+                  autoFocus
+                  rows={3}
+                  value={blockingReasonInput}
+                  onChange={(e) => setBlockingReasonInput(e.target.value)}
+                  placeholder="Ex: Aguardando aprovação do cliente sobre a cota do telhado..."
+                  className="w-full px-4 py-3 rounded-xl border border-amber-300/80 dark:border-amber-700/60 bg-amber-50/30 dark:bg-amber-950/20 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-amber-500 resize-none font-medium"
+                />
+                <p className="mt-1.5 text-[10px] text-slate-400">
+                  O motivo será registrado no histórico e exibido no cartão da atividade para toda a equipe.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-7 py-5 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-white/5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setBlockingDialogActivity(null);
+                  setBlockingReasonInput('');
+                }}
+                className="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black text-xs uppercase tracking-wider hover:bg-slate-200 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmBlockActivity}
+                disabled={!blockingReasonInput.trim() || transitioningActivityId === blockingDialogActivity.id}
+                className="flex-1 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-600/20 transition disabled:opacity-50"
+              >
+                {transitioningActivityId === blockingDialogActivity.id ? 'Bloqueando...' : 'Confirmar Bloqueio'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Conclusão de Atividade */}
+      {completingDialogActivity && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-lg border border-slate-200 dark:border-white/10 overflow-hidden">
+            <div className="px-7 py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900 dark:text-white uppercase tracking-wider">Concluir Atividade</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate max-w-xs">{completingDialogActivity.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCompletingDialogActivity(null);
+                  setCompletionDateInput('');
+                }}
+                className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="p-7 space-y-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                  Data Real de Conclusão *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={completionDateInput}
+                  onChange={(e) => setCompletionDateInput(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                />
+                <div className="mt-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-[10px] text-slate-500 dark:text-slate-400 flex flex-col gap-1">
+                  <span>Previsão cadastrada: <strong className="text-slate-700 dark:text-slate-200">{formatDisplayDate(completingDialogActivity.deliveryDate)}</strong></span>
+                  {completingDialogActivity.originalDeliveryDate && completingDialogActivity.originalDeliveryDate !== completingDialogActivity.deliveryDate && (
+                    <span>Previsão original: <strong className="text-slate-700 dark:text-slate-200">{formatDisplayDate(completingDialogActivity.originalDeliveryDate)}</strong></span>
+                  )}
+                  <span className="text-[9px] text-slate-400 mt-0.5">A data informada será a referência definitiva de entrega desta atividade para os indicadores gerenciais.</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-7 py-5 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-white/5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setCompletingDialogActivity(null);
+                  setCompletionDateInput('');
+                }}
+                className="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black text-xs uppercase tracking-wider hover:bg-slate-200 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmCompleteActivity}
+                disabled={!completionDateInput || transitioningActivityId === completingDialogActivity.id}
+                className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/20 transition disabled:opacity-50"
+              >
+                {transitioningActivityId === completingDialogActivity.id ? 'Concluindo...' : 'Confirmar Conclusão'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Reabertura de Atividade */}
+      {reopeningDialogActivity && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-lg border border-slate-200 dark:border-white/10 overflow-hidden">
+            <div className="px-7 py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900 dark:text-white uppercase tracking-wider">Reabrir Atividade</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate max-w-xs">{reopeningDialogActivity.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setReopeningDialogActivity(null);
+                  setReopeningReasonInput('');
+                }}
+                className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="p-7 space-y-4">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Esta atividade retornará ao status <strong className="text-blue-600 dark:text-blue-400 font-bold">EM ANDAMENTO</strong> e a data de conclusão anterior (<strong className="font-semibold">{formatDisplayDate(reopeningDialogActivity.actualEndDate)}</strong>) será arquivada no histórico.
+              </p>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                  Motivo da Reabertura (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={reopeningReasonInput}
+                  onChange={(e) => setReopeningReasonInput(e.target.value)}
+                  placeholder="Ex: Ajustes solicitados pelo cliente na revisão técnica..."
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="px-7 py-5 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-white/5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setReopeningDialogActivity(null);
+                  setReopeningReasonInput('');
+                }}
+                className="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black text-xs uppercase tracking-wider hover:bg-slate-200 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmReopenActivity}
+                disabled={transitioningActivityId === reopeningDialogActivity.id}
+                className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 transition disabled:opacity-50"
+              >
+                {transitioningActivityId === reopeningDialogActivity.id ? 'Reabrindo...' : 'Reabrir Atividade'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Histórico de Auditoria */}
+      {historyModalActivity && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col border border-slate-200 dark:border-white/10 overflow-hidden">
+            <div className="px-7 py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900 dark:text-white uppercase tracking-wider">Histórico de Eventos</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate max-w-xs">{historyModalActivity.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryModalActivity(null);
+                  setActivityHistoryEvents([]);
+                }}
+                className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="p-7 overflow-y-auto flex-1 space-y-4">
+              {isLoadingHistory ? (
+                <div className="py-12 text-center text-slate-400 text-xs font-bold uppercase tracking-widest animate-pulse">
+                  Carregando histórico...
+                </div>
+              ) : activityHistoryEvents.length === 0 ? (
+                <div className="py-12 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">Nenhum evento registrado para esta atividade ainda.</p>
+                </div>
+              ) : (
+                <div className="relative pl-6 space-y-5 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 dark:before:bg-slate-800">
+                  {activityHistoryEvents.map((evt) => {
+                    const eventDate = new Date(evt.createdAt);
+                    const formattedTime = !isNaN(eventDate.getTime())
+                      ? `${String(eventDate.getDate()).padStart(2, '0')}/${String(eventDate.getMonth() + 1).padStart(2, '0')}/${eventDate.getFullYear()} às ${String(eventDate.getHours()).padStart(2, '0')}:${String(eventDate.getMinutes()).padStart(2, '0')}`
+                      : 'Data indisponível';
+
+                    const eventBadgeStyle =
+                      evt.eventType === 'CREATED' ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' :
+                      evt.eventType === 'STARTED' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20' :
+                      evt.eventType === 'BLOCKED' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20' :
+                      evt.eventType === 'RESUMED' ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20' :
+                      evt.eventType === 'RESCHEDULED' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20' :
+                      evt.eventType === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' :
+                      evt.eventType === 'REOPENED' ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20' :
+                      'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20';
+
+                    return (
+                      <div key={evt.id} className="relative group">
+                        <div className="absolute -left-6 top-1.5 w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white dark:ring-[#0f172a]" />
+                        <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 text-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border ${eventBadgeStyle}`}>
+                              {evt.eventType}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">{formattedTime}</span>
+                          </div>
+                          {evt.details && (
+                            <p className="mt-2 text-slate-800 dark:text-slate-200 font-medium leading-relaxed">
+                              {evt.details}
+                            </p>
+                          )}
+                          <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                            <span>Registrado por: <strong className="text-slate-600 dark:text-slate-300 font-semibold">{evt.actorName || 'Sistema'}</strong></span>
+                            {evt.toStatus && <span>Status: <strong className="text-slate-600 dark:text-slate-300 font-semibold">{evt.toStatus}</strong></span>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="px-7 py-5 bg-slate-50/50 dark:bg-slate-900/30 border-t border-slate-100 dark:border-white/5 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryModalActivity(null);
+                  setActivityHistoryEvents([]);
+                }}
+                className="w-full py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black text-xs uppercase tracking-wider hover:bg-slate-200 transition"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>

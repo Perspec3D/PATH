@@ -201,6 +201,64 @@ export interface ActivityType {
   updatedAt: number;
 }
 
+export enum ActivityCanonicalStatus {
+  TO_DO = 'A FAZER',
+  IN_PROGRESS = 'EM ANDAMENTO',
+  BLOCKED = 'BLOQUEADA',
+  COMPLETED = 'CONCLUÍDA'
+}
+
+export type ActivityEventType = 
+  | 'CREATED'
+  | 'STARTED'
+  | 'BLOCKED'
+  | 'RESUMED'
+  | 'COMPLETED'
+  | 'REOPENED'
+  | 'RESCHEDULED'
+  | 'DATES_ADJUSTED'
+  | 'ASSIGNEE_CHANGED'
+  | 'UPDATED';
+
+export interface ProjectActivityEvent {
+  id: string;
+  workspaceId: string;
+  activityId: string;
+  eventType: ActivityEventType;
+  fromStatus?: string;
+  toStatus?: string;
+  details?: string;
+  metadata?: Record<string, any>;
+  actorId?: string;
+  actorName?: string;
+  createdAt: number;
+}
+
+export enum ActivityDeadlineStatus {
+  ON_TIME = 'NO_PRAZO',
+  UPCOMING = 'VENCIMENTO_PROXIMO',
+  OVERDUE = 'ATRASADA',
+  COMPLETED_ON_TIME = 'CONCLUIDA_NO_PRAZO',
+  COMPLETED_EARLY = 'CONCLUIDA_ADIANTADA',
+  COMPLETED_LATE = 'CONCLUIDA_COM_ATRASO',
+  NOT_APPLICABLE = 'NAO_APLICAVEL'
+}
+
+export interface ActivityManagerialMetrics {
+  plannedDurationDays: number | null;
+  leadTimeRealizedDays: number | null;
+  leadTimeInProgressDays: number | null;
+  originalDeadlineDeviationDays: number | null;
+  updatedDeadlineDeviationDays: number | null;
+  deadlineChangesCount: number;
+  blockedDurationDays: number | null;
+  isOverdue: boolean;
+  isUpcoming: boolean;
+  isOnTime: boolean;
+  deadlineStatus: ActivityDeadlineStatus;
+  deadlineLabel: string;
+}
+
 export interface ProjectActivity {
   id: string;
   workspaceId: string;
@@ -208,15 +266,17 @@ export interface ProjectActivity {
   activityTypeId?: string;
   name: string;
   assigneeId?: string;
-  status: ProjectStatus;
-  startDate?: string;
-  deliveryDate?: string;
+  status: ProjectStatus | ActivityCanonicalStatus | string;
+  startDate?: string; // Planned start date (YYYY-MM-DD)
+  deliveryDate?: string; // Updated delivery forecast (YYYY-MM-DD)
+  originalDeliveryDate?: string; // Original approved delivery forecast (YYYY-MM-DD)
   notes?: string;
-  estimatedDurationHours?: number;
-  estimatedCurrentHours?: number;
+  blockedReason?: string;
+  estimatedDurationHours?: number; // Legacy preserved
+  estimatedCurrentHours?: number; // Legacy preserved
   orderIndex: number;
-  actualStartDate?: string;
-  actualEndDate?: string;
+  actualStartDate?: string; // Actual start date (YYYY-MM-DD)
+  actualEndDate?: string; // Actual completion date (YYYY-MM-DD)
   conclusionResponsibleId?: string;
   deadlineChangesCount: number;
   deadlineAtConclusion?: string;
