@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Client, Project, InternalUser, ProjectActivity, ProjectStatus } from '../types';
+import { isProjectActivityCompleted } from './projectActivityStatus';
 
 export const exportProjectsToExcel = (
     projects: Project[],
@@ -13,7 +14,7 @@ export const exportProjectsToExcel = (
         const client = clients.find(c => c.id === p.clientId);
         const assignee = users.find(u => u.id === p.assigneeId);
         const projectActivities = activities.filter(activity => activity.projectId === p.id);
-        const completedActivities = projectActivities.filter(activity => activity.status === ProjectStatus.DONE).length;
+        const completedActivities = projectActivities.filter(activity => isProjectActivityCompleted(activity.status)).length;
 
         return {
             'Código': p.code,

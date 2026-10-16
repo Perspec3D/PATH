@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { ProjectStatus, Project, InternalUser, Client, ProjectActivity } from '../types';
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
+import { normalizeActivityStatus } from '../utils/activityOperationalModel';
 import { AppDB, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
 import { calculateNetWorkdayMs, calculateRegularOperationalMs, calculateOvertimeMs } from '../utils/operationalTime';
@@ -316,12 +317,19 @@ const UserDetailModal: React.FC<{
                         </div>
                       )}
                     </div>
-                    <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${activity.status === ProjectStatus.IN_PROGRESS ? 'bg-emerald-500/10 text-emerald-500' :
-                      activity.status === ProjectStatus.QUEUE ? 'bg-slate-500/10 text-slate-500' :
-                        'bg-purple-500/10 text-purple-500'
-                      }`}>
-                      {activity.status}
-                    </span>
+                    {(() => {
+                      const canonical = normalizeActivityStatus(activity.status);
+                      return (
+                        <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
+                          canonical === 'EM ANDAMENTO' ? 'bg-emerald-500/10 text-emerald-500' :
+                          canonical === 'BLOQUEADA' ? 'bg-rose-500/10 text-rose-500' :
+                          canonical === 'CONCLUÍDA' ? 'bg-purple-500/10 text-purple-500' :
+                          'bg-slate-500/10 text-slate-500'
+                        }`}>
+                          {canonical}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className="flex items-center space-x-2 bg-white/40 dark:bg-white/5 p-2 rounded-xl border border-slate-200/50 dark:border-white/5">
                     <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Projeto:</span>
@@ -593,7 +601,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       const user = users.find(item => item.id === activity.assigneeId);
       if (user && matrix[user.username]) {
         matrix[user.username].activities++;
-        matrix[user.username].stats[activity.status]++;
+        const canonical = normalizeActivityStatus(activity.status);
+        if (canonical === 'EM ANDAMENTO') {
+          matrix[user.username].stats[ProjectStatus.IN_PROGRESS] = (matrix[user.username].stats[ProjectStatus.IN_PROGRESS] || 0) + 1;
+        } else if (canonical === 'BLOQUEADA') {
+          matrix[user.username].stats[ProjectStatus.PAUSED] = (matrix[user.username].stats[ProjectStatus.PAUSED] || 0) + 1;
+        } else {
+          matrix[user.username].stats[ProjectStatus.QUEUE] = (matrix[user.username].stats[ProjectStatus.QUEUE] || 0) + 1;
+        }
       }
     });
 
