@@ -12,7 +12,10 @@ import {
   evaluateDeadlineStatus,
   calculateActivityManagerialMetrics,
   calculateActivitiesDeliveryOverview,
-  createActivityEventPayload
+  createActivityEventPayload,
+  getActivityStatusBadge,
+  getActivityStatusTheme,
+  getActivityGanttBarStyle
 } from '../utils/activityOperationalModel';
 import {
   ActivityCanonicalStatus,
@@ -234,6 +237,40 @@ const payload = createActivityEventPayload(
 assert(payload.eventType === 'BLOCKED', 'Event payload type is BLOCKED');
 assert(payload.actorName === 'Engenheiro Chefe', 'Actor username is recorded');
 assert(payload.details === 'Falta de cotação', 'Block reason recorded');
+
+// 7. Visual Standard & Gantt Bar Styling
+console.log('\n7. Visual Standard & Gantt Bar Styling');
+const todoTheme = getActivityStatusTheme('A FAZER');
+assert(todoTheme.canonical === ActivityCanonicalStatus.TO_DO, 'TO_DO canonical matches');
+assert(todoTheme.label === 'A FAZER', 'TO_DO label is A FAZER');
+
+const inProgTheme = getActivityStatusTheme('EM ANDAMENTO');
+assert(inProgTheme.canonical === ActivityCanonicalStatus.IN_PROGRESS, 'IN_PROGRESS canonical matches');
+assert(inProgTheme.label === 'EM ANDAMENTO', 'IN_PROGRESS label is EM ANDAMENTO');
+
+const blockedTheme = getActivityStatusTheme('BLOQUEADA');
+assert(blockedTheme.canonical === ActivityCanonicalStatus.BLOCKED, 'BLOCKED canonical matches');
+assert(blockedTheme.label === 'BLOQUEADA', 'BLOCKED label is BLOQUEADA');
+assert(blockedTheme.barStyle?.backgroundColor === '#78350F', 'BLOCKED background is #78350F');
+assert(blockedTheme.barStyle?.borderColor === '#FBBF24', 'BLOCKED border is #FBBF24');
+assert(blockedTheme.barStyle?.color === '#FFFFFF', 'BLOCKED text is #FFFFFF');
+assert(blockedTheme.highlightColor === '#FDE68A', 'BLOCKED highlight is #FDE68A');
+
+const completedTheme = getActivityStatusTheme('CONCLUÍDA');
+assert(completedTheme.canonical === ActivityCanonicalStatus.COMPLETED, 'COMPLETED canonical matches');
+assert(completedTheme.label === 'CONCLUÍDA', 'COMPLETED label is CONCLUÍDA');
+
+// Gantt Bar Styles & Overdue double condition
+const blockedNotOverdue = getActivityGanttBarStyle('BLOQUEADA', false);
+assert(blockedNotOverdue.isBlocked === true, 'getActivityGanttBarStyle detects isBlocked true');
+assert(blockedNotOverdue.isOverdue === false, 'getActivityGanttBarStyle detects isOverdue false');
+assert(blockedNotOverdue.style.backgroundColor === '#78350F', 'Gantt bar backgroundColor is #78350F');
+
+const blockedAndOverdue = getActivityGanttBarStyle('BLOQUEADA', true);
+assert(blockedAndOverdue.isBlocked === true, 'Detects both blocked and overdue: isBlocked true');
+assert(blockedAndOverdue.isOverdue === true, 'Detects both blocked and overdue: isOverdue true');
+assert(blockedAndOverdue.style.backgroundColor === '#78350F', 'Preserves #78350F background when overdue');
+assert(String(blockedAndOverdue.style.boxShadow).includes('#F43F5E'), 'Adds overdue warning shadow to blocked bar');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {

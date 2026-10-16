@@ -7,7 +7,7 @@ import { HoverTooltipPortal } from './InfoTooltip';
 import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, isValidDateRange } from '../utils/projectDateIntegrity';
 import { isCurrentProjectRevision } from '../utils/projectRevision';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
-import { normalizeActivityStatus, getActivityStatusBadge, formatDisplayDate, getTodayDateString, evaluateDeadlineStatus, calculateCalendarDurationDays, calculateDaysDifference, createActivityEventPayload, isActivityCompleted, isActivityInProgress, isActivityBlocked, isActivityToDo } from '../utils/activityOperationalModel';
+import { normalizeActivityStatus, getActivityStatusBadge, getActivityStatusTheme, getActivityGanttBarStyle, formatDisplayDate, getTodayDateString, evaluateDeadlineStatus, calculateCalendarDurationDays, calculateDaysDifference, createActivityEventPayload, isActivityCompleted, isActivityInProgress, isActivityBlocked, isActivityToDo } from '../utils/activityOperationalModel';
 
 interface GanttProps {
   db: AppDB;
@@ -916,14 +916,23 @@ export const Gantt: React.FC<GanttProps> = ({
   }, [activeProjects, projectActivities, db.tasks]);
 
   const getStatusColor = (status: ProjectStatus | string) => {
-    switch (status) {
-      case ProjectStatus.IN_PROGRESS: return 'bg-indigo-600';
-      case ProjectStatus.PAUSED: return 'bg-purple-500';
-      case ProjectStatus.QUEUE: return 'bg-slate-500';
-      case ProjectStatus.DONE: return 'bg-emerald-500';
-      case ProjectStatus.CANCELED: return 'bg-orange-500';
-      case 'ACTIVITY': return 'bg-amber-500';
-      default: return 'bg-slate-700';
+    const canonical = normalizeActivityStatus(status);
+    switch (canonical) {
+      case ActivityCanonicalStatus.IN_PROGRESS: return 'bg-sky-600';
+      case ActivityCanonicalStatus.BLOCKED: return 'bg-[#78350F] text-[#FDE68A] border-[#FBBF24]';
+      case ActivityCanonicalStatus.TO_DO: return 'bg-slate-600';
+      case ActivityCanonicalStatus.COMPLETED: return 'bg-emerald-600';
+      default: {
+        switch (status) {
+          case ProjectStatus.IN_PROGRESS: return 'bg-sky-600';
+          case ProjectStatus.PAUSED: return 'bg-[#78350F] text-[#FDE68A] border-[#FBBF24]';
+          case ProjectStatus.QUEUE: return 'bg-slate-600';
+          case ProjectStatus.DONE: return 'bg-emerald-600';
+          case ProjectStatus.CANCELED: return 'bg-orange-600';
+          case 'ACTIVITY': return 'bg-indigo-600';
+          default: return 'bg-slate-700';
+        }
+      }
     }
   };
 
@@ -1240,39 +1249,91 @@ export const Gantt: React.FC<GanttProps> = ({
                                   })}
                                 </div>
 
-                                {stWidth > 0 && (
-                                  <HoverTooltipPortal
-                                    tooltipClassName="w-[180px] p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl ring-1 ring-white/5"
-                                    tooltip={
-                                      <>
-                                      <div className="flex items-center justify-between mb-1.5">
-                                        <div className="flex flex-col">
-                                          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">ATIVIDADE DO PROJETO</p>
-                                          <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">{project.code}</p>
-                                        </div>
-                                        <span className={`px-1.5 py-0.5 rounded-[4px] text-[7px] font-black uppercase tracking-widest ${getStatusColor(st.status)} text-white`}>{st.status}</span>
-                                      </div>
-                                      <p className="text-[10px] font-bold text-white mb-2 leading-tight">{st.name}</p>
-                                      <div className="flex justify-between items-center text-[9px] font-medium text-slate-400">
-                                        <span>{stStart?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
-                                        <svg className="w-2 h-2 mx-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                        <span>{stEnd?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
-                                      </div>
-                                      </>
-                                    }
-                                  >
-                                    <div
-                                      onClick={() => setSelectedQuickViewActivity(st)}
-                                      style={{ left: `${stOffset}px`, width: `${stWidth}px` }}
-                                      className={`absolute top-1/2 -translate-y-1/2 h-4 rounded-full shadow-sm transition-all duration-300 hover:brightness-125 z-20 cursor-pointer ${getStatusColor(st.status)} opacity-80 hover:opacity-100 flex items-center px-2`}
+                                {stWidth > 0 && (() => {
+                                  const stIsBlocked = isActivityBlocked(st.status);
+                                  const stDeadline = evaluateDeadlineStatus(st);
+                                  const stBarStyle = getActivityGanttBarStyle(st.status, stDeadline.isOverdue);
+
+                                  return (
+                                    <HoverTooltipPortal
+                                      tooltipClassName="w-[220px] p-3.5 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl ring-1 ring-white/10"
+                                      tooltip={
+                                        <>
+                                          <div className="flex items-center justify-between mb-1.5 gap-2">
+                                            <div className="flex flex-col">
+                                              <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">ATIVIDADE DO PROJETO</p>
+                                              <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">{project.code}</p>
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                              <span
+                                                style={stIsBlocked ? { backgroundColor: '#78350F', color: '#FDE68A', borderColor: '#FBBF24', borderWidth: 1, borderStyle: 'solid' } : undefined}
+                                                className={`px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider ${
+                                                  stIsBlocked ? '' : `${stBarStyle.theme.barBgClass} text-white`
+                                                }`}
+                                              >
+                                                {stIsBlocked && '🔒 '}{stBarStyle.theme.label}
+                                              </span>
+                                              {stDeadline.isOverdue && (
+                                                <span className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-sm">
+                                                  ATRASADA
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <p className="text-[11px] font-bold text-white mb-2 leading-snug">{st.name}</p>
+
+                                          {/* Motivo do bloqueio com destaque visual quando bloqueada */}
+                                          {stIsBlocked && (
+                                            <div className="mb-2.5 p-2 rounded-lg bg-[#78350F]/50 border border-[#FBBF24]/60 text-amber-100 text-[9px] leading-snug">
+                                              <span className="font-black text-[8px] uppercase tracking-wider text-[#FDE68A] block mb-0.5 flex items-center gap-1">
+                                                <span>⚠️</span> Motivo do Bloqueio:
+                                              </span>
+                                              <p className="font-medium text-white/95 break-words">{st.blockedReason || 'Motivo de bloqueio não informado'}</p>
+                                            </div>
+                                          )}
+
+                                          <div className="flex justify-between items-center text-[9px] font-medium text-slate-400 pt-1.5 border-t border-slate-800">
+                                            <span>{stStart?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                                            <svg className="w-2 h-2 mx-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                            <span>{stEnd?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                                          </div>
+                                        </>
+                                      }
                                     >
-                                      <div className={`w-1.5 h-1.5 rounded-full mr-1.5 shrink-0 ${getProjectMarkerColor(project.id)}`} />
-                                      <span className="text-[7px] font-black text-white/90 truncate uppercase tracking-tighter">
-                                        {st.name}
-                                      </span>
-                                    </div>
-                                  </HoverTooltipPortal>
-                                )}
+                                      <div
+                                        onClick={() => setSelectedQuickViewActivity(st)}
+                                        style={{ left: `${stOffset}px`, width: `${stWidth}px`, ...stBarStyle.style }}
+                                        className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-full z-20 cursor-pointer flex items-center px-1.5 transition-all duration-300 hover:brightness-125 ${stBarStyle.className}`}
+                                      >
+                                        <div className={`w-1.5 h-1.5 rounded-full mr-1 shrink-0 ${getProjectMarkerColor(project.id)}`} />
+                                        {stIsBlocked && (
+                                          <svg className="w-2.5 h-2.5 text-[#FDE68A] shrink-0 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                          </svg>
+                                        )}
+                                        {stIsBlocked && stWidth >= 110 && (
+                                          <span className="px-1 py-0.2 rounded bg-[#FBBF24] text-[#78350F] text-[6.5px] font-black uppercase tracking-wider shrink-0 mr-1 leading-tight">
+                                            BLOQUEADA
+                                          </span>
+                                        )}
+                                        {stWidth >= 40 && (
+                                          <span className="text-[7.5px] font-black text-white/95 truncate uppercase tracking-tighter">
+                                            {st.name}
+                                          </span>
+                                        )}
+                                        {stDeadline.isOverdue && (
+                                          stWidth >= 160 ? (
+                                            <span className="ml-auto px-1 py-0.2 rounded bg-rose-600 text-white text-[6.5px] font-black uppercase tracking-wider shrink-0 border border-rose-400">
+                                              ATRASADA
+                                            </span>
+                                          ) : (
+                                            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0 ring-1 ring-white" title="Atrasada" />
+                                          )
+                                        )}
+                                      </div>
+                                    </HoverTooltipPortal>
+                                  );
+                                })()}
                               </div>
                             </div>
                           );
@@ -1432,27 +1493,56 @@ export const Gantt: React.FC<GanttProps> = ({
                           const offset = diffStart * dayWidth;
                           const width = diffDuration * dayWidth;
                           const isProjectActivity = task.type === 'projectActivity';
+                          const taskIsBlocked = isProjectActivity && isActivityBlocked(task.status);
+                          const taskDeadline = isProjectActivity ? evaluateDeadlineStatus(task) : null;
+                          const taskBarStyle = isProjectActivity ? getActivityGanttBarStyle(task.status, taskDeadline?.isOverdue) : null;
                           const barHeight = isProjectActivity ? 'h-5' : 'h-8';
                           const topPos = 16 + (task.laneIndex * 42) + (isProjectActivity ? 6 : 0);
+
                           return (
                             <HoverTooltipPortal
                               key={task.id}
-                              tooltipClassName="w-[220px] p-4 bg-slate-900 border border-slate-700 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] ring-1 ring-white/10"
+                              tooltipClassName="w-[230px] p-4 bg-slate-900 border border-slate-700 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] ring-1 ring-white/10"
                               tooltip={
                                 <>
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex flex-col">
-                                      <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em]">
+                                  <div className="flex items-center justify-between mb-2 gap-2">
+                                    <div className="flex flex-col min-w-0">
+                                      <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em] truncate">
                                         {task.type === 'project' ? 'PROJETO PAI' : task.type === 'projectActivity' ? 'ATIVIDADE DO PROJETO' : 'TAREFA / BLOQUEIO'}
                                       </p>
-                                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">
+                                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-0.5 truncate">
                                         {task.type === 'project' ? (task as any).code : task.type === 'projectActivity' ? (task as any).parentProject?.code : (task as any).activityType || task.type}
                                       </p>
                                     </div>
-                                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${getStatusColor(task.status)} text-white`}>{task.status === 'ACTIVITY' ? 'AVULSA' : task.status}</span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <span
+                                        style={taskIsBlocked ? { backgroundColor: '#78350F', color: '#FDE68A', borderColor: '#FBBF24', borderWidth: 1, borderStyle: 'solid' } : undefined}
+                                        className={`px-2 py-0.5 rounded text-[7.5px] font-black uppercase tracking-widest ${
+                                          taskIsBlocked ? '' : taskBarStyle ? `${taskBarStyle.theme.barBgClass} text-white` : `${getStatusColor(task.status)} text-white`
+                                        }`}
+                                      >
+                                        {taskIsBlocked && '🔒 '}{task.status === 'ACTIVITY' ? 'AVULSA' : taskBarStyle ? taskBarStyle.theme.label : task.status}
+                                      </span>
+                                      {taskDeadline?.isOverdue && (
+                                        <span className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-sm">
+                                          ATRASADA
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
-                                  <p className="text-xs font-bold text-white mb-1 leading-tight whitespace-normal">{task.name}</p>
-                                  {task.type === 'projectActivity' && <p className="text-[9px] text-slate-500 font-black uppercase mb-3 truncate">Ref: {task.parentProject?.name}</p>}
+                                  <p className="text-xs font-bold text-white mb-1.5 leading-snug whitespace-normal">{task.name}</p>
+                                  {task.type === 'projectActivity' && <p className="text-[9px] text-slate-400 font-bold uppercase mb-2 truncate">Ref: {task.parentProject?.name}</p>}
+
+                                  {/* Motivo do bloqueio quando atividade bloqueada */}
+                                  {taskIsBlocked && (
+                                    <div className="mb-2.5 p-2 rounded-lg bg-[#78350F]/50 border border-[#FBBF24]/60 text-amber-100 text-[9px] leading-snug">
+                                      <span className="font-black text-[8px] uppercase tracking-wider text-[#FDE68A] block mb-0.5 flex items-center gap-1">
+                                        <span>⚠️</span> Motivo do Bloqueio:
+                                      </span>
+                                      <p className="font-medium text-white/95 break-words">{task.blockedReason || 'Motivo de bloqueio não informado'}</p>
+                                    </div>
+                                  )}
+
                                   {task.type === 'teamTask' && (
                                     <div className="text-[10px] text-slate-400 font-medium mb-3 whitespace-normal break-words space-y-1">
                                       {task.description && <p className="text-xs text-slate-300 mb-2 italic">"{task.description}"</p>}
@@ -1478,29 +1568,61 @@ export const Gantt: React.FC<GanttProps> = ({
                               }
                             >
                             <div
-                              style={{ left: `${offset}px`, width: `${width}px`, top: `${topPos}px` }}
-                              className={`absolute ${barHeight} rounded-full shadow-lg border-b-2 transition-all duration-300 hover:brightness-125 z-20 hover:z-30 cursor-pointer ${getStatusColor(task.status)} border-white/5 opacity-80 hover:opacity-100 flex items-center px-3 group/task active:scale-95`}
+                              style={{
+                                left: `${offset}px`,
+                                width: `${width}px`,
+                                top: `${topPos}px`,
+                                ...(taskBarStyle?.style || {})
+                              }}
+                              className={`absolute ${barHeight} rounded-full shadow-lg transition-all duration-300 hover:brightness-125 z-20 hover:z-30 cursor-pointer flex items-center px-2 group/task active:scale-95 ${
+                                taskBarStyle ? taskBarStyle.className : `${getStatusColor(task.status)} border-b-2 border-white/5 opacity-80 hover:opacity-100`
+                              }`}
                               onClick={() => {
                                 if (task.type === 'project') openEdit(task);
                                 else if (task.type === 'projectActivity' && task.parentProject) setSelectedQuickViewActivity(task);
                                 else if (task.type === 'teamTask') openEditTeamTask(task);
                               }}
                             >
-                               <div className={`w-2 h-2 rounded-full mr-2 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.type === 'projectActivity' ? task.parentProject?.id : task.id)}`} />
-                              <span className="text-[8px] font-black text-white/90 truncate uppercase tracking-tighter flex items-center gap-1.5">
+                              <div className={`w-2 h-2 rounded-full mr-1.5 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.type === 'projectActivity' ? task.parentProject?.id : task.id)}`} />
+                              
+                              {taskIsBlocked && (
+                                <svg className="w-2.5 h-2.5 text-[#FDE68A] shrink-0 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                              )}
+
+                              {taskIsBlocked && width >= 120 && (
+                                <span className="px-1 py-0.2 rounded bg-[#FBBF24] text-[#78350F] text-[6.5px] font-black uppercase tracking-wider shrink-0 mr-1 leading-tight">
+                                  BLOQUEADA
+                                </span>
+                              )}
+
+                              <span className="text-[8px] font-black text-white/95 truncate uppercase tracking-tighter flex items-center gap-1.5">
                                 {task.type === 'teamTask' && (
                                   <span className="px-1 py-0.2 bg-white/20 text-white rounded-[4px] text-[7px] font-black uppercase tracking-wider shrink-0 border border-white/10">
                                     TAREFA
                                   </span>
                                 )}
-                                <span className="truncate">
-                                  {task.type === 'projectActivity'
-                                    ? `[ATIVIDADE] ${task.name}`
-                                    : task.type === 'teamTask'
-                                      ? (task.startTime ? `${task.startTime} - ${task.name}` : task.name)
-                                      : task.name}
-                                </span>
+                                {width >= 40 && (
+                                  <span className="truncate">
+                                    {task.type === 'projectActivity'
+                                      ? `[ATIVIDADE] ${task.name}`
+                                      : task.type === 'teamTask'
+                                        ? (task.startTime ? `${task.startTime} - ${task.name}` : task.name)
+                                        : task.name}
+                                  </span>
+                                )}
                               </span>
+
+                              {taskDeadline?.isOverdue && (
+                                width >= 180 ? (
+                                  <span className="ml-auto px-1 py-0.2 rounded bg-rose-600 text-white text-[6.5px] font-black uppercase tracking-wider shrink-0 border border-rose-400">
+                                    ATRASADA
+                                  </span>
+                                ) : (
+                                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0 ring-1 ring-white" title="Atrasada" />
+                                )
+                              )}
 
                             </div>
                             </HoverTooltipPortal>
@@ -1749,8 +1871,17 @@ export const Gantt: React.FC<GanttProps> = ({
                           {selectedQuickViewActivity.name}
                         </h3>
                         <div className="flex items-center gap-1.5">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${statusBadge.badgeBg} ${statusBadge.badgeText} ${statusBadge.badgeBorder}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dotBg}`} />
+                          <span
+                            style={statusBadge.badgeStyle}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${statusBadge.badgeBg} ${statusBadge.badgeText} ${statusBadge.badgeBorder}`}
+                          >
+                            {isActivityBlocked(selectedQuickViewActivity.status) ? (
+                              <svg className="w-2.5 h-2.5 text-[#FBBF24] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
+                            ) : (
+                              <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dotBg}`} />
+                            )}
                             {statusBadge.label}
                           </span>
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-bold border ${deadlineEvaluation.badgeStyle}`}>
@@ -1810,11 +1941,19 @@ export const Gantt: React.FC<GanttProps> = ({
 
                     {/* Motivo do Bloqueio se Bloqueada */}
                     {isActivityBlocked(selectedQuickViewActivity.status) && (
-                      <div className="px-4 py-3 bg-amber-500/10 border border-amber-500/25 rounded-2xl text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
-                        <span className="text-base">⚠️</span>
-                        <div>
-                          <span className="font-black text-[9px] uppercase tracking-wider block">Motivo do Bloqueio:</span>
-                          <p className="mt-0.5 text-xs">{selectedQuickViewActivity.blockedReason || 'Não especificado'}</p>
+                      <div className="px-4 py-3 bg-[#78350F]/15 dark:bg-[#78350F]/30 border-2 border-[#FBBF24]/70 rounded-2xl text-xs text-slate-800 dark:text-amber-100 flex items-start gap-2.5 shadow-sm">
+                        <span className="p-1 rounded-md bg-[#FBBF24] text-[#78350F] shrink-0 font-black">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-black text-[9px] uppercase tracking-wider text-amber-800 dark:text-[#FDE68A] block">
+                            Motivo do Bloqueio:
+                          </span>
+                          <p className="mt-0.5 text-xs font-semibold leading-relaxed break-words text-slate-900 dark:text-amber-100">
+                            {selectedQuickViewActivity.blockedReason || 'Não especificado'}
+                          </p>
                         </div>
                       </div>
                     )}

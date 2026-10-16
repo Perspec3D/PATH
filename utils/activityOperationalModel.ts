@@ -1,3 +1,4 @@
+import type React from 'react';
 import {
   ActivityCanonicalStatus,
   ActivityDeadlineStatus,
@@ -87,6 +88,107 @@ export const isActivityClosed = (status: string | undefined): boolean => (
   isActivityCompleted(status)
 );
 
+export interface ActivityStatusTheme {
+  canonical: ActivityCanonicalStatus;
+  label: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+  dotBg: string;
+  barBgClass: string;
+  barBorderClass: string;
+  barTextClass: string;
+  barStyle?: React.CSSProperties;
+  badgeStyle?: React.CSSProperties;
+  accentColor: string;
+  highlightColor: string;
+}
+
+/**
+ * Returns complete visual styles (badge, Gantt bar, and tokens) for an activity status.
+ * Standardizes:
+ * - A FAZER: cinza / azul neutro (Slate)
+ * - EM ANDAMENTO: azul / ciano (Sky)
+ * - BLOQUEADA: âmbar / laranja queimado (Fundo: #78350F, Borda: #FBBF24, Texto: #FFFFFF, Destaque: #FDE68A)
+ * - CONCLUÍDA: verde (Emerald)
+ */
+export const getActivityStatusTheme = (status: string | undefined): ActivityStatusTheme => {
+  const canonical = normalizeActivityStatus(status);
+  switch (canonical) {
+    case ActivityCanonicalStatus.TO_DO:
+      return {
+        canonical,
+        label: 'A FAZER',
+        badgeBg: 'bg-slate-500/15 dark:bg-slate-400/15',
+        badgeText: 'text-slate-700 dark:text-slate-300',
+        badgeBorder: 'border-slate-400/40 dark:border-slate-500/40',
+        dotBg: 'bg-slate-400 dark:bg-slate-400',
+        barBgClass: 'bg-slate-600 dark:bg-slate-700',
+        barBorderClass: 'border border-slate-400/50 dark:border-slate-500/50',
+        barTextClass: 'text-slate-100',
+        accentColor: '#94A3B8',
+        highlightColor: '#CBD5E1'
+      };
+    case ActivityCanonicalStatus.IN_PROGRESS:
+      return {
+        canonical,
+        label: 'EM ANDAMENTO',
+        badgeBg: 'bg-sky-500/15 dark:bg-sky-400/15',
+        badgeText: 'text-sky-700 dark:text-sky-300',
+        badgeBorder: 'border-sky-500/35 dark:border-sky-400/35',
+        dotBg: 'bg-sky-500 animate-pulse',
+        barBgClass: 'bg-sky-600 dark:bg-sky-600',
+        barBorderClass: 'border-2 border-sky-300 dark:border-sky-400',
+        barTextClass: 'text-white',
+        accentColor: '#0284C7',
+        highlightColor: '#BAE6FD'
+      };
+    case ActivityCanonicalStatus.BLOCKED:
+      return {
+        canonical,
+        label: 'BLOQUEADA',
+        badgeBg: 'bg-amber-950/20 dark:bg-[#78350F]/45',
+        badgeText: 'text-amber-800 dark:text-[#FDE68A]',
+        badgeBorder: 'border-[#FBBF24] dark:border-[#FBBF24]',
+        dotBg: 'bg-[#FBBF24]',
+        badgeStyle: {
+          backgroundColor: 'rgba(120, 53, 15, 0.18)',
+          borderColor: '#FBBF24',
+          borderWidth: '1px',
+          borderStyle: 'solid'
+        },
+        barBgClass: 'bg-[#78350F]',
+        barBorderClass: 'border-2 border-[#FBBF24]',
+        barTextClass: 'text-white',
+        barStyle: {
+          backgroundColor: '#78350F',
+          borderColor: '#FBBF24',
+          borderWidth: '2px',
+          borderStyle: 'solid',
+          color: '#FFFFFF',
+          backgroundImage: 'repeating-linear-gradient(45deg, rgba(251, 191, 36, 0.08), rgba(251, 191, 36, 0.08) 6px, transparent 6px, transparent 12px)',
+          boxShadow: '0 2px 8px rgba(120, 53, 15, 0.4)'
+        },
+        accentColor: '#FBBF24',
+        highlightColor: '#FDE68A'
+      };
+    case ActivityCanonicalStatus.COMPLETED:
+      return {
+        canonical,
+        label: 'CONCLUÍDA',
+        badgeBg: 'bg-emerald-500/15 dark:bg-emerald-400/15',
+        badgeText: 'text-emerald-700 dark:text-emerald-300',
+        badgeBorder: 'border-emerald-500/35 dark:border-emerald-400/35',
+        dotBg: 'bg-emerald-500',
+        barBgClass: 'bg-emerald-600 dark:bg-emerald-600',
+        barBorderClass: 'border border-emerald-300/60 dark:border-emerald-400/60',
+        barTextClass: 'text-white',
+        accentColor: '#10B981',
+        highlightColor: '#A7F3D0'
+      };
+  }
+};
+
 /**
  * Returns visual styles (badge colors) for a status.
  */
@@ -97,46 +199,62 @@ export const getActivityStatusBadge = (status: string | undefined): {
   badgeText: string;
   badgeBorder: string;
   dotBg: string;
+  badgeStyle?: React.CSSProperties;
 } => {
-  const canonical = normalizeActivityStatus(status);
-  switch (canonical) {
-    case ActivityCanonicalStatus.TO_DO:
-      return {
-        canonical,
-        label: 'A FAZER',
-        badgeBg: 'bg-slate-500/10 dark:bg-slate-400/10',
-        badgeText: 'text-slate-600 dark:text-slate-300',
-        badgeBorder: 'border-slate-500/20 dark:border-slate-400/20',
-        dotBg: 'bg-slate-400 dark:bg-slate-500'
-      };
-    case ActivityCanonicalStatus.IN_PROGRESS:
-      return {
-        canonical,
-        label: 'EM ANDAMENTO',
-        badgeBg: 'bg-blue-500/10 dark:bg-blue-400/10',
-        badgeText: 'text-blue-600 dark:text-blue-400',
-        badgeBorder: 'border-blue-500/25 dark:border-blue-400/25',
-        dotBg: 'bg-blue-500 animate-pulse'
-      };
-    case ActivityCanonicalStatus.BLOCKED:
-      return {
-        canonical,
-        label: 'BLOQUEADA',
-        badgeBg: 'bg-amber-500/15 dark:bg-amber-400/15',
-        badgeText: 'text-amber-700 dark:text-amber-300',
-        badgeBorder: 'border-amber-500/30 dark:border-amber-400/30',
-        dotBg: 'bg-amber-500'
-      };
-    case ActivityCanonicalStatus.COMPLETED:
-      return {
-        canonical,
-        label: 'CONCLUÍDA',
-        badgeBg: 'bg-emerald-500/10 dark:bg-emerald-400/10',
-        badgeText: 'text-emerald-700 dark:text-emerald-300',
-        badgeBorder: 'border-emerald-500/25 dark:border-emerald-400/25',
-        dotBg: 'bg-emerald-500'
-      };
+  const theme = getActivityStatusTheme(status);
+  return {
+    canonical: theme.canonical,
+    label: theme.label,
+    badgeBg: theme.badgeBg,
+    badgeText: theme.badgeText,
+    badgeBorder: theme.badgeBorder,
+    dotBg: theme.dotBg,
+    badgeStyle: theme.badgeStyle
+  };
+};
+
+/**
+ * Returns the Gantt timeline bar style for an activity.
+ * When isOverdue is true, adds visual distinction for deadline delay.
+ */
+export const getActivityGanttBarStyle = (
+  status: string | undefined,
+  isOverdue = false
+): {
+  className: string;
+  style: React.CSSProperties;
+  theme: ActivityStatusTheme;
+  isBlocked: boolean;
+  isOverdue: boolean;
+} => {
+  const theme = getActivityStatusTheme(status);
+  const isBlocked = theme.canonical === ActivityCanonicalStatus.BLOCKED;
+
+  const baseClasses = 'shadow-md transition-all duration-300 hover:brightness-110 flex items-center overflow-hidden';
+  let className = `${baseClasses} ${theme.barBgClass} ${theme.barBorderClass} ${theme.barTextClass}`;
+  let style: React.CSSProperties = { ...(theme.barStyle || {}) };
+
+  if (isBlocked && isOverdue) {
+    // Both Blocked and Overdue: keep burnt amber and border-amber-400, add outer red outline ring
+    style = {
+      ...style,
+      boxShadow: '0 0 0 1.5px #F43F5E, 0 3px 10px rgba(120, 53, 15, 0.5)'
+    };
+  } else if (!isBlocked && isOverdue) {
+    // Non-blocked but overdue: add red highlight border
+    style = {
+      ...style,
+      boxShadow: '0 0 0 1.5px #F43F5E, 0 2px 6px rgba(244, 63, 94, 0.3)'
+    };
   }
+
+  return {
+    className,
+    style,
+    theme,
+    isBlocked,
+    isOverdue
+  };
 };
 
 /**
@@ -230,13 +348,22 @@ export const calculateDaysDifference = (targetStr?: string | null, referenceStr?
   return Math.round(msDiff / (1000 * 60 * 60 * 24));
 };
 
+export interface ActivityDeadlineEvaluation {
+  status: ActivityDeadlineStatus;
+  label: string;
+  badgeStyle: string;
+  isOverdue: boolean;
+  isUpcoming: boolean;
+  isOnTime: boolean;
+}
+
 /**
- * Determines deadline status for an activity.
+ * Evaluates the deadline status of an activity based on verifiable dates.
  */
 export const evaluateDeadlineStatus = (
   activity: ProjectActivity,
   todayStr: string = getTodayDateString()
-): { status: ActivityDeadlineStatus; label: string; badgeStyle: string } => {
+): ActivityDeadlineEvaluation => {
   const isDone = isActivityCompleted(activity.status);
   const currentDeadline = activity.deliveryDate;
 
@@ -244,7 +371,10 @@ export const evaluateDeadlineStatus = (
     return {
       status: ActivityDeadlineStatus.NOT_APPLICABLE,
       label: 'Sem Prazo',
-      badgeStyle: 'bg-slate-500/10 text-slate-500 border-slate-500/20'
+      badgeStyle: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
+      isOverdue: false,
+      isUpcoming: false,
+      isOnTime: false
     };
   }
 
@@ -255,7 +385,10 @@ export const evaluateDeadlineStatus = (
       return {
         status: ActivityDeadlineStatus.COMPLETED_ON_TIME,
         label: 'Concluída',
-        badgeStyle: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+        badgeStyle: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+        isOverdue: false,
+        isUpcoming: false,
+        isOnTime: true
       };
     }
 
@@ -264,7 +397,10 @@ export const evaluateDeadlineStatus = (
       return {
         status: ActivityDeadlineStatus.COMPLETED_ON_TIME,
         label: 'Concluída',
-        badgeStyle: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+        badgeStyle: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+        isOverdue: false,
+        isUpcoming: false,
+        isOnTime: true
       };
     }
 
@@ -273,7 +409,10 @@ export const evaluateDeadlineStatus = (
       return {
         status: ActivityDeadlineStatus.COMPLETED_EARLY,
         label: `Concluída ${days}d antes`,
-        badgeStyle: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+        badgeStyle: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+        isOverdue: false,
+        isUpcoming: false,
+        isOnTime: true
       };
     }
 
@@ -281,14 +420,20 @@ export const evaluateDeadlineStatus = (
       return {
         status: ActivityDeadlineStatus.COMPLETED_ON_TIME,
         label: 'Concluída no prazo',
-        badgeStyle: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+        badgeStyle: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+        isOverdue: false,
+        isUpcoming: false,
+        isOnTime: true
       };
     }
 
     return {
       status: ActivityDeadlineStatus.COMPLETED_LATE,
       label: `Concluída com ${diff}d de atraso`,
-      badgeStyle: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+      badgeStyle: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
+      isOverdue: true,
+      isUpcoming: false,
+      isOnTime: false
     };
   }
 
@@ -298,7 +443,10 @@ export const evaluateDeadlineStatus = (
     return {
       status: ActivityDeadlineStatus.NOT_APPLICABLE,
       label: 'Sem Prazo',
-      badgeStyle: 'bg-slate-500/10 text-slate-500 border-slate-500/20'
+      badgeStyle: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
+      isOverdue: false,
+      isUpcoming: false,
+      isOnTime: false
     };
   }
 
@@ -308,7 +456,10 @@ export const evaluateDeadlineStatus = (
     return {
       status: ActivityDeadlineStatus.OVERDUE,
       label: `Atrasada há ${daysLate} ${daysLate === 1 ? 'dia' : 'dias'}`,
-      badgeStyle: 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30 animate-pulse'
+      badgeStyle: 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30 animate-pulse',
+      isOverdue: true,
+      isUpcoming: false,
+      isOnTime: false
     };
   }
 
@@ -322,7 +473,10 @@ export const evaluateDeadlineStatus = (
     return {
       status: ActivityDeadlineStatus.UPCOMING,
       label,
-      badgeStyle: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 font-bold'
+      badgeStyle: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 font-bold',
+      isOverdue: false,
+      isUpcoming: true,
+      isOnTime: true
     };
   }
 
@@ -330,7 +484,10 @@ export const evaluateDeadlineStatus = (
   return {
     status: ActivityDeadlineStatus.ON_TIME,
     label: 'No prazo',
-    badgeStyle: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+    badgeStyle: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+    isOverdue: false,
+    isUpcoming: false,
+    isOnTime: true
   };
 };
 

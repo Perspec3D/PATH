@@ -2514,8 +2514,17 @@ export const Projects: React.FC<ProjectsProps> = ({
                       const isTransitioning = transitioningActivityId === activity.id;
                       const hasRescheduled = Boolean(activity.originalDeliveryDate && activity.deliveryDate && activity.originalDeliveryDate !== activity.deliveryDate);
 
+                      const isBlocked = isActivityBlocked(activity.status);
+
                       return (
-                        <div key={activity.id} className="min-w-0 bg-white dark:bg-slate-900/90 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm hover:border-indigo-500/40 transition-all group/task">
+                        <div
+                          key={activity.id}
+                          className={`min-w-0 p-4 sm:p-5 rounded-2xl shadow-sm transition-all group/task border ${
+                            isBlocked
+                              ? 'bg-amber-50/25 dark:bg-amber-950/20 border-amber-500/50 dark:border-amber-500/40 border-l-4 border-l-[#FBBF24]'
+                              : 'bg-white dark:bg-slate-900/90 border-slate-200/80 dark:border-slate-800 hover:border-indigo-500/40'
+                          }`}
+                        >
                           {/* Header: Prioridade + Nome + Categoria + Badges de Status e Prazo */}
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-start gap-2.5 min-w-0 flex-1">
@@ -2565,8 +2574,17 @@ export const Projects: React.FC<ProjectsProps> = ({
 
                             {/* Badges de Status Canônico e Prazo */}
                             <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 shrink-0">
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${statusBadge.badgeBg} ${statusBadge.badgeText} ${statusBadge.badgeBorder}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dotBg}`} />
+                              <span
+                                style={statusBadge.badgeStyle}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${statusBadge.badgeBg} ${statusBadge.badgeText} ${statusBadge.badgeBorder}`}
+                              >
+                                {isBlocked ? (
+                                  <svg className="w-2.5 h-2.5 text-[#FBBF24] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                  </svg>
+                                ) : (
+                                  <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dotBg}`} />
+                                )}
                                 {statusBadge.label}
                               </span>
                               <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[9px] font-bold border ${metrics.isOverdue ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/25' : metrics.isUpcoming ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25' : metrics.isOnTime ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'}`}>
@@ -2621,11 +2639,19 @@ export const Projects: React.FC<ProjectsProps> = ({
 
                           {/* Motivo do Bloqueio se bloqueada */}
                           {isActivityBlocked(activity.status) && (
-                            <div className="mt-2.5 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-300 text-xs flex items-start gap-2">
-                              <span className="text-sm">⚠️</span>
-                              <div className="flex-1">
-                                <span className="font-black text-[9px] uppercase tracking-wider block">Atividade Bloqueada:</span>
-                                <p className="mt-0.5 text-xs">{activity.blockedReason || 'Motivo de bloqueio não informado'}</p>
+                            <div className="mt-3 px-3.5 py-2.5 rounded-xl bg-[#78350F]/15 dark:bg-[#78350F]/30 border-2 border-[#FBBF24]/70 text-slate-800 dark:text-amber-100 text-xs flex items-start gap-2.5 shadow-sm">
+                              <span className="p-1 rounded-md bg-[#FBBF24] text-[#78350F] shrink-0 font-black">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <span className="font-black text-[9px] uppercase tracking-wider text-amber-800 dark:text-[#FDE68A] block">
+                                  Atividade Bloqueada
+                                </span>
+                                <p className="mt-0.5 text-xs font-semibold leading-relaxed break-words text-slate-900 dark:text-amber-100">
+                                  {activity.blockedReason || 'Motivo de bloqueio não informado'}
+                                </p>
                               </div>
                             </div>
                           )}
