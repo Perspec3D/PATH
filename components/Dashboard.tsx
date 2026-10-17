@@ -26,12 +26,12 @@ import { InfoTooltip } from './InfoTooltip';
 import { isCurrentProjectRevision } from '../utils/projectRevision';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-  AreaChart, Area, PieChart, Pie, Cell, Legend
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, Legend, ReferenceLine
 } from 'recharts';
 import {
   CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar,
   Trophy, Medal, Eye, ArrowRight, Search, Ban, Activity, PieChart as PieChartIcon,
-  Sliders, Target, Sparkles, Layers, LayoutDashboard, ShieldCheck, AlertCircle
+  Sliders, Target, Sparkles, Layers, LayoutDashboard, ShieldCheck, AlertCircle, BarChart3
 } from 'lucide-react';
 import {
   calculateTeamOperationalCapacity,
@@ -965,7 +965,114 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const currentStatus = getHealthStatus(health);
 
-  // BRIEFING EXECUTIVO DINÂMICO (ETAPA 8 - INSIGHTS TEXTUAIS CURTOS)
+  // 10. HISTÓRICO REAL DE ENTREGAS POR SEMANA (ÚLTIMAS 8 SEMANAS - SEM FABRICAÇÃO DE SÉRIES)
+  const weeklyHistoryData = useMemo(() => {
+    const weeksCount = 8;
+    const bins: {
+      weekLabel: string;
+      rangeLabel: string;
+      deliveries: number;
+      onTime: number;
+      late: number;
+    }[] = [];
+
+    for (let w = weeksCount - 1; w >= 0; w--) {
+      const endOffset = w * 7;
+      const startOffset = (w + 1) * 7 - 1;
+      const startDate = addCalendarDays(todayStr, -startOffset) || todayStr;
+      const endDate = addCalendarDays(todayStr, -endOffset) || todayStr;
+
+      let deliveries = 0;
+      let onTime = 0;
+      let late = 0;
+
+      projectActivities.forEach(act => {
+        if (!currentProjectIds.has(act.projectId)) return;
+        if (normalizeActivityStatus(act.status) !== ActivityCanonicalStatus.COMPLETED) return;
+        const concludedDate = act.actualEndDate || act.deliveryDate;
+        if (!concludedDate) return;
+        if (concludedDate >= startDate && concludedDate <= endDate) {
+          deliveries++;
+          const deadline = act.deadlineAtConclusion || act.deliveryDate;
+          if (deadline && concludedDate <= deadline) {
+            onTime++;
+          } else {
+            late++;
+          }
+        }
+      });
+
+      const startFormatted = formatDisplayDate(startDate).slice(0, 5);
+      const endFormatted = formatDisplayDate(endDate).slice(0, 5);
+      const label = w === 0 ? 'Esta Sem' : `Sem -${w}`;
+
+      bins.push({
+        weekLabel: label,
+        rangeLabel: `${startFormatted} a ${endFormatted}`,
+        deliveries,
+        onTime,
+        late
+      });
+    }
+
+    const totalConcluded = bins.reduce((acc, r) => acc + r.deliveries, 0);
+
+    return {
+      bins,
+      totalConcluded,
+      hasHistory: totalConcluded > 0,
+      averageWeekly: totalConcluded > 0 ? Number((totalConcluded / weeksCount).toFixed(1)) : 0
+    };
+  }, [projectActivities, currentProjectIds, todayStr]);
+
+  // 11. DEMANDA FUTURA VS CAPACIDADE HISTÓRICA (PRÓXIMAS 4 SEMANAS)
+  const upcomingCapacityComparisonData = useMemo(() => {
+    return teamCapacity.weeklyProjections.map((proj, idx) => ({
+      weekLabel: `Sem +${idx + 1}`,
+      range: `${formatDisplayDate(proj.startDate).slice(0, 5)} - ${formatDisplayDate(proj.endDate).slice(0, 5)}`,
+      programadas: proj.commitmentsCount,
+      capacidade: teamCapacity.teamWeeklyThroughput !== null ? teamCapacity.teamWeeklyThroughput : null,
+      bloqueadas: proj.blockedCommitmentsCount,
+      isOverload: teamCapacity.teamWeeklyThroughput !== null ? proj.commitmentsCount > teamCapacity.teamWeeklyThroughput : false
+    }));
+  }, [teamCapacity]);
+
+  // 12. DISTRIBUIÇÃO OPERACIONAL DE ATIVIDADES POR STATUS CANÔNICO
+  const activityStatusDistribution = useMemo(() => {
+    let queue = 0;
+    let inProgress = 0;
+    let blocked = 0;
+    let completed = 0;
+
+    projectActivities.forEach(act => {
+      if (!currentProjectIds.has(act.projectId)) return;
+      const s = normalizeActivityStatus(act.status);
+      if (s === ActivityCanonicalStatus.TO_DO) queue++;
+      else if (s === ActivityCanonicalStatus.IN_PROGRESS) inProgress++;
+      else if (s === ActivityCanonicalStatus.BLOCKED) blocked++;
+      else if (s === ActivityCanonicalStatus.COMPLETED) completed++;
+    });
+
+    const total = queue + inProgress + blocked + completed;
+
+    const data = [
+      { name: 'Em Andamento', value: inProgress, color: '#6366f1' },
+      { name: 'Na Fila', value: queue, color: '#94a3b8' },
+      { name: 'Bloqueadas', value: blocked, color: '#f59e0b' },
+      { name: 'Concluídas', value: completed, color: '#10b981' }
+    ].filter(d => d.value > 0);
+
+    return {
+      data,
+      total,
+      inProgress,
+      queue,
+      blocked,
+      completed
+    };
+  }, [projectActivities, currentProjectIds]);
+
+  // BRIEFING EXECUTIVO DINÂMICO
   const executiveInsights = useMemo(() => {
     const criticalItems: string[] = [];
     const infoItems: string[] = [];
@@ -1007,21 +1114,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return {
       badgeText,
       badgeColor,
-      headline,
-      teamMessage: teamCapacity.exceededWipProfessionalsCount > 0
-        ? `${teamCapacity.exceededWipProfessionalsCount} profissional(is) acima da referência estimada`
-        : 'Equipe operando dentro da capacidade observada',
-      upcomingMessage: upcomingProjects.length > 0
-        ? `Concentração de ${upcomingProjects.length} entrega(s) na próxima semana`
-        : 'Sem concentração crítica de entregas na semana',
-      rhythmMessage: dashboard2Logics.throughput.factor >= 1
-        ? 'Ritmo de entregas equilibrado com novas entradas'
-        : 'Entradas de projetos superiores ao ritmo recente de entregas'
+      headline
     };
-  }, [unifiedKPIs, overdueProjects, teamCapacity, upcomingProjects, dashboard2Logics]);
+  }, [unifiedKPIs, overdueProjects, teamCapacity, upcomingProjects]);
 
   return (
-    <div id="dashboard-content" className="space-y-8 animate-in fade-in duration-700 pb-12 relative">
+    <div id="dashboard-content" className="space-y-6 animate-in fade-in duration-500 pb-12 relative">
       {/* BACKGROUND DE ALTA TECNOLOGIA */}
       <div className="fixed inset-0 pointer-events-none opacity-20 dark:opacity-20 overflow-hidden z-[-1]">
         <div className="absolute inset-0 bg-[radial-gradient(#94a3b8_1px,transparent_1px)] dark:bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px]"></div>
@@ -1029,7 +1127,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 3px, transparent 3px)' }}></div>
       </div>
 
-      {/* CABEÇALHO DO DASHBOARD COM SELETOR DE VISÃO (ETAPA 7: EXECUTIVA VS ANALÍTICA) */}
+      {/* CABEÇALHO DO DASHBOARD COM SELETOR DE VISÃO */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-200/60 dark:border-white/5">
         <div>
           <div className="flex items-center space-x-2">
@@ -1037,895 +1135,579 @@ export const Dashboard: React.FC<DashboardProps> = ({
               Painel Gerencial
             </span>
             <span className="text-[10px] font-bold text-slate-400">·</span>
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Atualização em tempo real</span>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Tempo real</span>
+            <span className="text-[10px] font-bold text-slate-400">·</span>
+            <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${
+              executiveInsights.badgeColor === 'rose'
+                ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                : executiveInsights.badgeColor === 'amber'
+                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                  : executiveInsights.badgeColor === 'sky'
+                    ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/20'
+                    : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+            }`}>
+              {executiveInsights.badgeText}
+            </span>
           </div>
-          <h1 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight mt-1">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight mt-1">
             Visão Geral de Operações
           </h1>
         </div>
 
         {/* CONTROLE DE VISÃO: EXECUTIVA VS ANALÍTICA */}
-        <div className="flex items-center bg-slate-100 dark:bg-slate-900/90 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-inner self-start md:self-auto">
+        <div className="flex items-center bg-slate-100 dark:bg-slate-900/90 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-inner self-start md:self-auto">
           <button
             type="button"
             onClick={() => setDashboardViewMode('executive')}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 ${
+            className={`px-3.5 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
               dashboardViewMode === 'executive'
                 ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-md shadow-black/5 dark:shadow-black/20'
                 : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <LayoutDashboard size={14} />
+            <LayoutDashboard size={13} />
             <span>Visão Executiva</span>
           </button>
           <button
             type="button"
             onClick={() => setDashboardViewMode('analytic')}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center space-x-2 ${
+            className={`px-3.5 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center space-x-1.5 ${
               dashboardViewMode === 'analytic'
                 ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-md shadow-black/5 dark:shadow-black/20'
                 : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <Sliders size={14} />
+            <Sliders size={13} />
             <span>Visão Analítica</span>
           </button>
         </div>
       </div>
 
-      {/* BRIEFING EXECUTIVO DINÂMICO (ETAPA 8 - INSIGHTS TEXTUAIS CURTOS) */}
-      <div className={`p-6 rounded-[32px] border transition-all ${
-        executiveInsights.badgeColor === 'rose'
-          ? 'bg-rose-500/5 border-rose-500/20 text-rose-900 dark:text-rose-100'
-          : executiveInsights.badgeColor === 'amber'
-            ? 'bg-amber-500/5 border-amber-500/20 text-amber-900 dark:text-amber-100'
-            : executiveInsights.badgeColor === 'sky'
-              ? 'bg-sky-500/5 border-sky-500/20 text-sky-900 dark:text-sky-100'
-              : 'bg-emerald-500/5 border-emerald-500/20 text-emerald-900 dark:text-emerald-100'
-      }`}>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start md:items-center space-x-3.5">
-            <div className={`p-2.5 rounded-2xl ${
-              executiveInsights.badgeColor === 'rose'
-                ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                : executiveInsights.badgeColor === 'amber'
-                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                  : executiveInsights.badgeColor === 'sky'
-                    ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400'
-                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-            }`}>
-              {executiveInsights.badgeColor === 'rose' ? (
-                <AlertCircle size={20} />
-              ) : executiveInsights.badgeColor === 'amber' ? (
-                <AlertTriangle size={20} />
-              ) : (
-                <ShieldCheck size={20} />
-              )}
-            </div>
-            <div>
-              <div className="flex items-center space-x-2 mb-1">
-                <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${
-                  executiveInsights.badgeColor === 'rose'
-                    ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300'
-                    : executiveInsights.badgeColor === 'amber'
-                      ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
-                      : executiveInsights.badgeColor === 'sky'
-                        ? 'bg-sky-500/20 text-sky-700 dark:text-sky-300'
-                        : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-                }`}>
-                  {executiveInsights.badgeText}
-                </span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Diagnóstico da Operação
-                </span>
-              </div>
-              <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                {executiveInsights.headline}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-200/40 dark:border-white/5">
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white/60 dark:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-200/50 dark:border-white/5">
-              {executiveInsights.teamMessage}
-            </span>
-            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white/60 dark:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-200/50 dark:border-white/5">
-              {executiveInsights.upcomingMessage}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* RESUMO EXECUTIVO (ETAPA 4.1.A - 6 CARDS DE INDICADORES PRINCIPAIS) */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      {/* ===================================================================== */}
+      {/* LINHA 1: RESUMO EXECUTIVO COMPACTO (5 INDICADORES ESSENCIAIS)         */}
+      {/* ===================================================================== */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* Card 1: Projetos Ativos */}
-        <div className="p-5 rounded-[28px] bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border border-slate-200/80 dark:border-white/5 shadow-sm flex flex-col justify-between group hover:border-indigo-500/30 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Projetos Ativos</span>
-            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-500 group-hover:scale-110 transition-transform">
-              <Layers size={14} />
-            </div>
-          </div>
+        <div className="py-3 px-4 rounded-2xl bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border border-slate-200/80 dark:border-white/5 shadow-sm flex items-center justify-between group hover:border-indigo-500/30 transition-all">
           <div>
-            <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-              {activeProjects.length}
-            </span>
-            <p className="text-[9px] font-bold text-slate-400 mt-1 truncate">
-              {activeProjects.filter(p => p.status === ProjectStatus.IN_PROGRESS).length} em execução
-            </p>
-          </div>
-        </div>
-
-        {/* Card 2: Entregas da Semana */}
-        <div className="p-5 rounded-[28px] bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border border-slate-200/80 dark:border-white/5 shadow-sm flex flex-col justify-between group hover:border-sky-500/30 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Entregas da Semana</span>
-            <div className="p-2 rounded-xl bg-sky-500/10 text-sky-500 group-hover:scale-110 transition-transform">
-              <Calendar size={14} />
-            </div>
-          </div>
-          <div>
-            <span className="text-2xl font-black text-sky-600 dark:text-sky-400 tracking-tight">
-              {upcomingProjects.length}
-            </span>
-            <p className="text-[9px] font-bold text-slate-400 mt-1 truncate">
-              próximos 7 dias
-            </p>
-          </div>
-        </div>
-
-        {/* Card 3: Entregas no Prazo */}
-        <div className="p-5 rounded-[28px] bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border border-slate-200/80 dark:border-white/5 shadow-sm flex flex-col justify-between group hover:border-emerald-500/30 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Entregas no Prazo</span>
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500 group-hover:scale-110 transition-transform">
-              <CheckCircle2 size={14} />
-            </div>
-          </div>
-          <div>
-            <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
-              {healthInfo.value !== null ? `${healthInfo.value}%` : '---'}
-            </span>
-            <p className="text-[9px] font-bold text-slate-400 mt-1 truncate">
-              {healthInfo.value !== null ? (healthInfo.value >= 80 ? 'Ritmo excelente' : 'Acompanhar') : 'Sem histórico'}
-            </p>
-          </div>
-        </div>
-
-        {/* Card 4: Projetos Atrasados */}
-        <div className={`p-5 rounded-[28px] bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border shadow-sm flex flex-col justify-between group transition-all ${
-          overdueProjects.length > 0 ? 'border-rose-500/30 hover:border-rose-500' : 'border-slate-200/80 dark:border-white/5 hover:border-slate-300'
-        }`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Projetos Atrasados</span>
-            <div className={`p-2 rounded-xl ${overdueProjects.length > 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-slate-500/10 text-slate-400'} group-hover:scale-110 transition-transform`}>
-              <AlertTriangle size={14} />
-            </div>
-          </div>
-          <div>
-            <span className={`text-2xl font-black tracking-tight ${overdueProjects.length > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
-              {overdueProjects.length}
-            </span>
-            <p className="text-[9px] font-bold text-slate-400 mt-1 truncate">
-              {overdueProjects.length > 0 ? 'Prazo expirado' : 'Nenhum atraso'}
-            </p>
-          </div>
-        </div>
-
-        {/* Card 5: Bloqueios Ativos */}
-        <div className={`p-5 rounded-[28px] bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border shadow-sm flex flex-col justify-between group transition-all ${
-          unifiedKPIs.activeBlocksCount > 0 ? 'border-amber-500/30 hover:border-amber-500' : 'border-slate-200/80 dark:border-white/5 hover:border-slate-300'
-        }`}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Bloqueios Ativos</span>
-            <div className={`p-2 rounded-xl ${unifiedKPIs.activeBlocksCount > 0 ? 'bg-amber-500/10 text-amber-500' : 'bg-slate-500/10 text-slate-400'} group-hover:scale-110 transition-transform`}>
-              <Ban size={14} />
-            </div>
-          </div>
-          <div>
-            <span className={`text-2xl font-black tracking-tight ${unifiedKPIs.activeBlocksCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
-              {unifiedKPIs.activeBlocksCount}
-            </span>
-            <p className="text-[9px] font-bold text-slate-400 mt-1 truncate">
-              {unifiedKPIs.activeBlocksCount > 0 ? 'Aguardando liberação' : 'Fluxo liberado'}
-            </p>
-          </div>
-        </div>
-
-        {/* Card 6: Ritmo de Entregas */}
-        <div className="p-5 rounded-[28px] bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border border-slate-200/80 dark:border-white/5 shadow-sm flex flex-col justify-between group hover:border-purple-500/30 transition-all">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Ritmo de Entregas</span>
-            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-500 group-hover:scale-110 transition-transform">
-              <TrendingUp size={14} />
-            </div>
-          </div>
-          <div>
-            <span className="text-2xl font-black text-purple-600 dark:text-purple-400 tracking-tight">
-              {teamCapacity.teamWeeklyThroughput !== null ? `${teamCapacity.teamWeeklyThroughput}/sem` : `${dashboard2Logics.throughput.done} ent.`}
-            </span>
-            <p className="text-[9px] font-bold text-slate-400 mt-1 truncate">
-              Últimas semanas
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ===================================================================== */}
-      {/* MODO 1: VISÃO EXECUTIVA (LEITURA RÁPIDA, DECISÃO, FOCO GERENCIAL)     */}
-      {/* ===================================================================== */}
-      {dashboardViewMode === 'executive' && (
-        <div className="space-y-8 animate-in fade-in duration-300">
-          {/* BLOCO 1: CENTRAL DE ATENÇÃO GERENCIAL (ONDE AGIR AGORA) */}
-          <ManagementAttentionCenter
-            projects={projects}
-            activities={projectActivities}
-            users={users}
-            clients={clients}
-            theme={theme}
-            todayStr={todayStr}
-            userWipLimits={userWipLimits}
-            eventsByActivityId={activityEventsBatch}
-            onOpenProject={onOpenProject}
-            onOpenActivity={onOpenActivity}
-            onNavigateToTeam={onNavigateToTeam}
-          />
-
-          {/* BLOCO 2: EQUIPE & CARGA DE TRABALHO */}
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                  Equilíbrio da Equipe e Alocação de Trabalho
-                </h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                  Identificação de sobrecargas, dispersão e volume ativo por profissional
-                </p>
-              </div>
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                {userStatusMatrix.length} colaboradores ativos
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">Projetos Ativos</span>
+            <div className="flex items-baseline space-x-1.5 mt-0.5">
+              <span className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                {activeProjects.length}
+              </span>
+              <span className="text-[9px] font-bold text-slate-400">
+                ({activeProjects.filter(p => p.status === ProjectStatus.IN_PROGRESS).length} em andamento)
               </span>
             </div>
+          </div>
+          <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-500 shrink-0">
+            <Layers size={14} />
+          </div>
+        </div>
 
-            {/* 3 CARDS ESTRATÉGICOS DE FLUXO */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* RITMO DE CONCLUSÃO */}
-              <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl p-7 rounded-[36px] border border-slate-200 dark:border-white/5 relative group transition-all duration-300 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] flex items-center">
-                    Ritmo de Conclusão
-                    <InfoTooltip title="Ritmo de Conclusão" content="Saldo de projetos concluídos vs criados nos últimos 7 dias. Um saldo inferior a 100% indica que novas demandas estão entrando mais rápido que as entregas." />
-                  </h4>
-                  <TrendingUp size={16} className={dashboard2Logics.throughput.factor >= 1 ? 'text-emerald-500' : 'text-amber-500'} />
-                </div>
-                <div className="flex items-end space-x-4">
-                  <span className={`text-4xl font-black transition-colors ${dashboard2Logics.throughput.factor >= 1 ? 'text-emerald-500' : 'text-amber-500'}`}>
-                    {Math.round(dashboard2Logics.throughput.factor * 100)}%
-                  </span>
-                  <div className="flex flex-col pb-1">
-                    <span className="text-[10px] font-black text-slate-600 dark:text-slate-300 uppercase">{dashboard2Logics.throughput.done} entregas</span>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">vs {dashboard2Logics.throughput.created} novos</span>
+        {/* Card 2: Projetos Atrasados */}
+        <div className={`py-3 px-4 rounded-2xl bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border shadow-sm flex items-center justify-between group transition-all ${
+          overdueProjects.length > 0 ? 'border-rose-500/30 hover:border-rose-500' : 'border-slate-200/80 dark:border-white/5 hover:border-slate-300'
+        }`}>
+          <div>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">Projetos Atrasados</span>
+            <div className="flex items-baseline space-x-1.5 mt-0.5">
+              <span className={`text-xl font-black tracking-tight ${overdueProjects.length > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>
+                {overdueProjects.length}
+              </span>
+              <span className="text-[9px] font-bold text-slate-400">
+                {overdueProjects.length > 0 ? 'prazo vencido' : 'em dia'}
+              </span>
+            </div>
+          </div>
+          <div className={`p-2 rounded-xl shrink-0 ${overdueProjects.length > 0 ? 'bg-rose-500/10 text-rose-500' : 'bg-slate-500/10 text-slate-400'}`}>
+            <AlertTriangle size={14} />
+          </div>
+        </div>
+
+        {/* Card 3: Bloqueios Ativos */}
+        <div className={`py-3 px-4 rounded-2xl bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border shadow-sm flex items-center justify-between group transition-all ${
+          unifiedKPIs.activeBlocksCount > 0 ? 'border-amber-500/30 hover:border-amber-500' : 'border-slate-200/80 dark:border-white/5 hover:border-slate-300'
+        }`}>
+          <div>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">Bloqueios Ativos</span>
+            <div className="flex items-baseline space-x-1.5 mt-0.5">
+              <span className={`text-xl font-black tracking-tight ${unifiedKPIs.activeBlocksCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>
+                {unifiedKPIs.activeBlocksCount}
+              </span>
+              <span className="text-[9px] font-bold text-slate-400">
+                {unifiedKPIs.activeBlocksCount > 0 ? 'aguardando' : 'nenhum'}
+              </span>
+            </div>
+          </div>
+          <div className={`p-2 rounded-xl shrink-0 ${unifiedKPIs.activeBlocksCount > 0 ? 'bg-amber-500/10 text-amber-500' : 'bg-slate-500/10 text-slate-400'}`}>
+            <Ban size={14} />
+          </div>
+        </div>
+
+        {/* Card 4: Entregas no Prazo */}
+        <div className="py-3 px-4 rounded-2xl bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border border-slate-200/80 dark:border-white/5 shadow-sm flex items-center justify-between group hover:border-emerald-500/30 transition-all">
+          <div>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">Entregas no Prazo</span>
+            <div className="flex items-baseline space-x-1.5 mt-0.5">
+              <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+                {healthInfo.value !== null ? `${healthInfo.value}%` : '---'}
+              </span>
+              <span className="text-[9px] font-bold text-slate-400">
+                {healthInfo.value !== null ? (healthInfo.value >= 80 ? 'excelente' : 'atenção') : 'sem dados'}
+              </span>
+            </div>
+          </div>
+          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500 shrink-0">
+            <CheckCircle2 size={14} />
+          </div>
+        </div>
+
+        {/* Card 5: Próximas Entregas */}
+        <div className="py-3 px-4 rounded-2xl bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border border-slate-200/80 dark:border-white/5 shadow-sm flex items-center justify-between group hover:border-sky-500/30 transition-all">
+          <div>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">Próximas Entregas</span>
+            <div className="flex items-baseline space-x-1.5 mt-0.5">
+              <span className="text-xl font-black text-sky-600 dark:text-sky-400 tracking-tight">
+                {upcomingProjects.length}
+              </span>
+              <span className="text-[9px] font-bold text-slate-400">
+                em 7 dias
+              </span>
+            </div>
+          </div>
+          <div className="p-2 rounded-xl bg-sky-500/10 text-sky-500 shrink-0">
+            <Calendar size={14} />
+          </div>
+        </div>
+      </div>
+
+      {/* ===================================================================== */}
+      {/* LINHA 2: PAINEL GRÁFICO PRINCIPAL (MOSTRADOR + ENTREGAS/SEM + DEMANDA)*/}
+      {/* ===================================================================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Card A: Mostrador Semicircular de Confiabilidade Operacional */}
+        <div className="lg:col-span-4 bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl p-6 rounded-[32px] border border-slate-200 dark:border-white/5 flex flex-col justify-between shadow-sm relative group overflow-hidden">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/5 mb-1">
+            <div>
+              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.2em] flex items-center">
+                Confiabilidade de Entregas
+                <InfoTooltip
+                  title={healthInfo.label}
+                  content={healthInfo.explanation}
+                  calculation={healthInfo.calculation}
+                />
+              </h3>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                Pontualidade real baseada em prazos
+              </p>
+            </div>
+            <span className={`w-2.5 h-2.5 rounded-full ${health > 80 ? 'bg-emerald-500' : health > 40 ? 'bg-amber-500' : 'bg-rose-500'} shadow-sm`} />
+          </div>
+
+          <div className="flex flex-col items-center justify-center py-1">
+            <HealthGauge
+              value={healthInfo.value}
+              label={healthInfo.label}
+              subtitle={healthInfo.subtitle}
+              theme={theme}
+            />
+
+            {/* STATUS HUD */}
+            <div className="flex items-center justify-center space-x-2 w-full mt-3">
+              {statusConfigs.map((status) => {
+                const isActive = currentStatus === status.label;
+                const colorClass = status.color === 'emerald' ? 'text-emerald-500' : status.color === 'amber' ? 'text-amber-500' : status.color === 'orange' ? 'text-orange-500' : 'text-rose-500';
+                const dotColor = status.color === 'emerald' ? 'bg-emerald-500' : status.color === 'amber' ? 'bg-amber-500' : status.color === 'orange' ? 'bg-orange-500' : 'bg-rose-500';
+
+                return (
+                  <div
+                    key={status.label}
+                    className={`flex items-center space-x-1 transition-all duration-500 ${isActive ? 'opacity-100 scale-105 font-black' : 'opacity-25 grayscale scale-90'}`}
+                  >
+                    <div className={`w-1.5 h-1.5 rounded-full ${isActive ? `${dotColor} shadow-[0_0_8px_rgba(16,185,129,0.5)]` : 'bg-slate-400'}`} />
+                    <span className={`text-[6.5px] font-black tracking-widest uppercase ${isActive ? colorClass : 'text-slate-400'}`}>
+                      {status.label}
+                    </span>
                   </div>
-                </div>
-                <p className="text-[9px] font-bold text-slate-400 mt-3 pt-3 border-t border-slate-100 dark:border-white/5">
-                  {dashboard2Logics.throughput.factor >= 1 ? 'Ritmo positivo: mais entregas do que entradas' : 'Atenção: mais entradas do que entregas'}
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-400">
+            <span>Tempo Médio: <strong className="text-slate-800 dark:text-slate-200">{formatKpiLeadTimeDays(unifiedKPIs.averageLeadTimeDaysCompleted)}</strong></span>
+            <span>Concluídas: <strong className="text-slate-800 dark:text-slate-200">{unifiedKPIs.completedWithUpdatedDeadlineCount || 0}</strong></span>
+          </div>
+        </div>
+
+        {/* Card B: Gráfico de Entregas por Semana (Histórico Real & Tendência) */}
+        <div className="lg:col-span-4 bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl p-6 rounded-[32px] border border-slate-200 dark:border-white/5 flex flex-col justify-between shadow-sm relative group overflow-hidden">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/5 mb-2">
+            <div>
+              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.2em] flex items-center">
+                Entregas por Semana
+                <InfoTooltip
+                  title="Histórico de Entregas"
+                  content="Volume real de entregas concluídas por semana nas últimas 8 semanas, baseado nas datas reais de término."
+                  calculation="Atividades concluídas agrupadas por semana de conclusão"
+                />
+              </h3>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                Últimas 8 semanas · Ritmo real
+              </p>
+            </div>
+            <span className="px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              {weeklyHistoryData.averageWeekly} ent/sem (média)
+            </span>
+          </div>
+
+          <div className="flex-1 min-h-[190px] flex items-center justify-center">
+            {weeklyHistoryData.hasHistory ? (
+              <ResponsiveContainer width="100%" height={190}>
+                <AreaChart data={weeklyHistoryData.bins} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorWeeklyExec" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={theme === 'dark' ? 0.35 : 0.2} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2a374a' : '#e2e8f0'} vertical={false} />
+                  <XAxis dataKey="weekLabel" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 9, fontWeight: 800 }} />
+                  <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 9, fontWeight: 800 }} />
+                  <RechartsTooltip
+                    contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}
+                    formatter={(value: any) => [`${value} entregas`, 'Concluídas']}
+                    labelFormatter={(label: any) => `Semana: ${label}`}
+                  />
+                  <Area type="monotone" dataKey="deliveries" name="Entregas" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorWeeklyExec)" dot={{ fill: '#10b981', r: 3 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center py-8">
+                <Clock size={28} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  Histórico em Formação
+                </p>
+                <p className="text-[9px] text-slate-500 font-semibold mt-0.5">
+                  Conclusões registradas formarão a curva semanal
                 </p>
               </div>
+            )}
+          </div>
 
-              {/* PROJETOS PARADOS NA FILA */}
-              <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl p-7 rounded-[36px] border border-slate-200 dark:border-white/5 relative group transition-all duration-300 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] flex items-center">
-                    Projetos Parados na Fila
-                    <InfoTooltip title="Alerta de Início" content="Projetos que têm prazo de entrega em menos de 48 horas e ainda não tiveram execução iniciada. Exige mobilização urgente." />
-                  </h4>
-                  <button
-                    onClick={() => setViewingRisk({ type: 'inertia', data: dashboard2Logics })}
-                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg text-slate-400 hover:text-indigo-500 transition-all flex items-center space-x-1"
-                  >
-                    <Search size={12} />
-                    <span className="text-[8px] font-black uppercase">Ver</span>
-                  </button>
-                </div>
-                <div className="flex items-center space-x-4">
-                  <span className={`text-4xl font-black transition-colors ${dashboard2Logics.inertia > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-200 dark:text-slate-700'}`}>
-                    {dashboard2Logics.inertia}
-                  </span>
-                  <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase leading-tight">
-                    {dashboard2Logics.inertia === 1 ? 'Projeto pendente' : 'Projetos pendentes'} <br />com prazo &lt; 48h
+          <div className="pt-3 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-400">
+            <span>Total no período: <strong className="text-slate-800 dark:text-slate-200">{weeklyHistoryData.totalConcluded} entregas</strong></span>
+            <span>Janela: 8 semanas</span>
+          </div>
+        </div>
+
+        {/* Card C: Demanda Futura vs. Capacidade da Equipe */}
+        <div className="lg:col-span-4 bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl p-6 rounded-[32px] border border-slate-200 dark:border-white/5 flex flex-col justify-between shadow-sm relative group overflow-hidden">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/5 mb-2">
+            <div>
+              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.2em] flex items-center">
+                Demanda vs. Capacidade
+                <InfoTooltip
+                  title="Demanda Futura vs Capacidade"
+                  content="Comparação entre as entregas programadas nas próximas semanas e a vazão histórica comprovada da equipe."
+                  calculation="Entregas agendadas por semana vs Capacidade semanal de referência"
+                />
+              </h3>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                Próximas 4 semanas · Referência histórica
+              </p>
+            </div>
+            <span className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider border ${
+              teamCapacity.teamWeeklyThroughput !== null
+                ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20'
+                : 'bg-slate-500/10 text-slate-500 border-slate-500/20'
+            }`}>
+              {teamCapacity.teamWeeklyThroughput !== null
+                ? `${teamCapacity.teamWeeklyThroughput} ent/sem (capacidade)`
+                : 'Capacidade em avaliação'}
+            </span>
+          </div>
+
+          <div className="flex-1 min-h-[190px] flex items-center justify-center">
+            <ResponsiveContainer width="100%" height={190}>
+              <BarChart data={upcomingCapacityComparisonData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2a374a' : '#e2e8f0'} vertical={false} />
+                <XAxis dataKey="weekLabel" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 9, fontWeight: 800 }} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 9, fontWeight: 800 }} />
+                <RechartsTooltip
+                  contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}
+                  formatter={(value: any, name: any) => [
+                    name === 'programadas' ? `${value} entregas agendadas` : `${value} ent/sem (referência)`,
+                    name === 'programadas' ? 'Programadas' : 'Capacidade Ref.'
+                  ]}
+                />
+                {teamCapacity.teamWeeklyThroughput !== null && (
+                  <ReferenceLine
+                    y={teamCapacity.teamWeeklyThroughput}
+                    stroke="#10b981"
+                    strokeDasharray="4 4"
+                    strokeWidth={2}
+                  />
+                )}
+                <Bar dataKey="programadas" name="programadas" fill="#6366f1" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-400">
+            <div className="flex items-center space-x-2">
+              <span className="w-2 h-2 rounded-sm bg-indigo-500"></span>
+              <span>Programadas</span>
+            </div>
+            {teamCapacity.teamWeeklyThroughput !== null ? (
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-0.5 bg-emerald-500"></span>
+                <span className="text-emerald-500">Capacidade: {teamCapacity.teamWeeklyThroughput}/sem</span>
+              </div>
+            ) : (
+              <span className="text-slate-400 italic">Referência aguarda amostragem</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ===================================================================== */}
+      {/* LINHA 3: CENTRAL DE ATENÇÃO GERENCIAL (COMPACTA, AÇÃO DIRETA)          */}
+      {/* ===================================================================== */}
+      <div>
+        <ManagementAttentionCenter
+          projects={projects}
+          activities={projectActivities}
+          users={users}
+          clients={clients}
+          theme={theme}
+          todayStr={todayStr}
+          userWipLimits={userWipLimits}
+          eventsByActivityId={activityEventsBatch}
+          onOpenProject={onOpenProject}
+          onOpenActivity={onOpenActivity}
+          onNavigateToTeam={onNavigateToTeam}
+          compact={true}
+        />
+      </div>
+
+      {/* ===================================================================== */}
+      {/* MODO 1: VISÃO EXECUTIVA (LINHAS 4 E 5: DISTRIBUIÇÃO & FLUXO)          */}
+      {/* ===================================================================== */}
+      {dashboardViewMode === 'executive' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          {/* LINHA 4: DISTRIBUIÇÃO DE ATIVIDADES POR STATUS & CARGA DA EQUIPE */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Card Donut: Distribuição de Atividades por Status */}
+            <div className="lg:col-span-5 bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl p-6 rounded-[32px] border border-slate-200 dark:border-white/5 flex flex-col justify-between shadow-sm relative group">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/5">
+                <div>
+                  <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.2em] flex items-center">
+                    Distribuição por Status
+                    <InfoTooltip
+                      title="Distribuição de Atividades"
+                      content="Total de atividades ativas e concluídas classificadas pelos estados canônicos do PERSPECPATH."
+                      calculation="Atividades em Andamento, Fila, Bloqueadas e Concluídas"
+                    />
+                  </h3>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                    Atividades em projetos ativos
                   </p>
                 </div>
-                <p className="text-[9px] font-bold text-slate-400 mt-3 pt-3 border-t border-slate-100 dark:border-white/5">
-                  {dashboard2Logics.inertia === 0 ? 'Nenhum projeto crítico aguardando início' : 'Exige mobilização imediata'}
-                </p>
+                <span className="text-xs font-black text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-xl">
+                  {activityStatusDistribution.total} total
+                </span>
               </div>
 
-              {/* EQUILÍBRIO DE CARGA DA EQUIPE */}
-              <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl p-7 rounded-[36px] border border-slate-200 dark:border-white/5 relative group transition-all duration-300 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] flex items-center">
-                    Equilíbrio de Carga
-                    <InfoTooltip title="Equilíbrio de Carga" content="Dispersão: profissionais em >= 4 projetos. Sobrecarga: profissionais com >= 6 tarefas ativas. Conflito: sobreposições temporais reais." />
-                  </h4>
-                  <button
-                    onClick={() => setViewingRisk({ type: 'scale', data: dashboard2Logics })}
-                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg text-slate-400 hover:text-amber-500 transition-all flex items-center space-x-1"
-                  >
-                    <Search size={12} />
-                    <span className="text-[8px] font-black uppercase">Ver</span>
-                  </button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col items-center">
-                    <span className={`text-2xl font-black transition-colors ${dashboard2Logics.fragmentation > 0 ? 'text-amber-500' : 'text-slate-300 dark:text-slate-700'}`}>
-                      {dashboard2Logics.fragmentation}
-                    </span>
-                    <p className="text-[8px] font-black text-slate-400 uppercase mt-1 tracking-widest text-center">Dispersão</p>
+              <div className="flex-1 min-h-[220px] flex items-center justify-center">
+                {activityStatusDistribution.total > 0 ? (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <PieChart>
+                      <Pie
+                        data={activityStatusDistribution.data}
+                        innerRadius={50}
+                        outerRadius={75}
+                        paddingAngle={4}
+                        dataKey="value"
+                        stroke="none"
+                        cx="50%"
+                        cy="48%"
+                      >
+                        {activityStatusDistribution.data.map((entry, index) => (
+                          <Cell key={`cell-status-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip
+                        contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}
+                        formatter={(value: any, name: any) => [`${value} atividades (${Math.round((Number(value) / activityStatusDistribution.total) * 100)}%)`, name]}
+                      />
+                      <Legend
+                        layout="horizontal"
+                        align="center"
+                        verticalAlign="bottom"
+                        iconType="circle"
+                        wrapperStyle={{
+                          fontSize: '9px',
+                          fontWeight: 800,
+                          textTransform: 'uppercase',
+                          paddingTop: '10px',
+                          color: theme === 'dark' ? '#64748b' : '#94a3b8'
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center py-8 text-slate-400 text-[10px] font-black uppercase tracking-widest opacity-60">
+                    Nenhuma atividade registrada
                   </div>
-                  <div className="flex flex-col items-center">
-                    <span className={`text-2xl font-black transition-colors ${dashboard2Logics.overloaded > 0 ? 'text-orange-500' : 'text-slate-300 dark:text-slate-700'}`}>
-                      {dashboard2Logics.overloaded}
-                    </span>
-                    <p className="text-[8px] font-black text-slate-400 uppercase mt-1 tracking-widest text-center">Volume Alto</p>
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <span className={`text-2xl font-black transition-colors ${dashboard2Logics.conflicts > 0 ? 'text-rose-500' : 'text-slate-300 dark:text-slate-700'}`}>
-                      {dashboard2Logics.conflicts}
-                    </span>
-                    <p className="text-[8px] font-black text-slate-400 uppercase mt-1 tracking-widest text-center">Conflito</p>
-                  </div>
-                </div>
-                <p className="text-[9px] font-bold text-slate-400 mt-3 pt-3 border-t border-slate-100 dark:border-white/5 text-center">
-                  {dashboard2Logics.overloaded + dashboard2Logics.fragmentation + dashboard2Logics.conflicts === 0 ? 'Equipe com distribuição equilibrada' : 'Alocação exige rebalanceamento'}
-                </p>
+                )}
               </div>
             </div>
 
-            {/* LISTA VISUAL: DISTRIBUIÇÃO DE TRABALHO POR PROFISSIONAL */}
-            <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm border border-slate-200 dark:border-white/5 p-8 transition-all">
-              <div className="flex items-center justify-between pb-6 border-b border-slate-100 dark:border-white/5">
+            {/* Card Barras Horizontais: Carga de Trabalho por Profissional */}
+            <div className="lg:col-span-7 bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl p-6 rounded-[32px] border border-slate-200 dark:border-white/5 flex flex-col justify-between shadow-sm relative group">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/5">
                 <div>
-                  <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                    Distribuição de Atividades por Profissional
-                  </h4>
-                  <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                    Proporção de atividades em fila, em andamento e bloqueadas
+                  <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.2em] flex items-center">
+                    Carga de Trabalho por Profissional
+                    <InfoTooltip
+                      title="WIP por Pessoa"
+                      content="Distribuição de atividades por responsável com indicação de limite orientativo de trabalho em andamento."
+                      calculation="Atividades ativas por usuário e limite configurado"
+                    />
+                  </h3>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                    WIP ativo, fila e bloqueios por responsável
                   </p>
                 </div>
-                <div className="flex items-center space-x-4 text-[9px] font-black uppercase text-slate-400">
-                  <div className="flex items-center space-x-1.5"><div className="w-2.5 h-2.5 rounded-full bg-slate-400/50"></div><span>Fila</span></div>
-                  <div className="flex items-center space-x-1.5"><div className="w-2.5 h-2.5 rounded-full bg-indigo-600"></div><span>Andamento</span></div>
-                  <div className="flex items-center space-x-1.5"><div className="w-2.5 h-2.5 rounded-full bg-purple-600"></div><span>Pausada/Bloqueada</span></div>
+                <div className="flex items-center space-x-3 text-[9px] font-black uppercase text-slate-400">
+                  <div className="flex items-center space-x-1"><div className="w-2 h-2 rounded-full bg-slate-400"></div><span>Fila</span></div>
+                  <div className="flex items-center space-x-1"><div className="w-2 h-2 rounded-full bg-indigo-600"></div><span>Andamento</span></div>
+                  <div className="flex items-center space-x-1"><div className="w-2 h-2 rounded-full bg-purple-600"></div><span>Bloqueada</span></div>
                 </div>
               </div>
 
-              <div className="pt-6 space-y-6 max-h-[380px] overflow-y-auto custom-scrollbar">
+              <div className="py-4 space-y-4 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
                 {userStatusMatrix.map(([name, data]) => {
                   const totalItems = data.activities;
+                  const inProgress = data.stats[ProjectStatus.IN_PROGRESS] || 0;
+                  const limit = userWipLimits[data.id];
+                  const isExceeded = limit ? inProgress > limit : false;
+
                   return (
-                    <div key={name} className="group">
-                      <div className="flex justify-between items-center mb-2.5">
+                    <div key={name} className="group/user">
+                      <div className="flex justify-between items-center mb-1.5">
                         <div className="flex items-center space-x-2">
                           <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-tight">
                             {name}
                           </span>
+                          {limit && (
+                            <span className={`px-2 py-0.2 rounded-md text-[8px] font-black uppercase tracking-wider border ${
+                              isExceeded
+                                ? 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700'
+                            }`}>
+                              WIP: {inProgress} / {limit}
+                            </span>
+                          )}
                           <button
                             onClick={() => setViewingUser(data)}
-                            className="p-1 bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-md transition-colors"
+                            className="p-0.5 text-slate-400 hover:text-indigo-500 transition-colors"
                             title="Ver detalhes de carga"
                           >
                             <Eye size={12} />
                           </button>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-xs font-black text-slate-900 dark:text-white">
-                            {totalItems}
-                          </span>
-                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
-                            {totalItems === 1 ? 'atividade' : 'atividades'}
-                          </span>
-                        </div>
+                        <span className="text-xs font-black text-slate-900 dark:text-white">
+                          {totalItems} <span className="text-[8px] font-normal text-slate-400 uppercase">atividades</span>
+                        </span>
                       </div>
 
-                      <div className="h-3 w-full flex rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/60 p-0.5">
+                      <div className="h-2.5 w-full flex rounded-lg overflow-hidden border border-slate-100 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/60">
                         <div
-                          className="bg-slate-400/60 h-full rounded-l-lg transition-all duration-700"
+                          className="bg-slate-400/60 h-full rounded-l transition-all duration-500"
                           style={{ width: `${(data.stats[ProjectStatus.QUEUE] / totalItems) * 100}%` }}
                           title={`Fila: ${data.stats[ProjectStatus.QUEUE]}`}
                         />
                         <div
-                          className="bg-indigo-600 h-full transition-all duration-700"
-                          style={{ width: `${(data.stats[ProjectStatus.IN_PROGRESS] / totalItems) * 100}%` }}
-                          title={`Em Andamento: ${data.stats[ProjectStatus.IN_PROGRESS]}`}
+                          className="bg-indigo-600 h-full transition-all duration-500"
+                          style={{ width: `${(inProgress / totalItems) * 100}%` }}
+                          title={`Em Andamento: ${inProgress}`}
                         />
                         <div
-                          className="bg-purple-600 h-full rounded-r-lg transition-all duration-700"
+                          className="bg-purple-600 h-full rounded-r transition-all duration-500"
                           style={{ width: `${(data.stats[ProjectStatus.PAUSED] / totalItems) * 100}%` }}
-                          title={`Pausada: ${data.stats[ProjectStatus.PAUSED]}`}
+                          title={`Bloqueada/Pausada: ${data.stats[ProjectStatus.PAUSED]}`}
                         />
                       </div>
                     </div>
                   );
                 })}
                 {userStatusMatrix.length === 0 && (
-                  <div className="py-12 text-center text-slate-400 font-bold uppercase text-[10px] tracking-widest italic opacity-60">
-                    Nenhum colaborador com atividades ativas no momento
+                  <div className="py-8 text-center text-slate-400 text-[10px] font-black uppercase tracking-widest opacity-60">
+                    Nenhum colaborador com atividades ativas
                   </div>
                 )}
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-400">
+                <span>Total colaboradores: {userStatusMatrix.length}</span>
+                <span>Baseado em atividades canônicas</span>
               </div>
             </div>
           </div>
 
-          {/* BLOCO 3: TENDÊNCIA OPERACIONAL (FLUXO DE ENTREGAS VS CRIAÇÃO) */}
-          <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm border border-slate-200 dark:border-white/5 flex flex-col min-h-[380px] transition-all">
-            <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
+          {/* LINHA 5: TENDÊNCIA DE FLUXO SEMESTRAL */}
+          <div className="bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl rounded-[32px] border border-slate-200 dark:border-white/5 p-6 shadow-sm">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-white/5 mb-3">
               <div>
-                <h3 className="font-black text-xs uppercase tracking-[0.2em] text-slate-900 dark:text-white flex items-center">
-                  Tendência de Fluxo Operacional
+                <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.2em] flex items-center">
+                  Tendência Semestral de Fluxo
                   <InfoTooltip
                     title="Entradas vs Saídas"
-                    content="Compara o volume de novos projetos cadastrados com projetos concluídos nos últimos meses."
+                    content="Compara o volume de novos projetos criados com projetos concluídos ao longo dos últimos 6 meses."
                     calculation="Criados no mês vs Concluídos no mês"
                   />
                 </h3>
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                  Evolução semestral de novos projetos e entregas finalizadas
+                  Projetos criados vs. projetos concluídos por mês
                 </p>
               </div>
               <TrendingUp size={18} className="text-indigo-600 dark:text-indigo-400" />
             </div>
-            <div className="p-6 flex-1">
-              <ResponsiveContainer width="100%" height={260}>
-                <AreaChart data={monthlyTimeline} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorCreatedExec" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={theme === 'dark' ? 0.3 : 0.15} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="colorDoneExec" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={theme === 'dark' ? 0.3 : 0.15} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2a374a' : '#e2e8f0'} vertical={false} />
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 800 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 800 }} />
-                  <RechartsTooltip contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px', color: theme === 'dark' ? '#ffffff' : '#0f172a' }} />
-                  <Area type="monotone" dataKey="created" name="Novos Projetos" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorCreatedExec)" />
-                  <Area type="monotone" dataKey="done" name="Entregas Concluídas" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorDoneExec)" />
-                  <Legend iconType="circle" wrapperStyle={{ paddingTop: '15px', fontSize: '10px', textTransform: 'uppercase', fontWeight: 800, color: theme === 'dark' ? '#64748b' : '#94a3b8' }} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* BLOCO 4: PLANEJAMENTO FUTURO & CAPACIDADE DA EQUIPE */}
-          <div className="bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl p-8 rounded-[48px] border border-slate-200 dark:border-white/10 shadow-sm relative group overflow-hidden transition-all">
-            <div className="relative z-10 space-y-6">
-              {/* Header do Painel */}
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-100 dark:border-white/5">
-                <div>
-                  <h3 className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.3em] mb-1 flex items-center">
-                    Capacidade da Equipe & Planejamento Futuro
-                    <InfoTooltip
-                      title="Capacidade Operacional"
-                      content="Estimativa gerencial baseada no fluxo real: ritmo de entregas histórico, tempo médio de conclusão e atividades em andamento."
-                      calculation="Ritmo Semanal = Entregas Concluídas / Semanas da Janela"
-                      position="bottom"
-                    />
-                  </h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                    Ritmo de entregas · Tempo médio · Atividades em andamento · Previsibilidade de próximas semanas
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  {capacityTab !== 'projection' && (
-                    <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
-                      <span className="text-[9px] font-black uppercase text-slate-400 px-2.5">Últimas:</span>
-                      {([4, 8, 12] as HistoricalWindowWeeks[]).map(w => (
-                        <button
-                          key={w}
-                          onClick={() => setCapacityWindow(w)}
-                          className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                            capacityWindow === w
-                              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                          }`}
-                        >
-                          {w} Semanas
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
-                    <button
-                      onClick={() => setCapacityTab('overview')}
-                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                        capacityTab === 'overview'
-                          ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-black'
-                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      Visão Geral
-                    </button>
-                    <button
-                      onClick={() => setCapacityTab('professionals')}
-                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                        capacityTab === 'professionals'
-                          ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-black'
-                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      Por Profissional ({teamCapacity.professionals.length})
-                    </button>
-                    <button
-                      onClick={() => setCapacityTab('projection')}
-                      className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
-                        capacityTab === 'projection'
-                          ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20 font-black'
-                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      <Sparkles size={12} className={capacityTab === 'projection' ? 'text-white' : 'text-purple-500'} />
-                      <span>Planejamento &amp; Previsibilidade</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* ABA 1: VISÃO GERAL */}
-              {capacityTab === 'overview' && (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* Card 1: Ritmo de Entregas da Equipe */}
-                    <div className="p-5 rounded-3xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                            Ritmo de Entregas da Equipe
-                          </span>
-                          <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider border ${
-                            teamCapacity.sampleConfidence === SampleConfidence.SUFFICIENT
-                              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                              : teamCapacity.sampleConfidence === SampleConfidence.LOW
-                                ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
-                                : 'bg-slate-500/10 border-slate-500/20 text-slate-500'
-                          }`}>
-                            {teamCapacity.sampleConfidence === SampleConfidence.SUFFICIENT ? 'Alta Confiança' : 'Amostra Baixa'}
-                          </span>
-                        </div>
-                        <div className="flex items-baseline gap-1 mt-1">
-                          {teamCapacity.teamWeeklyThroughput !== null ? (
-                            <>
-                              <span className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-                                {teamCapacity.teamWeeklyThroughput}
-                              </span>
-                              <span className="text-xs font-bold text-slate-400 uppercase">entregas/sem</span>
-                            </>
-                          ) : (
-                            <span className="text-sm font-black text-slate-400 dark:text-slate-500 italic">
-                              Histórico insuficiente
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-500">
-                        <span>Projeção mensal:</span>
-                        <span className="text-slate-700 dark:text-slate-300">
-                          {teamCapacity.teamMonthlyThroughput !== null ? `≈ ${teamCapacity.teamMonthlyThroughput} entregas/mês` : '---'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Card 2: Tempo Médio de Conclusão */}
-                    <div className="p-5 rounded-3xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                            Tempo Médio para Concluir
-                          </span>
-                          <Clock size={14} className="text-indigo-500" />
-                        </div>
-                        <div className="flex items-baseline gap-1 mt-1">
-                          {teamCapacity.averageBusinessLeadTimeDays !== null ? (
-                            <>
-                              <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight">
-                                {teamCapacity.averageBusinessLeadTimeDays}
-                              </span>
-                              <span className="text-xs font-bold text-slate-400 uppercase">dias úteis</span>
-                            </>
-                          ) : (
-                            <span className="text-sm font-black text-slate-400 dark:text-slate-500 italic">
-                              Sem conclusões
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-500">
-                        <span>Dias corridos:</span>
-                        <span className="text-slate-700 dark:text-slate-300">
-                          {teamCapacity.averageCalendarLeadTimeDays !== null ? `${teamCapacity.averageCalendarLeadTimeDays} dias corridos` : '---'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Card 3: Atividades em Andamento & Bloqueios */}
-                    <div className="p-5 rounded-3xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                            Em Andamento &amp; Bloqueios
-                          </span>
-                          <Activity size={14} className="text-sky-500" />
-                        </div>
-                        <div className="flex items-baseline gap-1 mt-1">
-                          <span className="text-3xl font-black text-sky-600 dark:text-sky-400 tracking-tight">
-                            {teamCapacity.totalWip}
-                          </span>
-                          <span className="text-xs font-bold text-slate-400 uppercase">em execução</span>
-                        </div>
-                      </div>
-                      <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between text-[9px] font-bold">
-                        <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                          <Ban size={10} /> {teamCapacity.totalBlocked} bloqueio(s)
-                        </span>
-                        <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                          <AlertTriangle size={10} /> {teamCapacity.totalOverdue} atraso(s)
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Card 4: Entregas Concluídas */}
-                    <div className="p-5 rounded-3xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                            Entregas Concluídas ({teamCapacity.windowWeeks} sem)
-                          </span>
-                          <CheckCircle2 size={14} className="text-emerald-500" />
-                        </div>
-                        <div className="flex items-baseline gap-1 mt-1">
-                          <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
-                            {teamCapacity.totalConcludedDeliveries}
-                          </span>
-                          <span className="text-xs font-bold text-slate-400 uppercase">entregas</span>
-                        </div>
-                      </div>
-                      <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-500">
-                        <span>Desde:</span>
-                        <span className="text-slate-700 dark:text-slate-300">
-                          {formatDisplayDate(teamCapacity.windowStartDate)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ABA 2: POR PROFISSIONAL */}
-              {capacityTab === 'professionals' && (
-                <div className="space-y-4 animate-in fade-in duration-300">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {teamCapacity.professionals.map(prof => {
-                      const initialLetter = prof.userName.charAt(0).toUpperCase() || 'P';
-                      const nextCommitment = prof.upcomingDeliveries[0];
-                      return (
-                        <div
-                          key={prof.userId}
-                          onClick={() => setViewingUser({ id: prof.userId, name: prof.userName })}
-                          className="p-5 rounded-3xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 hover:border-indigo-500/30 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between space-y-3"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center space-x-3 min-w-0">
-                              <div className="w-9 h-9 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-black text-sm flex items-center justify-center shrink-0">
-                                {initialLetter}
-                              </div>
-                              <div className="min-w-0">
-                                <span className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase truncate block group-hover:text-indigo-500 transition-colors">
-                                  {prof.userName}
-                                </span>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
-                                  {prof.openActivitiesCount} atividade(s) ativas
-                                </span>
-                              </div>
-                            </div>
-                            <Eye size={16} className="text-slate-400 group-hover:text-indigo-500 transition-colors shrink-0 mt-1" />
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className={`px-2.5 py-0.5 rounded-xl text-[8px] font-black uppercase tracking-wider border ${
-                              prof.isWipLimitExceeded
-                                ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
-                                : 'bg-sky-500/10 border-sky-500/20 text-sky-600 dark:text-sky-400'
-                            }`}>
-                              Em Andamento: {prof.inProgressCount}
-                              {prof.wipLimit ? ` / Limite ${prof.wipLimit}` : ''}
-                            </span>
-                            {prof.blockedCount > 0 && (
-                              <span className="px-2.5 py-0.5 rounded-xl text-[8px] font-black uppercase tracking-wider bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400">
-                                {prof.blockedCount} bloqueio(s)
-                              </span>
-                            )}
-                            {prof.overdueCount > 0 && (
-                              <span className="px-2.5 py-0.5 rounded-xl text-[8px] font-black uppercase tracking-wider bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
-                                {prof.overdueCount} atraso(s)
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 p-3 rounded-2xl bg-white/60 dark:bg-slate-950/40 border border-slate-200/50 dark:border-white/5 text-[9px]">
-                            <div>
-                              <span className="text-slate-400 uppercase font-black block tracking-wider">Ritmo de Entregas:</span>
-                              <span className="font-black text-slate-800 dark:text-slate-200 text-xs mt-0.5 block">
-                                {prof.weeklyThroughput !== null ? `${prof.weeklyThroughput} ent/sem` : 'Histórico insuficiente'}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 uppercase font-black block tracking-wider">Tempo Médio:</span>
-                              <span className="font-black text-indigo-600 dark:text-indigo-400 text-xs mt-0.5 block">
-                                {prof.averageBusinessLeadTimeDays !== null ? `${prof.averageBusinessLeadTimeDays}d úteis` : '---'}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="pt-2 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-between text-[8px] font-bold">
-                            <span className="text-slate-400 uppercase tracking-wider">Próxima entrega:</span>
-                            {nextCommitment ? (
-                              <span className="text-slate-700 dark:text-slate-300 truncate max-w-[180px]" title={nextCommitment.name}>
-                                {nextCommitment.formattedDeliveryDate} · {nextCommitment.name}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400 italic">Sem compromissos agendados</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* ABA 3: PLANEJAMENTO INTELIGENTE */}
-              {capacityTab === 'projection' && (
-                <IntelligentPlanning
-                  projects={projects}
-                  activities={projectActivities}
-                  users={users}
-                  clients={clients}
-                  theme={theme}
-                  todayStr={todayStr}
-                  userWipLimits={userWipLimits}
-                  onOpenProject={onOpenProject}
-                  onOpenActivity={onOpenActivity}
-                  onNavigateToTeam={onNavigateToTeam}
-                />
-              )}
-            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={monthlyTimeline} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorCreatedExec" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={theme === 'dark' ? 0.35 : 0.2} />
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorDoneExec" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={theme === 'dark' ? 0.35 : 0.2} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? '#2a374a' : '#e2e8f0'} vertical={false} />
+                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 800 }} />
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: theme === 'dark' ? '#64748b' : '#94a3b8', fontSize: 10, fontWeight: 800 }} />
+                <RechartsTooltip contentStyle={{ backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#1e293b' : '#e2e8f0'}`, borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }} />
+                <Area type="monotone" dataKey="created" name="Novos Projetos" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#colorCreatedExec)" />
+                <Area type="monotone" dataKey="done" name="Concluídos" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorDoneExec)" />
+                <Legend iconType="circle" wrapperStyle={{ paddingTop: '10px', fontSize: '10px', textTransform: 'uppercase', fontWeight: 800, color: theme === 'dark' ? '#64748b' : '#94a3b8' }} />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         </div>
       )}
 
       {/* ===================================================================== */}
-      {/* MODO 2: VISÃO ANALÍTICA (DETALHAMENTO, HISTÓRICO, TABELAS COMPLETAS)  */}
+      {/* MODO 2: VISÃO ANALÍTICA (TABELAS DETALHADAS, PREVISIBILIDADE, CLIENTES)*/}
       {/* ===================================================================== */}
       {dashboardViewMode === 'analytic' && (
         <div className="space-y-8 animate-in fade-in duration-300">
-          {/* BLOCO 1: SAÚDE DO ESCRITÓRIO & CONFIABILIDADE DE PRAZOS (GAUGE) */}
-          <div className="bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl p-10 rounded-[56px] shadow-xl border border-slate-200 dark:border-white/5 relative group overflow-hidden transition-all duration-500">
-            <div className={`absolute -top-24 -right-24 w-96 h-96 blur-[120px] opacity-10 dark:opacity-20 transition-all duration-1000 ${health > 80 ? 'bg-emerald-500' : health > 40 ? 'bg-amber-500' : 'bg-rose-500'}`}></div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-[1.8fr_1fr] gap-12 relative z-10 w-full items-center">
-              {/* COLUNA ESQUERDA: GAUGE E STATUS */}
-              <div className="flex flex-col items-center justify-center">
-                <div className="w-full mb-6 flex justify-start">
-                  <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] px-2 flex items-center">
-                    Confiabilidade de Prazos
-                    <InfoTooltip
-                      title={healthInfo.label}
-                      content={healthInfo.explanation}
-                      calculation={healthInfo.calculation}
-                      position="bottom"
-                    />
-                  </h3>
-                </div>
-
-                <HealthGauge
-                  value={healthInfo.value}
-                  label={healthInfo.label}
-                  subtitle={healthInfo.subtitle}
-                  theme={theme}
-                />
-
-                {/* STATUS HUD */}
-                <div className="flex items-center justify-center space-x-3 w-full mt-8">
-                  {statusConfigs.map((status) => {
-                    const isActive = currentStatus === status.label;
-                    const colorClass = status.color === 'emerald' ? 'text-emerald-500/80' : status.color === 'amber' ? 'text-amber-500/80' : status.color === 'orange' ? 'text-orange-500/80' : 'text-rose-500/80';
-                    const dotColor = status.color === 'emerald' ? 'bg-emerald-500' : status.color === 'amber' ? 'bg-amber-500' : status.color === 'orange' ? 'bg-orange-500' : 'bg-rose-500';
-
-                    return (
-                      <div
-                        key={status.label}
-                        className={`flex items-center space-x-1 transition-all duration-700 ${isActive ? 'opacity-100 scale-105' : 'opacity-20 grayscale scale-90'}`}
-                      >
-                        <div className={`w-1.5 h-1.5 rounded-full ${isActive ? dotColor : 'bg-slate-400'}`} />
-                        <span className={`text-[7px] font-black tracking-[0.2em] uppercase ${isActive ? colorClass : 'text-slate-400'}`}>
-                          {status.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* COLUNA DIREITA: KPIs ANALÍTICOS */}
-              <div className="flex flex-col space-y-3 lg:border-l lg:border-slate-100 lg:dark:border-white/5 lg:pl-10">
-                {[
-                  {
-                    label: 'Tempo Médio para Concluir',
-                    value: formatKpiLeadTimeDays(unifiedKPIs.averageLeadTimeDaysCompleted),
-                    color: 'indigo',
-                    icon: Clock
-                  },
-                  {
-                    label: 'Projetos com Prazo Expirado',
-                    value: `${overdueProjects.length}`,
-                    color: overdueProjects.length > 0 ? 'rose' : 'slate',
-                    icon: AlertTriangle
-                  },
-                  {
-                    label: 'Atividades em Andamento',
-                    value: `${unifiedKPIs.canonicalWipCount}`,
-                    color: 'sky',
-                    icon: Activity
-                  },
-                  {
-                    label: 'Bloqueios Ativos',
-                    value: `${unifiedKPIs.activeBlocksCount}`,
-                    color: unifiedKPIs.activeBlocksCount > 0 ? 'amber' : 'slate',
-                    icon: Ban
-                  }
-                ].map((kpi, idx) => {
-                  const Icon = kpi.icon;
-                  return (
-                    <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50/50 dark:bg-white/[0.02] border border-transparent hover:border-slate-200 dark:hover:border-white/10 transition-all">
-                      <div className="flex items-center space-x-3.5">
-                        <div className={`p-2.5 rounded-xl bg-${kpi.color}-500/10 text-${kpi.color}-500`}>
-                          <Icon size={16} />
-                        </div>
-                        <div>
-                          <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">{kpi.label}</p>
-                          <p className="text-lg font-black text-slate-900 dark:text-white mt-0.5">{kpi.value}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Referência Estimada de Conclusão */}
-                <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-200/50 dark:border-indigo-500/20 text-[10px]">
-                  <div className="flex items-center justify-between font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider mb-1">
-                    <span>Referência Estimada (Little's Law)</span>
-                    <Sparkles size={12} />
-                  </div>
-                  <p className="text-slate-500 dark:text-slate-400 leading-snug">
-                    {teamCapacity.theoreticalExplanation}
-                  </p>
-                  <div className="mt-2 pt-2 border-t border-indigo-200/40 dark:border-indigo-500/20 flex justify-between items-center font-black">
-                    <span className="text-slate-400 uppercase text-[9px]">Capacidade Teórica:</span>
-                    <span className="text-indigo-600 dark:text-indigo-400 text-xs">
-                      {teamCapacity.teamTheoreticalWeeklyCapacity !== null ? `${teamCapacity.teamTheoreticalWeeklyCapacity} ent/sem` : 'Dados insuficientes'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* BLOCO 2: PREVISIBILIDADE DETALHADA DE PROJETOS */}
-          <div className="bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl rounded-[40px] border border-slate-200 dark:border-white/10 shadow-sm overflow-hidden transition-all">
+          {/* BLOCO 1: PREVISIBILIDADE DETALHADA DE PROJETOS */}
+          <div className="bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl rounded-[36px] border border-slate-200 dark:border-white/10 shadow-sm overflow-hidden transition-all">
             <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/60 dark:bg-white/[0.02]">
               <div>
                 <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.25em] flex items-center">
@@ -2085,13 +1867,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          {/* BLOCO 3: RADAR DE PRAZOS EXPIRADOS & PRÓXIMAS ENTREGAS */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* BLOCO 2: RADAR DE PRAZOS EXPIRADOS & PRÓXIMAS ENTREGAS */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* RADAR DE ATRASOS */}
-            <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm border border-slate-200 dark:border-white/5 flex flex-col transition-all">
-              <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-rose-50 dark:bg-rose-500/10 rounded-t-[40px]">
+            <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[32px] shadow-sm border border-slate-200 dark:border-white/5 flex flex-col transition-all">
+              <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-rose-50 dark:bg-rose-500/10 rounded-t-[32px]">
                 <h3 className="font-black text-xs uppercase tracking-[0.2em] text-rose-600 dark:text-rose-500 flex items-center">
-                  <AlertTriangle size={16} className="mr-3 text-rose-500 animate-pulse" />
+                  <AlertTriangle size={15} className="mr-3 text-rose-500 animate-pulse" />
                   Prazos Expirados
                   <InfoTooltip
                     title="Alertas de Atraso"
@@ -2105,7 +1887,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {overdueProjects.length === 0 ? (
                   <div className="p-16 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[10px] italic opacity-50">Operação em Dia</div>
                 ) : overdueProjects.map((p: Project) => (
-                  <div key={p.id} className="p-6 hover:bg-rose-50 dark:hover:bg-rose-500/[0.05] transition-colors group">
+                  <div key={p.id} className="p-5 hover:bg-rose-50 dark:hover:bg-rose-500/[0.05] transition-colors group">
                     <div className="flex justify-between items-center">
                       <div className="flex flex-col min-w-0 pr-4">
                         <h4 className="text-sm font-black text-slate-900 dark:text-white truncate uppercase tracking-tight group-hover:text-rose-600 dark:group-hover:text-rose-400">{p.name}</h4>
@@ -2124,10 +1906,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* PRÓXIMAS ENTREGAS */}
-            <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm border border-slate-200 dark:border-white/5 flex flex-col transition-all">
-              <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-emerald-50 dark:bg-emerald-500/10 rounded-t-[40px]">
+            <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[32px] shadow-sm border border-slate-200 dark:border-white/5 flex flex-col transition-all">
+              <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 flex items-center justify-between bg-emerald-50 dark:bg-emerald-500/10 rounded-t-[32px]">
                 <h3 className="font-black text-xs uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400 flex items-center">
-                  <Calendar size={16} className="mr-3 text-emerald-500" />
+                  <Calendar size={15} className="mr-3 text-emerald-500" />
                   Próximos 7 Dias
                   <InfoTooltip
                     title="Planejamento Semanal"
@@ -2141,7 +1923,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 {upcomingProjects.length === 0 ? (
                   <div className="p-16 text-center text-slate-400 dark:text-slate-700 font-black uppercase tracking-widest text-[10px] italic opacity-50">Sem Entregas Agendadas</div>
                 ) : upcomingProjects.map((p: Project) => (
-                  <div key={p.id} className="p-6 hover:bg-emerald-50 dark:hover:bg-emerald-500/[0.05] transition-colors group">
+                  <div key={p.id} className="p-5 hover:bg-emerald-50 dark:hover:bg-emerald-500/[0.05] transition-colors group">
                     <div className="flex justify-between items-center">
                       <div className="flex flex-col min-w-0 pr-4">
                         <h4 className="text-sm font-black text-slate-900 dark:text-white truncate uppercase tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400">{p.name}</h4>
@@ -2160,11 +1942,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          {/* BLOCO 4: CONCENTRAÇÃO DE CLIENTES & RANKING ESTRATÉGICO */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* BLOCO 3: CONCENTRAÇÃO DE CLIENTES & RANKING ESTRATÉGICO */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* CONCENTRAÇÃO DE CLIENTES */}
-            <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm border border-slate-200 dark:border-white/5 flex flex-col min-h-[380px] transition-all">
-              <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
+            <div className="bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[32px] shadow-sm border border-slate-200 dark:border-white/5 flex flex-col min-h-[360px] transition-all">
+              <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[32px]">
                 <h3 className="font-black text-xs uppercase tracking-[0.2em] text-slate-900 dark:text-white flex items-center">
                   Concentração por Cliente
                   <InfoTooltip
@@ -2173,15 +1955,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     calculation="Projetos_por_Cliente / Projetos_Totais * 100"
                   />
                 </h3>
-                <PieChartIcon size={18} className="text-indigo-600 dark:text-indigo-400" />
+                <PieChartIcon size={16} className="text-indigo-600 dark:text-indigo-400" />
               </div>
               <div className="p-4 flex-1 flex flex-col items-center justify-center">
-                <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={240}>
                   <PieChart>
                     <Pie
                       data={clientConcentrationData}
-                      innerRadius={55}
-                      outerRadius={75}
+                      innerRadius={50}
+                      outerRadius={70}
                       paddingAngle={5}
                       dataKey="value"
                       stroke="none"
@@ -2212,8 +1994,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* RANKING TOP CLIENTES */}
-            <div className="lg:col-span-2 bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[40px] shadow-sm border border-slate-200 dark:border-white/5 flex flex-col transition-all">
-              <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[40px]">
+            <div className="lg:col-span-2 bg-white dark:bg-[#1e293b]/30 backdrop-blur-xl rounded-[32px] shadow-sm border border-slate-200 dark:border-white/5 flex flex-col transition-all">
+              <div className="px-6 py-5 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02] flex items-center justify-between rounded-t-[32px]">
                 <h3 className="font-black text-xs uppercase tracking-[0.2em] text-slate-900 dark:text-white flex items-center">
                   Ranking Estratégico de Clientes
                   <InfoTooltip
@@ -2222,21 +2004,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     calculation="Contagem total de registros agrupados por Cliente"
                   />
                 </h3>
-                <Trophy size={18} className="text-amber-500" />
+                <Trophy size={16} className="text-amber-500" />
               </div>
-              <div className="p-6 overflow-x-auto">
+              <div className="p-5 overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-slate-800">
-                      <th className="pb-4 text-[9px] font-black text-slate-400 uppercase tracking-widest px-4">Posição</th>
-                      <th className="pb-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Cliente</th>
-                      <th className="pb-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right px-4">Total Projetos</th>
+                      <th className="pb-3 text-[9px] font-black text-slate-400 uppercase tracking-widest px-3">Posição</th>
+                      <th className="pb-3 text-[9px] font-black text-slate-400 uppercase tracking-widest">Cliente</th>
+                      <th className="pb-3 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right px-3">Total Projetos</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                     {rankingTopClients.map(([name, data], idx) => (
                       <tr key={name} className="group hover:bg-slate-50 dark:hover:bg-slate-800/20 transition-colors">
-                        <td className="py-4 px-4">
+                        <td className="py-3 px-3">
                           <div className="flex items-center space-x-2">
                             <span className="text-xs font-black text-slate-400">#{String(idx + 1).padStart(2, '0')}</span>
                             {idx === 0 && <Trophy size={14} className="text-amber-400" />}
@@ -2244,25 +2026,196 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             {idx === 2 && <Medal size={14} className="text-amber-700/80" />}
                           </div>
                         </td>
-                        <td className="py-4">
+                        <td className="py-3">
                           <div className="flex flex-col">
                             <span className="text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">{name}</span>
                             <span className="text-[9px] font-mono font-black text-slate-400">{data.code.padStart(3, '0')}</span>
                           </div>
                         </td>
-                        <td className="py-4 px-4 text-right">
+                        <td className="py-3 px-3 text-right">
                           <span className="text-base font-black text-indigo-600 dark:text-indigo-400">{data.count}</span>
                         </td>
                       </tr>
                     ))}
                     {rankingTopClients.length === 0 && (
                       <tr>
-                        <td colSpan={3} className="py-16 text-center text-slate-400 font-bold uppercase tracking-widest text-[10px] italic opacity-50">Sem dados de clientes registrados</td>
+                        <td colSpan={3} className="py-12 text-center text-slate-400 font-bold uppercase tracking-widest text-[10px] italic opacity-50">Sem dados de clientes registrados</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+
+          {/* BLOCO 4: CAPACIDADE OPERACIONAL DA EQUIPE & PLANEJAMENTO INTELIGENTE */}
+          <div className="bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl p-8 rounded-[36px] border border-slate-200 dark:border-white/10 shadow-sm relative group overflow-hidden transition-all">
+            <div className="relative z-10 space-y-6">
+              {/* Header do Painel */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-white/5">
+                <div>
+                  <h3 className="text-xs font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.3em] mb-1 flex items-center">
+                    Capacidade da Equipe & Planejamento Inteligente
+                    <InfoTooltip
+                      title="Capacidade Operacional"
+                      content="Estimativa gerencial baseada no fluxo real: ritmo de entregas histórico, tempo médio de conclusão e atividades em andamento."
+                      calculation="Ritmo Semanal = Entregas Concluídas / Semanas da Janela"
+                      position="bottom"
+                    />
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                    Vazão histórica comprovada · Projeções por profissional · Simulações de novos projetos
+                  </p>
+                </div>
+
+                <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={() => setCapacityTab('overview')}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                      capacityTab === 'overview'
+                        ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-black'
+                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Visão Geral
+                  </button>
+                  <button
+                    onClick={() => setCapacityTab('professionals')}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                      capacityTab === 'professionals'
+                        ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-black'
+                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Por Profissional ({teamCapacity.professionals.length})
+                  </button>
+                  <button
+                    onClick={() => setCapacityTab('projection')}
+                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                      capacityTab === 'projection'
+                        ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20 font-black'
+                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <Sparkles size={12} className={capacityTab === 'projection' ? 'text-white' : 'text-purple-500'} />
+                    <span>Planejamento &amp; Previsibilidade</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ABA 1: VISÃO GERAL */}
+              {capacityTab === 'overview' && (
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80">
+                      <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">
+                        Ritmo de Entregas da Equipe
+                      </span>
+                      <span className="text-2xl font-black text-slate-900 dark:text-white">
+                        {teamCapacity.teamWeeklyThroughput !== null ? `${teamCapacity.teamWeeklyThroughput} ent/sem` : 'Insuficiente'}
+                      </span>
+                      <p className="text-[9px] font-bold text-slate-400 mt-2">
+                        {teamCapacity.totalConcludedDeliveries} entregas na janela ({teamCapacity.windowWeeks} sem)
+                      </p>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80">
+                      <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">
+                        Tempo Médio para Concluir
+                      </span>
+                      <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                        {teamCapacity.averageBusinessLeadTimeDays !== null ? `${teamCapacity.averageBusinessLeadTimeDays}d úteis` : '---'}
+                      </span>
+                      <p className="text-[9px] font-bold text-slate-400 mt-2">
+                        {teamCapacity.averageCalendarLeadTimeDays !== null ? `${teamCapacity.averageCalendarLeadTimeDays}d corridos` : 'Sem conclusões'}
+                      </p>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80">
+                      <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">
+                        Atividades em Execução
+                      </span>
+                      <span className="text-2xl font-black text-sky-600 dark:text-sky-400">
+                        {teamCapacity.totalWip}
+                      </span>
+                      <p className="text-[9px] font-bold text-slate-400 mt-2">
+                        {teamCapacity.totalBlocked} bloqueadas · {teamCapacity.totalOverdue} atrasadas
+                      </p>
+                    </div>
+
+                    <div className="p-5 rounded-2xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80">
+                      <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block mb-1">
+                        Capacidade Teórica (Little's Law)
+                      </span>
+                      <span className="text-2xl font-black text-purple-600 dark:text-purple-400">
+                        {teamCapacity.teamTheoreticalWeeklyCapacity !== null ? `${teamCapacity.teamTheoreticalWeeklyCapacity} ent/sem` : '---'}
+                      </span>
+                      <p className="text-[9px] font-bold text-slate-400 mt-2">
+                        Estimativa orientativa teórica
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ABA 2: POR PROFISSIONAL */}
+              {capacityTab === 'professionals' && (
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {teamCapacity.professionals.map(prof => (
+                      <div
+                        key={prof.userId}
+                        onClick={() => setViewingUser({ id: prof.userId, name: prof.userName })}
+                        className="p-5 rounded-2xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 hover:border-indigo-500/30 transition-all cursor-pointer group flex flex-col justify-between space-y-3"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <span className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase group-hover:text-indigo-500 transition-colors">
+                              {prof.userName}
+                            </span>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                              {prof.openActivitiesCount} atividade(s) ativas
+                            </p>
+                          </div>
+                          <Eye size={15} className="text-slate-400 group-hover:text-indigo-500" />
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider border ${
+                            prof.isWipLimitExceeded ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : 'bg-sky-500/10 text-sky-500 border-sky-500/20'
+                          }`}>
+                            WIP: {prof.inProgressCount} {prof.wipLimit ? `/ ${prof.wipLimit}` : ''}
+                          </span>
+                          {prof.blockedCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                              {prof.blockedCount} bloqueada(s)
+                            </span>
+                          )}
+                          <span className="px-2 py-0.5 rounded-lg text-[8px] font-bold uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                            Ritmo: {prof.weeklyThroughput !== null ? `${prof.weeklyThroughput} ent/sem` : '---'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ABA 3: PLANEJAMENTO INTELIGENTE */}
+              {capacityTab === 'projection' && (
+                <IntelligentPlanning
+                  projects={projects}
+                  activities={projectActivities}
+                  users={users}
+                  clients={clients}
+                  theme={theme}
+                  todayStr={todayStr}
+                  userWipLimits={userWipLimits}
+                  onOpenProject={onOpenProject}
+                  onOpenActivity={onOpenActivity}
+                  onNavigateToTeam={onNavigateToTeam}
+                />
+              )}
             </div>
           </div>
         </div>

@@ -43,6 +43,7 @@ interface ManagementAttentionCenterProps {
   onOpenProject?: (project: Project) => void;
   onOpenActivity?: (project: Project, activity: ProjectActivity) => void;
   onNavigateToTeam?: (userId?: string) => void;
+  compact?: boolean;
 }
 
 export const ManagementAttentionCenter: React.FC<ManagementAttentionCenterProps> = ({
@@ -56,7 +57,8 @@ export const ManagementAttentionCenter: React.FC<ManagementAttentionCenterProps>
   eventsByActivityId,
   onOpenProject,
   onOpenActivity,
-  onNavigateToTeam
+  onNavigateToTeam,
+  compact = false
 }) => {
   // Filters State
   const [severityFilter, setSeverityFilter] = useState<'ALL' | AlertSeverity>('ALL');
@@ -192,13 +194,17 @@ export const ManagementAttentionCenter: React.FC<ManagementAttentionCenterProps>
   };
 
   return (
-    <div className="bg-white dark:bg-[#1e293b]/50 backdrop-blur-3xl rounded-[48px] p-8 sm:p-10 border border-slate-200 dark:border-white/10 shadow-xl dark:shadow-2xl space-y-8 relative overflow-hidden transition-all duration-300">
+    <div className={`bg-white dark:bg-[#1e293b]/50 backdrop-blur-3xl border border-slate-200 dark:border-white/10 shadow-xl dark:shadow-2xl relative overflow-hidden transition-all duration-300 ${
+      compact ? 'rounded-[32px] p-5 sm:p-6 space-y-4' : 'rounded-[48px] p-8 sm:p-10 space-y-8'
+    }`}>
       {/* Decorative Aura */}
       <div className="absolute -top-32 -left-32 w-80 h-80 bg-rose-500/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
       {/* --- SEÇÃO SUPERIOR: TÍTULO E EXPLICAÇÃO --- */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100 dark:border-white/5">
+      <div className={`flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-white/5 ${
+        compact ? 'pb-3' : 'pb-6'
+      }`}>
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-[0.25em] flex items-center">
@@ -505,7 +511,7 @@ export const ManagementAttentionCenter: React.FC<ManagementAttentionCenterProps>
       </div>
 
       {/* --- LISTA DE PRIORIDADES CONSOLIDADA --- */}
-      <div className="space-y-3">
+      <div className={compact ? "space-y-3 max-h-[380px] overflow-y-auto custom-scrollbar pr-1" : "space-y-3"}>
         {filteredItems.length === 0 ? (
           <div className="py-12 px-6 rounded-3xl bg-slate-50/50 dark:bg-slate-900/30 border border-dashed border-slate-200 dark:border-slate-800 text-center">
             <CheckCircle2 size={32} className="mx-auto text-emerald-500/80 mb-3" />
