@@ -23,7 +23,7 @@ import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogA
 import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, logActionsBatch, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision, fetchProjectActivityEvents, fetchProjectActivitiesEventsBatch, logProjectActivityEvent } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
-import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
+import { calculateProjectDeliveryPredictability, ProjectDeliveryPredictability, ProjectDeliveryPredictabilityStatus, getDeliveryPredictabilityBadge } from '../utils/deliveryForecast';
 import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, getProjectPeriodLabel, isActivityWithinProjectPeriod, isValidDateRange } from '../utils/projectDateIntegrity';
 import { getProjectFamilyId, getProjectRevisionNumber, isCurrentProjectRevision } from '../utils/projectRevision';
 import { normalizeActivityStatus, isActivityCompleted, isActivityInProgress, isActivityBlocked, isActivityToDo, getActivityStatusBadge, formatDisplayDate, getTodayDateString, evaluateDeadlineStatus, calculateActivityManagerialMetrics, calculateCalendarDurationDays, calculateDaysDifference, createActivityEventPayload } from '../utils/activityOperationalModel';
@@ -139,135 +139,6 @@ export const Projects: React.FC<ProjectsProps> = ({
     return () => { isMounted = false; };
   }, [currentUser.workspaceId]);
 
-  const formatDecimalHours = (hours: number): string => {
-    const isNegative = hours < 0;
-    const absHours = Math.abs(hours);
-    const h = Math.floor(absHours);
-    const m = Math.round((absHours - h) * 60);
-    const formatted = m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
-    return isNegative ? `-${formatted}` : formatted;
-  };
-
-  const capacityAnalysis = useMemo(() => {
-    const company = db.company;
-    const workDays = company?.workDays || [1, 2, 3, 4, 5];
-    
-    const start = company?.workStartTime || '08:00';
-    const end = company?.workEndTime || '18:00';
-    const lunch = company?.lunchDurationMinutes || 60;
-    const [startH, startM] = start.split(':').map(Number);
-    const [endH, endM] = end.split(':').map(Number);
-    const totalMin = (endH * 60 + endM) - (startH * 60 + startM);
-    const dailyHours = Math.max(0, (totalMin - lunch) / 60);
-
-    let businessDays = 0;
-    let windowCapacity = 0;
-    if (actStartDate && actDeliveryDate) {
-      const s = new Date(actStartDate + 'T12:00:00');
-      const e = new Date(actDeliveryDate + 'T12:00:00');
-      if (s <= e) {
-        const curr = new Date(s);
-        while (curr <= e) {
-          const dow = curr.getDay();
-          if (workDays.includes(dow)) {
-            businessDays++;
-          }
-          curr.setDate(curr.getDate() + 1);
-        }
-      }
-    }
-    windowCapacity = businessDays * dailyHours;
-
-    const estimate = parseFloat(actEstimatedDuration) || 0;
-    const balance = windowCapacity - estimate;
-    const isOverallocated = estimate > windowCapacity;
-
-    let assigneeOccupiedHours = 0;
-    let assigneeAvailableHours = 0;
-    let deficitReal = 0;
-    let hasRealCapacityIssue = false;
-
-    if (actAssigneeId && actStartDate && actDeliveryDate && businessDays > 0) {
-      const s = new Date(actStartDate + 'T12:00:00');
-      const e = new Date(actDeliveryDate + 'T12:00:00');
-
-      const targetDays = new Set<string>();
-      const curr = new Date(s);
-      while (curr <= e) {
-        const dow = curr.getDay();
-        if (workDays.includes(dow)) {
-          const yyyymmdd = curr.toISOString().split('T')[0];
-          targetDays.add(yyyymmdd);
-        }
-        curr.setDate(curr.getDate() + 1);
-      }
-
-      const otherActs = allWorkspaceActivities.filter(pa => 
-        pa.assigneeId === actAssigneeId &&
-        pa.id !== editingActivity?.id &&
-        pa.status !== ProjectStatus.DONE &&
-        pa.status !== ProjectStatus.CANCELED &&
-        pa.startDate &&
-        pa.deliveryDate
-      );
-
-      const occupiedPerDay: Record<string, number> = {};
-      targetDays.forEach(day => occupiedPerDay[day] = 0);
-
-      otherActs.forEach(pa => {
-        const paStart = new Date(pa.startDate! + 'T12:00:00');
-        const paEnd = new Date(pa.deliveryDate! + 'T12:00:00');
-        
-        let paBusinessDays = 0;
-        const paRunner = new Date(paStart);
-        while (paRunner <= paEnd) {
-          const dow = paRunner.getDay();
-          if (workDays.includes(dow)) {
-            paBusinessDays++;
-          }
-          paRunner.setDate(paRunner.getDate() + 1);
-        }
-
-        if (paBusinessDays === 0 || !pa.estimatedDurationHours) return;
-        const paDailyLoad = pa.estimatedDurationHours / paBusinessDays;
-
-        const paOverlapRunner = new Date(paStart);
-        while (paOverlapRunner <= paEnd) {
-          const dow = paOverlapRunner.getDay();
-          if (workDays.includes(dow)) {
-            const yyyymmdd = paOverlapRunner.toISOString().split('T')[0];
-            if (targetDays.has(yyyymmdd)) {
-              occupiedPerDay[yyyymmdd] = (occupiedPerDay[yyyymmdd] || 0) + paDailyLoad;
-            }
-          }
-          paOverlapRunner.setDate(paOverlapRunner.getDate() + 1);
-        }
-      });
-
-      let totalOccupiedInPeriod = 0;
-      targetDays.forEach(day => {
-        totalOccupiedInPeriod += occupiedPerDay[day] || 0;
-      });
-
-      assigneeOccupiedHours = totalOccupiedInPeriod;
-      assigneeAvailableHours = Math.max(0, windowCapacity - totalOccupiedInPeriod);
-      deficitReal = Math.max(0, estimate - assigneeAvailableHours);
-      hasRealCapacityIssue = estimate > assigneeAvailableHours;
-    }
-
-    return {
-      dailyHours,
-      businessDays,
-      windowCapacity,
-      estimate,
-      balance,
-      isOverallocated,
-      assigneeOccupiedHours,
-      assigneeAvailableHours,
-      deficitReal,
-      hasRealCapacityIssue
-    };
-  }, [actStartDate, actDeliveryDate, actEstimatedDuration, actAssigneeId, db.company, allWorkspaceActivities, editingActivity]);
   const [showOvertimeModal, setShowOvertimeModal] = useState(false);
   const [overtimeActivity, setOvertimeActivity] = useState<ProjectActivity | null>(null);
   const [editingOvertimeEntry, setEditingOvertimeEntry] = useState<ActivityOvertimeEntry | null>(null);
@@ -340,21 +211,16 @@ export const Projects: React.FC<ProjectsProps> = ({
   const hasRunningOperationalSession = Boolean(activeWorkContext)
     || workSessions.some(session => session.endedAt === undefined);
 
-  // Forecast calculated strictly on-demand for the currently edited project
-  const editingProjectForecast = useMemo(() => {
-    if (!editingProject || !forecastDataset || forecastDataset.activities.length === 0) return undefined;
-    const forecasts = buildProjectDeliveryForecasts({
-      projects: [editingProject],
-      users: db.users,
-      activities: forecastDataset.activities,
-      executions: forecastDataset.executions,
-      sessions: forecastDataset.sessions,
-      overtimeEntries: forecastDataset.overtimeEntries,
-      company: db.company || undefined,
-      nowMs: Date.now()
+  // Objective delivery predictability calculated for the currently edited project
+  const editingProjectPredictability = useMemo(() => {
+    if (!editingProject) return undefined;
+    const predictabilities = calculateProjectDeliveryPredictability({
+      projects: [editingProject, ...editingFamilyRevisions],
+      activities: allWorkspaceActivities,
+      todayStr: getTodayDateString()
     });
-    return forecasts.find(forecast => forecast.projectId === editingProject.id);
-  }, [forecastDataset, editingProject, db.users, db.company]);
+    return predictabilities.find(item => item.projectId === editingProject.id);
+  }, [editingProject, editingFamilyRevisions, allWorkspaceActivities]);
 
   const resetForm = () => {
     setName('');
@@ -1940,26 +1806,6 @@ export const Projects: React.FC<ProjectsProps> = ({
     return 'text-slate-500 font-black';
   };
 
-  const formatForecastHours = (valueMs: number) => {
-    const sign = valueMs < 0 ? '-' : '';
-    const totalMinutes = Math.round(Math.abs(valueMs) / 60000);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${sign}${hours}h${minutes > 0 ? ` ${String(minutes).padStart(2, '0')}m` : ''}`;
-  };
-
-  const getForecastStyle = (forecastStatus: DeliveryForecastStatus) => {
-    if (forecastStatus === DeliveryForecastStatus.ON_TRACK) {
-      return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400';
-    }
-    if (forecastStatus === DeliveryForecastStatus.ATTENTION || forecastStatus === DeliveryForecastStatus.INCOMPLETE) {
-      return 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400';
-    }
-    if (forecastStatus === DeliveryForecastStatus.AT_RISK) {
-      return 'bg-orange-500/10 border-orange-500/20 text-orange-600 dark:text-orange-400';
-    }
-    return 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400';
-  };
 
   const filteredProjects = useMemo(() => {
     const searchLower = search.toLowerCase();
@@ -2985,72 +2831,101 @@ export const Projects: React.FC<ProjectsProps> = ({
                 <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800/50">
                   <div className="flex items-center justify-between px-1">
                     <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
-                      Previsão de Entrega
+                      Previsão de Entrega e Saúde do Projeto
                     </h4>
-                    {editingProjectForecast && (
-                      <span className={`px-3 py-1.5 rounded-lg border text-[9px] font-black uppercase tracking-widest ${getForecastStyle(editingProjectForecast.status)}`}>
-                        {editingProjectForecast.status}
-                      </span>
-                    )}
+                    {editingProjectPredictability && (() => {
+                      const badge = getDeliveryPredictabilityBadge(editingProjectPredictability.status);
+                      return (
+                        <span className={`px-3 py-1.5 rounded-lg border text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 ${badge.badgeBg} ${badge.badgeText} ${badge.badgeBorder}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${badge.dotColor}`} />
+                          {badge.label}
+                        </span>
+                      );
+                    })()}
                   </div>
 
-                  {!forecastDataset || !editingProjectForecast ? (
+                  {!editingProjectPredictability ? (
                     <div className="p-5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 text-center text-[9px] font-black uppercase tracking-widest text-slate-400 animate-pulse">
-                      Calculando capacidade...
+                      Avaliando prazos e impedimentos...
                     </div>
                   ) : (
                     <div className="p-5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 space-y-4">
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div>
-                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Horas restantes</p>
-                          <p className="mt-1 text-sm font-black text-slate-800 dark:text-white">{formatForecastHours(editingProjectForecast.remainingRequiredMs)}</p>
-                        </div>
-                        <div>
-                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Capacidade disponível</p>
-                          <p className="mt-1 text-sm font-black text-slate-800 dark:text-white">{formatForecastHours(editingProjectForecast.availableCapacityMs)}</p>
-                          {editingProjectForecast.overtimeCapacityMs > 0 && (
-                            <p className="mt-0.5 text-[8px] font-black uppercase tracking-wider text-cyan-600 dark:text-cyan-400">+{formatForecastHours(editingProjectForecast.overtimeCapacityMs)} extra</p>
+                        <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-100 dark:border-slate-800">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Prazo Global</p>
+                          <p className="mt-1 text-sm font-black text-slate-800 dark:text-white">
+                            {editingProjectPredictability.formattedDeliveryDate}
+                          </p>
+                          {editingProjectPredictability.daysRemaining !== null && (
+                            <span className={`text-[8px] font-black uppercase tracking-wider block mt-0.5 ${
+                              editingProjectPredictability.isOverdue ? 'text-rose-500' :
+                              editingProjectPredictability.isNearDeadline ? 'text-amber-500' :
+                              'text-emerald-500'
+                            }`}>
+                              {editingProjectPredictability.daysRemaining < 0
+                                ? `Vencido há ${Math.abs(editingProjectPredictability.daysRemaining)}d`
+                                : editingProjectPredictability.daysRemaining === 0
+                                  ? 'Vence hoje'
+                                  : `Em ${editingProjectPredictability.daysRemaining}d`}
+                            </span>
                           )}
                         </div>
-                        <div>
-                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">{editingProjectForecast.marginMs < 0 ? 'Déficit' : 'Margem'}</p>
-                          <p className={`mt-1 text-sm font-black ${editingProjectForecast.marginMs < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{formatForecastHours(editingProjectForecast.marginMs)}</p>
+
+                        <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-100 dark:border-slate-800">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Em Andamento</p>
+                          <p className="mt-1 text-sm font-black text-sky-600 dark:text-sky-400">
+                            {editingProjectPredictability.inProgressActivitiesCount}
+                          </p>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block mt-0.5">
+                            de {editingProjectPredictability.openActivitiesCount} abertas
+                          </span>
                         </div>
-                        <div>
-                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Prazo global</p>
-                          <p className="mt-1 text-sm font-black text-slate-800 dark:text-white">{formatDate(editingProjectForecast.deliveryDate)}</p>
+
+                        <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-100 dark:border-slate-800">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Impedimentos</p>
+                          <p className={`mt-1 text-sm font-black ${editingProjectPredictability.blockedActivitiesCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                            {editingProjectPredictability.blockedActivitiesCount}
+                          </p>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block mt-0.5">
+                            {editingProjectPredictability.blockedActivitiesCount > 0 ? 'bloqueada(s)' : 'sem bloqueios'}
+                          </span>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-white dark:bg-slate-900/80 border border-slate-100 dark:border-slate-800">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Atividades Atrasadas</p>
+                          <p className={`mt-1 text-sm font-black ${editingProjectPredictability.overdueActivitiesCount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                            {editingProjectPredictability.overdueActivitiesCount}
+                          </p>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block mt-0.5">
+                            {editingProjectPredictability.overdueActivitiesCount > 0 ? 'prazo vencido' : 'no prazo'}
+                          </span>
                         </div>
                       </div>
 
-                      {editingProjectForecast.status === DeliveryForecastStatus.INCOMPLETE && (
-                        <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                          {editingProjectForecast.unestimatedActivities > 0 && `⚠ ${editingProjectForecast.unestimatedActivities} atividade(s) sem estimativa`}
-                          {editingProjectForecast.unestimatedActivities > 0 && editingProjectForecast.unassignedActivities > 0 && ' · '}
-                          {editingProjectForecast.unassignedActivities > 0 && `⚠ ${editingProjectForecast.unassignedActivities} atividade(s) sem responsável`}
-                          {editingProjectForecast.unestimatedActivities === 0 && editingProjectForecast.unassignedActivities === 0 && '⚠ Cadastre atividades e um prazo global válido'}
+                      {editingProjectPredictability.attentionReasons.length > 0 && (
+                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-1">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-amber-600 dark:text-amber-400">
+                            Alertas de Prazo e Fluxo
+                          </p>
+                          <div className="flex flex-wrap gap-1.5 mt-1">
+                            {editingProjectPredictability.attentionReasons.map((reason, idx) => (
+                              <span key={idx} className="px-2 py-0.5 rounded-md bg-amber-500/15 text-[9px] font-bold text-amber-700 dark:text-amber-300">
+                                ⚠ {reason}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       )}
 
-                      {editingProjectForecast.assignees.length > 0 && (
-                        <details className="group rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/40">
-                          <summary className="cursor-pointer list-none px-4 py-3 text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 flex items-center justify-between">
-                            Composição por responsável
-                            <span className="text-slate-400 group-open:rotate-180 transition-transform">▾</span>
-                          </summary>
-                          <div className="divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800">
-                            {editingProjectForecast.assignees.map(assigneeForecast => (
-                              <div key={assigneeForecast.internalUserId} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">{assigneeForecast.userName}</span>
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[8px] font-black uppercase tracking-wider text-slate-400">
-                                  <span>Necessário <strong className="text-slate-700 dark:text-slate-200">{formatForecastHours(assigneeForecast.remainingRequiredMs)}</strong></span>
-                                  <span>Disponível <strong className="text-slate-700 dark:text-slate-200">{formatForecastHours(assigneeForecast.availableCapacityMs)}</strong></span>
-                                  {assigneeForecast.overtimeCapacityMs > 0 && <span>Extra <strong className="text-cyan-600 dark:text-cyan-400">+{formatForecastHours(assigneeForecast.overtimeCapacityMs)}</strong></span>}
-                                  <span>{assigneeForecast.marginMs < 0 ? 'Déficit' : 'Margem'} <strong className={assigneeForecast.marginMs < 0 ? 'text-rose-500' : 'text-emerald-500'}>{formatForecastHours(assigneeForecast.marginMs)}</strong></span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </details>
+                      {editingProjectPredictability.reprogrammingCount > 0 && (
+                        <div className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[9px] font-bold text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                          <span>Histórico de Reprogramação: {editingProjectPredictability.reprogrammingCount} revisão(ões)</span>
+                          {editingProjectPredictability.originalDeliveryDate && (
+                            <span className="text-slate-400 font-mono text-[8px]">
+                              Prazo original: {editingProjectPredictability.formattedOriginalDeliveryDate}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}

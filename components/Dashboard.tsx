@@ -4,14 +4,24 @@ import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 import {
   normalizeActivityStatus,
   calculateUnifiedKPIs,
+  calculateWipOverview,
+  calculateProfessionalDeliveryMetrics,
   getTodayDateString,
+  formatDisplayDate,
   formatKpiRateWithFraction,
   formatKpiLeadTimeDays,
-  addCalendarDays
+  addCalendarDays,
+  ActivityCanonicalStatus,
+  ActivityDeadlineStatus,
+  evaluateDeadlineStatus
 } from '../utils/activityOperationalModel';
 import { AppDB, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
-import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
-import { calculateNetWorkdayMs, calculateRegularOperationalMs, calculateOvertimeMs } from '../utils/operationalTime';
+import {
+  calculateProjectDeliveryPredictability,
+  ProjectDeliveryPredictability,
+  ProjectDeliveryPredictabilityStatus,
+  getDeliveryPredictabilityBadge
+} from '../utils/deliveryForecast';
 import { InfoTooltip } from './InfoTooltip';
 import { isCurrentProjectRevision } from '../utils/projectRevision';
 import {
@@ -493,14 +503,8 @@ const RiskDetailModal: React.FC<{
 
 
 export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
-  const formatCapacityHours = (hours: number): string => {
-    const h = Math.floor(hours);
-    const m = Math.round((hours - h) * 60);
-    if (m === 0) return `${h}h`;
-    return `${h}h${m.toString().padStart(2, '0')}`;
-  };
-
-  const [selectedWeekOffset, setSelectedWeekOffset] = useState(0);
+  const [predictabilityFilter, setPredictabilityFilter] = useState<'ALL' | ProjectDeliveryPredictabilityStatus>('ALL');
+  const [predictabilitySearch, setPredictabilitySearch] = useState('');
   const [viewingUser, setViewingUser] = useState<any>(null);
   const [viewingRisk, setViewingRisk] = useState<{ type: 'inertia' | 'scale', data: any } | null>(null);
   const projects = db.projects || [];
@@ -523,33 +527,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     loadForecastDataset();
   }, [db.company?.id]);
 
-  const deliveryForecasts = useMemo(() => forecastDataset
-    ? buildProjectDeliveryForecasts({
-        projects,
-        users,
-        activities: forecastDataset.activities,
-        executions: forecastDataset.executions,
-        sessions: forecastDataset.sessions,
-        overtimeEntries: forecastDataset.overtimeEntries,
-        company: db.company || undefined,
-        nowMs: Date.now()
-      })
-    : [], [forecastDataset, projects, users, db.company]);
-
-  const deliveryRiskForecasts = useMemo(() => deliveryForecasts
-    .filter(forecast => [
-      DeliveryForecastStatus.ATTENTION,
-      DeliveryForecastStatus.AT_RISK,
-      DeliveryForecastStatus.INFEASIBLE,
-      DeliveryForecastStatus.OVERDUE,
-      DeliveryForecastStatus.INCOMPLETE
-    ].includes(forecast.status))
-    .sort((a, b) => a.marginMs - b.marginMs), [deliveryForecasts]);
-
   const now = new Date();
   const next7Days = new Date();
   next7Days.setDate(now.getDate() + 7);
   const todayStr = useMemo(() => getTodayDateString(), []);
+
+  const deliveryPredictabilities = useMemo(() => {
+    return calculateProjectDeliveryPredictability({
+      projects,
+      activities: projectActivities,
+      todayStr
+    });
+  }, [projects, projectActivities, todayStr]);
+
+  const filteredPredictabilities = useMemo(() => {
+    const q = predictabilitySearch.trim().toLowerCase();
+    return deliveryPredictabilities.filter(item => {
+      const matchesFilter = predictabilityFilter === 'ALL' || item.status === predictabilityFilter;
+      const matchesSearch = !q
+        || item.projectCode.toLowerCase().includes(q)
+        || item.projectName.toLowerCase().includes(q);
+      return matchesFilter && matchesSearch;
+    });
+  }, [deliveryPredictabilities, predictabilityFilter, predictabilitySearch]);
+
 
   // 1. Métricas de Saúde e Confiabilidade
   const activeProjects = useMemo(() => projects.filter((p: Project) =>
@@ -844,203 +845,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       }
     });
 
-    // 10. Capacidade Operacional da Equipe (Semanal com Previsibilidade)
-    const activeUsers_Capacity = users.filter(u => u.isActive);
-
-    let teamCapacity;
-    if (activeUsers_Capacity.length === 0) {
-      teamCapacity = {
-        percentage: 0,
-        occupied: 0,
-        total: 0,
-        userDetails: [],
-        weekRange: { start: '--/--', end: '--/--' }
-      };
-    } else {
-      // Base de cálculo ajustada: se hoje é Sab(6) ou Dom(0), a semana 0 começa na próxima Segunda
-      const baseDate = new Date(now);
-      const currentDay = baseDate.getDay();
-
-      // Ajuste para garantir que a S0 comece na segunda-feira atual ou na próxima (se fds)
-      const startOfS0 = new Date(baseDate);
-      const diffToMonday = currentDay === 0 ? 1 : (currentDay === 6 ? 2 : 1 - currentDay);
-      startOfS0.setDate(baseDate.getDate() + diffToMonday);
-      startOfS0.setHours(0, 0, 0, 0);
-
-      // Range da semana selecionada (Offset 0 a 4) - cobrindo a semana cheia (Segunda a Domingo)
-      const startOfWeek = new Date(startOfS0);
-      startOfWeek.setDate(startOfS0.getDate() + (selectedWeekOffset * 7));
-      startOfWeek.setHours(0, 0, 0, 0);
-
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6); // Domingo
-      endOfWeek.setHours(23, 59, 59, 999);
-
-      const today = new Date(now);
-      today.setHours(0, 0, 0, 0);
-
-      // Configuração de jornada do workspace
-      const companyWorkDays = db.company?.workDays || [1, 2, 3, 4, 5];
-      const dailyHours = calculateNetWorkdayMs(db.company || undefined) / 3_600_000;
-
-      // Calcular dias e horas disponíveis para o período
-      let availableDaysInPeriod = 0;
-      let dayCheck = new Date(startOfWeek);
-      while (dayCheck <= endOfWeek) {
-        const dow = dayCheck.getDay();
-        if (companyWorkDays.includes(dow)) {
-          if (selectedWeekOffset > 0) {
-            availableDaysInPeriod++;
-          } else {
-            // Semana atual: apenas dias de hoje em diante (contando hoje por inteiro)
-            if (dayCheck >= today) {
-              availableDaysInPeriod++;
-            }
-          }
-        }
-        dayCheck.setDate(dayCheck.getDate() + 1);
-      }
-
-      const userAvailableHours = availableDaysInPeriod * dailyHours;
-      const totalAvailableHoursTeam = activeUsers_Capacity.length * userAvailableHours;
-
-      let totalOccupiedHoursTeam = 0;
-
-      const userDetails = activeUsers_Capacity.map(u => {
-        let userPlannedHours = 0;
-        let unestimatedActivitiesCount = 0;
-
-        // Tooltip detail info collection for this user
-        const detailList: { projectCode: string; activityName: string; hours: number; start: string; end: string }[] = [];
-
-        projectActivities.forEach(pa => {
-          // Filtrar apenas se for do usuário
-          if (pa.assigneeId !== u.id) return;
-          if (!currentProjectIds.has(pa.projectId)) return;
-          // Capacidade representa apenas demanda futura/aberta.
-          if (isProjectActivityClosed(pa.status)) return;
-          // Ignorar se não possuir datas planejadas
-          if (!pa.startDate || !pa.deliveryDate) return;
-
-          // Se a estimativa original for nula ou indefinida, é sinalizada como Sem Estimativa
-          if (pa.estimatedDurationHours === undefined || pa.estimatedDurationHours === null) {
-            const actStart = new Date(pa.startDate + 'T00:00:00');
-            const actEnd = new Date(pa.deliveryDate + 'T23:59:59');
-            const overlapStart = actStart > startOfWeek ? actStart : startOfWeek;
-            const overlapEnd = actEnd < endOfWeek ? actEnd : endOfWeek;
-            if (overlapStart <= overlapEnd) {
-              unestimatedActivitiesCount++;
-            }
-            return;
-          }
-
-          const currentEst = pa.estimatedCurrentHours ?? pa.estimatedDurationHours ?? 0;
-
-          // Calcular tempo contabilizado
-          const activityExecutions = forecastDataset?.executions.filter(e => e.projectActivityId === pa.id) || [];
-          const executionIds = new Set(activityExecutions.map(e => e.id));
-          const activitySessions = forecastDataset?.sessions.filter(s => executionIds.has(s.activityExecutionId)) || [];
-          const activityOvertime = forecastDataset?.overtimeEntries.filter(o => o.projectActivityId === pa.id) || [];
-
-          const regularMs = calculateRegularOperationalMs(activitySessions, db.company || undefined, Date.now()) || 0;
-          const overtimeMs = calculateOvertimeMs(activityOvertime.map(o => o.authorizedHours)) || 0;
-          const tempoContabilizado = (regularMs + overtimeMs) / 3_600_000;
-
-          const demandaRestante = Math.max(currentEst - tempoContabilizado, 0);
-
-          const actStart = new Date(pa.startDate + 'T00:00:00');
-          const actEnd = new Date(pa.deliveryDate + 'T23:59:59');
-
-          // 1. Encontrar o número total de dias úteis restantes da atividade (de hoje em diante, ou do startDate se for futuro)
-          const remainingPeriodStart = actStart > today ? actStart : today;
-          const remainingPeriodEnd = actEnd;
-
-          let remainingActivityWorkDays = 0;
-          if (remainingPeriodStart <= remainingPeriodEnd) {
-            let tempDay = new Date(remainingPeriodStart);
-            while (tempDay <= remainingPeriodEnd) {
-              const dow = tempDay.getDay();
-              if (companyWorkDays.includes(dow)) {
-                remainingActivityWorkDays++;
-              }
-              tempDay.setDate(tempDay.getDate() + 1);
-            }
-          }
-
-          let dailyLoad = 0;
-          if (remainingActivityWorkDays > 0) {
-            dailyLoad = demandaRestante / remainingActivityWorkDays;
-          } else if (selectedWeekOffset === 0) {
-            dailyLoad = demandaRestante;
-          }
-
-          // 2. Distribuir a carga pelos dias do intervalo que caem na semana selecionada e que são >= hoje (se for S0)
-          const effectiveCountStart = (selectedWeekOffset === 0 && today > startOfWeek) ? today : startOfWeek;
-          const overlapStart = actStart > effectiveCountStart ? actStart : effectiveCountStart;
-          const overlapEnd = actEnd < endOfWeek ? actEnd : endOfWeek;
-
-          let userActivityDaysInSelectedWeek = 0;
-          if (remainingActivityWorkDays > 0) {
-            if (overlapStart <= overlapEnd) {
-              let dayRunner = new Date(overlapStart);
-              while (dayRunner <= overlapEnd) {
-                const dow = dayRunner.getDay();
-                if (companyWorkDays.includes(dow)) {
-                  userActivityDaysInSelectedWeek++;
-                }
-                dayRunner.setDate(dayRunner.getDate() + 1);
-              }
-            }
-          } else if (selectedWeekOffset === 0) {
-            // Atividade atrasada: aloca a demanda inteira na semana atual S0
-            userActivityDaysInSelectedWeek = 1;
-          }
-
-          const hoursInSelectedWeek = userActivityDaysInSelectedWeek * dailyLoad;
-          userPlannedHours += hoursInSelectedWeek;
-
-          // Se a estimativa for excedida mas a atividade continua aberta, ela deve ser exibida no tooltip de capacidade com 0h restantes
-          if (hoursInSelectedWeek > 0 || (tempoContabilizado >= currentEst && userActivityDaysInSelectedWeek > 0)) {
-            const parentProject = projects.find(p => p.id === pa.projectId);
-            detailList.push({
-              projectCode: parentProject?.code || 'ATIVIDADES',
-              activityName: pa.name,
-              hours: hoursInSelectedWeek,
-              start: pa.startDate,
-              end: pa.deliveryDate,
-              isExceeded: tempoContabilizado >= currentEst,
-              tempoContabilizado,
-              currentEst
-            } as any);
-          }
-        });
-
-        totalOccupiedHoursTeam += userPlannedHours;
-
-        return {
-          id: u.id,
-          name: u.username,
-          occupied: userPlannedHours,
-          backlog: userPlannedHours,
-          total: userAvailableHours,
-          percentage: userAvailableHours > 0 ? Math.round((userPlannedHours / userAvailableHours) * 100) : 0,
-          unestimatedCount: unestimatedActivitiesCount,
-          details: detailList
-        };
-      });
-
-      teamCapacity = {
-        percentage: totalAvailableHoursTeam > 0 ? Math.round((totalOccupiedHoursTeam / totalAvailableHoursTeam) * 100) : 0,
-        occupied: totalOccupiedHoursTeam,
-        total: totalAvailableHoursTeam,
-        userDetails,
-        weekRange: {
-          start: startOfWeek.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-          end: endOfWeek.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-        }
-      };
-    }
-
     return {
       inertia: inertiaRiskProjects.length,
       inertiaDetails: inertiaRiskProjects,
@@ -1050,10 +854,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       overloadedDetails: overloadedUsers,
       conflicts: conflictUsers.length,
       conflictDetails: conflictUsers,
-      throughput: { factor: throughputFactor, created: createdLast7, done: doneLast7 },
-      teamCapacity
+      throughput: { factor: throughputFactor, created: createdLast7, done: doneLast7 }
     };
-  }, [projects, activeProjects, users, selectedWeekOffset, projectActivities]);
+  }, [projects, activeProjects, users, projectActivities]);
+
+  const userWipLimits = useMemo<Record<string, number>>(() => {
+    if (!db.company?.id) return {};
+    try {
+      const saved = localStorage.getItem(`perspecpath_wip_limits_${db.company.id}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  }, [db.company?.id]);
+
+  const activeUsers = useMemo(() => users.filter(u => u.isActive), [users]);
+
+  const wipOverview = useMemo(() => {
+    return calculateWipOverview(projectActivities, userWipLimits, todayStr, currentProjectIds);
+  }, [projectActivities, userWipLimits, todayStr, currentProjectIds]);
+
+  const teamWipMetrics = useMemo(() => {
+    return calculateProfessionalDeliveryMetrics(
+      projectActivities,
+      activeUsers,
+      undefined,
+      todayStr,
+      userWipLimits,
+      currentProjectIds
+    );
+  }, [projectActivities, activeUsers, todayStr, userWipLimits, currentProjectIds]);
 
   const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f97316', '#10b981'];
 
@@ -1080,23 +910,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   ];
 
   const currentStatus = getHealthStatus(health);
-  const formatForecastHours = (valueMs: number) => {
-    const sign = valueMs < 0 ? '-' : '';
-    const totalMinutes = Math.round(Math.abs(valueMs) / 60000);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return `${sign}${hours}h${minutes > 0 ? ` ${String(minutes).padStart(2, '0')}m` : ''}`;
-  };
-
-  const getForecastStatusClass = (status: DeliveryForecastStatus) => {
-    if (status === DeliveryForecastStatus.OVERDUE || status === DeliveryForecastStatus.INFEASIBLE) {
-      return 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/20';
-    }
-    if (status === DeliveryForecastStatus.AT_RISK) {
-      return 'text-orange-600 dark:text-orange-400 bg-orange-500/10 border-orange-500/20';
-    }
-    return 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20';
-  };
 
   return (
     <div id="dashboard-content" className="space-y-8 animate-in fade-in duration-700 pb-12 relative">
@@ -1312,194 +1125,341 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
 
         {/* PREVISIBILIDADE DE ENTREGA */}
         <div className="lg:col-span-3 bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl rounded-[40px] border border-slate-200 dark:border-white/10 shadow-sm dark:shadow-xl overflow-hidden transition-all">
-          <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/60 dark:bg-white/[0.02]">
+          <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/60 dark:bg-white/[0.02]">
             <div>
               <h3 className="text-[12px] font-black text-slate-900 dark:text-white uppercase tracking-[0.25em] flex items-center">
                 Previsibilidade de Entrega
                 <InfoTooltip
-                  title="Risco de Prazo"
-                  content="Compara as horas restantes de cada responsável com sua capacidade regular livre até o prazo global, incluindo somente horas extras já autorizadas."
-                  calculation="Restante estimado vs capacidade líquida - compromissos de outros projetos"
+                  title="Previsibilidade de Entrega"
+                  content="Classificação gerencial de projetos ativos baseada em prazos de entrega, atividades bloqueadas, atividades atrasadas e histórico de reprogramações."
+                  calculation="Classificações: NO PRAZO · ATENÇÃO · ATRASADO · SEM DADOS SUFICIENTES"
                 />
               </h3>
-              <p className="mt-2 text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                Projetos ativos com atenção, risco ou previsão incompleta
+              <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                Prazos, impedimentos e alertas operacionais em tempo real
               </p>
             </div>
-            <span className={`self-start sm:self-auto px-4 py-2 rounded-2xl text-sm font-black border ${deliveryRiskForecasts.length > 0 ? 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20'}`}>
-              {deliveryRiskForecasts.length}
-            </span>
-          </div>
-          <div className="divide-y divide-slate-100 dark:divide-slate-800/60 max-h-[360px] overflow-y-auto custom-scrollbar">
-            {!forecastDataset ? (
-              <div className="p-10 text-center text-[10px] font-black uppercase tracking-widest text-slate-400 animate-pulse">Calculando previsões...</div>
-            ) : deliveryRiskForecasts.length === 0 ? (
-              <div className="p-10 text-center text-[10px] font-black uppercase tracking-widest text-emerald-500/70">Nenhum risco de capacidade identificado</div>
-            ) : deliveryRiskForecasts.map(forecast => (
-              <div key={forecast.projectId} className="px-8 py-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-[11px] font-black text-indigo-600 dark:text-indigo-400">{forecast.projectCode}</span>
-                    <span className={`px-2.5 py-1 rounded-lg border text-[8px] font-black uppercase tracking-widest ${getForecastStatusClass(forecast.status)}`}>
-                      {forecast.status}
-                    </span>
-                  </div>
-                  <p className="mt-1 truncate text-sm font-bold text-slate-800 dark:text-slate-200">{forecast.projectName}</p>
-                  {forecast.status === DeliveryForecastStatus.INCOMPLETE && (
-                    <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                      {forecast.unestimatedActivities > 0 && `${forecast.unestimatedActivities} sem estimativa`}
-                      {forecast.unestimatedActivities > 0 && forecast.unassignedActivities > 0 && ' · '}
-                      {forecast.unassignedActivities > 0 && `${forecast.unassignedActivities} sem responsável`}
-                      {forecast.unestimatedActivities === 0 && forecast.unassignedActivities === 0 && 'Cadastre atividades e prazo global'}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-x-6 gap-y-2 text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 lg:justify-end">
-                  <span>Restante <strong className="ml-1 text-slate-700 dark:text-slate-200">{formatForecastHours(forecast.remainingRequiredMs)}</strong></span>
-                  <span>Disponível <strong className="ml-1 text-slate-700 dark:text-slate-200">{formatForecastHours(forecast.availableCapacityMs)}</strong>{forecast.overtimeCapacityMs > 0 && <em className="ml-1 not-italic text-cyan-600 dark:text-cyan-400">(+{formatForecastHours(forecast.overtimeCapacityMs)} extra)</em>}</span>
-                  <span>{forecast.marginMs < 0 ? 'Déficit' : 'Margem'} <strong className={forecast.marginMs < 0 ? 'ml-1 text-rose-500' : 'ml-1 text-emerald-500'}>{formatForecastHours(forecast.marginMs)}</strong></span>
-                </div>
+
+            {/* Filtros de Status e Busca */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-700/50">
+                {(['ALL', ProjectDeliveryPredictabilityStatus.OVERDUE, ProjectDeliveryPredictabilityStatus.ATTENTION, ProjectDeliveryPredictabilityStatus.ON_TRACK, ProjectDeliveryPredictabilityStatus.INSUFFICIENT_DATA] as const).map(statusKey => {
+                  const count = statusKey === 'ALL'
+                    ? deliveryPredictabilities.length
+                    : deliveryPredictabilities.filter(p => p.status === statusKey).length;
+                  const label = statusKey === 'ALL' ? 'Todos' :
+                    statusKey === ProjectDeliveryPredictabilityStatus.OVERDUE ? 'Atrasados' :
+                    statusKey === ProjectDeliveryPredictabilityStatus.ATTENTION ? 'Atenção' :
+                    statusKey === ProjectDeliveryPredictabilityStatus.ON_TRACK ? 'No Prazo' : 'Sem Dados';
+                  const isActive = predictabilityFilter === statusKey;
+                  return (
+                    <button
+                      key={statusKey}
+                      onClick={() => setPredictabilityFilter(statusKey)}
+                      className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <span>{label}</span>
+                      <span className={`px-1.5 py-0.2 rounded-full text-[8px] ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            ))}
+
+              <div className="relative">
+                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar projeto..."
+                  value={predictabilitySearch}
+                  onChange={e => setPredictabilitySearch(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 rounded-xl text-[10px] font-bold bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/50 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-36 sm:w-44"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="divide-y divide-slate-100 dark:divide-slate-800/60 max-h-[380px] overflow-y-auto custom-scrollbar">
+            {filteredPredictabilities.length === 0 ? (
+              <div className="p-10 text-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Nenhum projeto encontrado para o filtro selecionado
+              </div>
+            ) : filteredPredictabilities.map(projectPredictability => {
+              const badge = getDeliveryPredictabilityBadge(projectPredictability.status);
+              return (
+                <div
+                  key={projectPredictability.projectId}
+                  className="px-8 py-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[11px] font-black text-indigo-600 dark:text-indigo-400">
+                        {projectPredictability.projectCode}
+                      </span>
+                      <span className={`px-2.5 py-0.5 rounded-lg border text-[8px] font-black uppercase tracking-widest flex items-center gap-1.5 ${badge.badgeBg} ${badge.badgeText} ${badge.badgeBorder}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${badge.dotColor}`} />
+                        {badge.label}
+                      </span>
+                      {projectPredictability.reprogrammingCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-lg text-[8px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                          Rev.{String(projectPredictability.reprogrammingCount + 1).padStart(2, '0')}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mt-1 truncate text-sm font-bold text-slate-800 dark:text-slate-200">
+                      {projectPredictability.projectName}
+                    </p>
+
+                    {/* Alertas e motivos de atenção objetivos */}
+                    {projectPredictability.attentionReasons.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {projectPredictability.attentionReasons.map((reason, idx) => (
+                          <span
+                            key={idx}
+                            className={`px-2 py-0.5 rounded-md text-[8px] font-bold uppercase tracking-wider ${
+                              projectPredictability.status === ProjectDeliveryPredictabilityStatus.OVERDUE
+                                ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+                            }`}
+                          >
+                            ⚠ {reason}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 lg:justify-end">
+                    <div className="flex flex-col items-start lg:items-end">
+                      <span className="text-[8px] text-slate-400 font-bold">Prazo de Entrega</span>
+                      <span className="text-slate-800 dark:text-slate-200 font-bold">
+                        {projectPredictability.formattedDeliveryDate}
+                        {projectPredictability.daysRemaining !== null && (
+                          <strong className={`ml-1.5 ${
+                            projectPredictability.isOverdue ? 'text-rose-500' :
+                            projectPredictability.isNearDeadline ? 'text-amber-500' :
+                            'text-emerald-500'
+                          }`}>
+                            ({projectPredictability.daysRemaining < 0
+                              ? `Vencido há ${Math.abs(projectPredictability.daysRemaining)}d`
+                              : projectPredictability.daysRemaining === 0
+                                ? 'Hoje'
+                                : `Em ${projectPredictability.daysRemaining}d`})
+                          </strong>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 pl-2 border-l border-slate-200 dark:border-slate-800">
+                      <div className="flex flex-col items-center">
+                        <span className="text-xs font-black text-sky-600 dark:text-sky-400">
+                          {projectPredictability.inProgressActivitiesCount}
+                        </span>
+                        <span className="text-[7px] text-slate-400 font-bold uppercase">Em Andamento</span>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <span className={`text-xs font-black ${projectPredictability.blockedActivitiesCount > 0 ? 'text-amber-500' : 'text-slate-300 dark:text-slate-700'}`}>
+                          {projectPredictability.blockedActivitiesCount}
+                        </span>
+                        <span className="text-[7px] text-slate-400 font-bold uppercase">Bloqueadas</span>
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <span className={`text-xs font-black ${projectPredictability.overdueActivitiesCount > 0 ? 'text-rose-500' : 'text-slate-300 dark:text-slate-700'}`}>
+                          {projectPredictability.overdueActivitiesCount}
+                        </span>
+                        <span className="text-[7px] text-slate-400 font-bold uppercase">Atrasadas</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* --- CARD EXPANDIDO: CAPACIDADE OPERACIONAL PREVISIVA --- */}
+        {/* --- CARD EXPANDIDO: DISTRIBUIÇÃO DE TRABALHO E WIP --- */}
         <div className="lg:col-span-3 bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl p-10 rounded-[48px] border border-slate-200 dark:border-white/10 shadow-xl dark:shadow-2xl relative group overflow-hidden transition-all duration-500">
           <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl group-hover:bg-indigo-500/20 transition-all duration-1000"></div>
 
           <div className="relative z-10">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-10">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
               <div>
                 <h3 className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.4em] mb-2 px-2 flex items-center transition-colors">
-                  Capacidade Operacional da Equipe
+                  Distribuição de Trabalho e WIP
                   <InfoTooltip
-                    title="Saturação da Equipe"
-                    content="Compara a demanda restante das atividades com as horas de jornada disponíveis no período. A demanda restante considera a estimativa atual menos o tempo já contabilizado."
-                    calculation="demandaRestante = MAX(estimativaAtual - tempoContabilizado, 0)"
+                    title="Distribuição de Trabalho e WIP"
+                    content="Acompanhamento operacional de atividades ativas em andamento (WIP), impedimentos e prazos por profissional. Permite identificar gargalos de fluxo sem suposições de horas."
+                    calculation="WIP = Atividades EM ANDAMENTO · Impedimentos = Atividades BLOQUEADAS"
                     position="bottom"
                   />
                 </h3>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest px-2 transition-colors">Sincronizado com Ciclo Médio de {avgExecutionTime} dias</p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest px-2 transition-colors">
+                  Atividades ativas em andamento, impedimentos e próximas entregas por profissional
+                </p>
               </div>
- 
-              {/* Seletor de Semanas */}
-              <div className="flex bg-slate-100 dark:bg-slate-900/80 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700/50 shadow-inner transition-colors duration-500">
-                {[0, 1, 2, 3, 4].map(w => (
-                  <button
-                    key={w}
-                    onClick={() => setSelectedWeekOffset(w)}
-                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all flex flex-col items-center min-w-[64px] ${selectedWeekOffset === w
-                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30'
-                      : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-                      }`}
-                  >
-                    <span>{w === 0 ? 'Atual' : `Sêman. ${w}`}</span>
-                  </button>
-                ))}
+
+              {/* Indicador de Concentração Global */}
+              <div className={`px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-wider flex items-center gap-2 ${
+                wipOverview.exceededUsers.length > 0
+                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
+                  : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+              }`}>
+                {wipOverview.exceededUsers.length > 0 ? (
+                  <>
+                    <AlertTriangle size={14} className="text-amber-500" />
+                    <span>Atenção: {wipOverview.exceededUsers.length} profissional(is) acima do limite orientativo</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={14} className="text-emerald-500" />
+                    <span>Fluxo balanceado · Sem sobreconcentração crítica</span>
+                  </>
+                )}
               </div>
             </div>
- 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-              {/* Resumo Global */}
-              <div className="lg:col-span-5 flex items-center space-x-8 border-r border-slate-100 dark:border-slate-800/50 pr-8 transition-colors duration-500">
-                <div className="relative">
-                  <svg className="w-32 h-32 transform -rotate-90 drop-shadow-[0_0_15px_rgba(99,102,241,0.2)]">
-                    <circle cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-100 dark:text-slate-800 transition-colors" />
-                    <circle
-                      cx="64" cy="64" r="56" stroke="currentColor" strokeWidth="12" fill="transparent"
-                      className={`transition-all duration-1000 ${dashboard2Logics.teamCapacity.percentage > 100 ? 'text-rose-500' :
-                        dashboard2Logics.teamCapacity.percentage > 95 ? 'text-orange-500' :
-                          dashboard2Logics.teamCapacity.percentage > 80 ? 'text-amber-500' :
-                            'text-emerald-500'
-                        }`}
-                      strokeDasharray={351.8}
-                      strokeDashoffset={351.8 - (351.8 * Math.min(100, dashboard2Logics.teamCapacity.percentage)) / 100}
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-3xl font-black text-slate-900 dark:text-white transition-colors">{dashboard2Logics.teamCapacity.percentage}%</span>
-                    <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-tighter transition-colors">Global</span>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Resumo Global Operacional */}
+              <div className="lg:col-span-4 space-y-4 border-b lg:border-b-0 lg:border-r border-slate-100 dark:border-slate-800/50 pb-6 lg:pb-0 lg:pr-8">
+                <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                      Total WIP em Andamento
+                    </span>
+                    <span className="text-2xl font-black text-sky-600 dark:text-sky-400">
+                      {wipOverview.totalWip}
+                    </span>
+                  </div>
+                  <p className="text-[9px] text-slate-500 font-bold">
+                    Atividades ativas em execução simultânea pela equipe
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20">
+                    <span className="text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest block">
+                      Bloqueadas
+                    </span>
+                    <span className="text-xl font-black text-amber-600 dark:text-amber-400 block mt-1">
+                      {wipOverview.totalBlocked}
+                    </span>
+                    <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5 block">
+                      com impedimento
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20">
+                    <span className="text-[9px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest block">
+                      Atrasadas
+                    </span>
+                    <span className="text-xl font-black text-rose-600 dark:text-rose-400 block mt-1">
+                      {wipOverview.totalOverdue}
+                    </span>
+                    <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5 block">
+                      fora do prazo
+                    </span>
                   </div>
                 </div>
- 
-                <div className="flex-1 space-y-4">
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Ocupação</span>
-                    <span className="text-xl font-black text-slate-900 dark:text-white transition-colors">
-                      {formatCapacityHours(dashboard2Logics.teamCapacity.occupied)}{' '}
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">planejadas</span>
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Disponível</span>
-                    <span className="text-xl font-black text-slate-300 dark:text-slate-700 transition-colors">
-                      {formatCapacityHours(dashboard2Logics.teamCapacity.total)}{' '}
-                      <span className="text-[10px] opacity-40 font-bold uppercase tracking-wider">regulares</span>
-                    </span>
-                  </div>
-                  <div className={`text-center py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] border shadow-sm transition-all ${dashboard2Logics.teamCapacity.percentage > 100 ? 'bg-rose-500/10 text-rose-500 border-rose-500/20 animate-pulse' :
-                    dashboard2Logics.teamCapacity.percentage > 95 ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
-                      dashboard2Logics.teamCapacity.percentage > 80 ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
-                        'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                    }`}>
-                    {dashboard2Logics.teamCapacity.percentage > 100 ? 'Sobrecarga Crítica' :
-                      dashboard2Logics.teamCapacity.percentage > 95 ? 'Limite de Segurança' :
-                        dashboard2Logics.teamCapacity.percentage > 80 ? 'Atenção Necessária' :
-                          'Fluxo Saudável'}
-                  </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 text-[9px] font-bold text-slate-500 space-y-1">
+                  <span className="font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                    Gestão por Entregas e Prazos
+                  </span>
+                  <p>
+                    O PERSPECPATH opera pelo modelo de fluxo contínuo. Alocações são baseadas em datas e prazos reais, sem horas estimadas artificiais.
+                  </p>
                 </div>
               </div>
- 
-              {/* Detalhamento por Usuário */}
-              <div className="lg:col-span-7">
-                <div className="flex items-center justify-between mb-6">
-                  <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest transition-colors">Análise Individual ({dashboard2Logics.teamCapacity.weekRange.start} - {dashboard2Logics.teamCapacity.weekRange.end})</p>
-                  <p className="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest transition-colors">Capacidade / Semana</p>
+
+              {/* Detalhamento por Profissional */}
+              <div className="lg:col-span-8">
+                <div className="flex items-center justify-between mb-4 px-1">
+                  <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                    Profissionais Ativos ({teamWipMetrics.length})
+                  </p>
+                  <p className="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">
+                    WIP · Bloqueios · Prazos
+                  </p>
                 </div>
-                <div className="grid grid-cols-2 gap-x-12 gap-y-6">
-                  {dashboard2Logics.teamCapacity.userDetails.map((u: any) => {
-                    const tooltipContent = u.details && u.details.length > 0
-                      ? u.details.map((d: any) => {
-                          if (d.isExceeded) {
-                            return `[${d.projectCode}] ${d.activityName}: ⚠ EXCEDIDO (Contab.: ${d.tempoContabilizado.toFixed(1)}h / Est. Atual: ${d.currentEst.toFixed(1)}h) (${d.start} a ${d.end})`;
-                          }
-                          return `[${d.projectCode}] ${d.activityName}: ${formatCapacityHours(d.hours)} (${d.start} a ${d.end})`;
-                        }).join('\n')
-                      : 'Sem atividades planejadas';
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {teamWipMetrics.map(userMetric => {
+                    const upcoming = userMetric.upcomingDeliveries[0];
                     return (
-                      <div key={u.id} className="group/user" title={tooltipContent}>
-                        <div className="flex justify-between items-end mb-2">
-                          <div className="flex flex-col">
-                            <span className="text-[11px] font-black text-slate-600 dark:text-slate-300 uppercase truncate pr-4 transition-colors">{u.name}</span>
-                            <span className="text-[8px] text-slate-450 dark:text-slate-500 font-bold uppercase mt-0.5 flex flex-wrap gap-2 items-center">
-                              <span>{formatCapacityHours(u.occupied)} / {formatCapacityHours(u.total)}</span>
-                              {u.unestimatedCount > 0 && (
-                                <span className="text-amber-500 font-black flex items-center gap-0.5">
-                                  <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
-                                  {u.unestimatedCount} sem estimativa
-                                </span>
-                              )}
-                            </span>
+                      <div
+                        key={userMetric.userId}
+                        onClick={() => setViewingUser({ id: userMetric.userId, name: userMetric.userName })}
+                        className="p-5 rounded-3xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 hover:border-indigo-500/30 hover:shadow-md transition-all cursor-pointer group"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div className="flex items-center space-x-3 min-w-0">
+                            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-black text-xs flex items-center justify-center shrink-0">
+                              {userMetric.userName.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase truncate block group-hover:text-indigo-500 transition-colors">
+                                {userMetric.userName}
+                              </span>
+                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">
+                                {userMetric.openActivitiesCount} atividade(s) sob responsabilidade
+                              </span>
+                            </div>
                           </div>
-                          <span className={`text-[10px] font-black ${u.percentage > 100 ? 'text-rose-500' : u.percentage > 80 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'
-                            } transition-colors`}>{u.percentage}%</span>
+
+                          <Eye size={14} className="text-slate-400 group-hover:text-indigo-500 transition-colors shrink-0 mt-1" />
                         </div>
-                        <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-900 rounded-full overflow-hidden border border-slate-200 dark:border-white/5 transition-colors duration-500">
-                          <div
-                            className={`h-full rounded-full transition-all duration-1000 ${u.percentage > 100 ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]' :
-                              u.percentage > 80 ? 'bg-amber-500' :
-                                'bg-slate-300 dark:bg-slate-700 group-hover/user:bg-indigo-500'
-                              }`}
-                            style={{ width: `${Math.min(100, u.percentage)}%` }}
-                          />
+
+                        {/* Badges de WIP e Status */}
+                        <div className="flex flex-wrap items-center gap-2 mb-3">
+                          <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${
+                            userMetric.isWipLimitExceeded
+                              ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400 animate-pulse'
+                              : 'bg-sky-500/10 border-sky-500/20 text-sky-600 dark:text-sky-400'
+                          }`}>
+                            WIP: {userMetric.inProgressCount} em andamento
+                            {userMetric.wipLimit ? ` / Limite ${userMetric.wipLimit}` : ''}
+                          </span>
+
+                          {userMetric.blockedCount > 0 && (
+                            <span className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400">
+                              {userMetric.blockedCount} bloqueada(s)
+                            </span>
+                          )}
+
+                          {userMetric.overdueCount > 0 && (
+                            <span className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
+                              {userMetric.overdueCount} atrasada(s)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Próxima Entrega */}
+                        <div className="pt-2 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-between text-[8px] font-bold">
+                          <span className="text-slate-400 uppercase tracking-wider">Próxima entrega:</span>
+                          {upcoming ? (
+                            <span className="text-slate-700 dark:text-slate-300 truncate max-w-[170px]" title={upcoming.name}>
+                              {formatDisplayDate(upcoming.deliveryDate)} · {upcoming.name}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic">Sem entregas pendentes</span>
+                          )}
                         </div>
                       </div>
                     );
                   })}
-                  {dashboard2Logics.teamCapacity.userDetails.length === 0 && (
-                    <div className="col-span-2 text-center py-4 text-slate-300 dark:text-slate-700 italic text-[10px] font-black uppercase tracking-widest opacity-40">Sem dados de alocação para este período</div>
+
+                  {teamWipMetrics.length === 0 && (
+                    <div className="col-span-2 text-center py-8 text-slate-400 italic text-[10px] font-black uppercase tracking-widest opacity-60">
+                      Nenhum profissional ativo registrado
+                    </div>
                   )}
                 </div>
               </div>

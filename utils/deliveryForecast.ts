@@ -1,297 +1,261 @@
-import type {
-  ActivityExecution,
-  ActivityOvertimeEntry,
-  Company,
-  InternalUser,
-  Project,
-  ProjectActivity,
-  WorkSession
-} from '../types';
+import type { Project, ProjectActivity } from '../types';
 import { ProjectStatus } from '../types';
-import { buildActivityOperationalMetrics } from './operationalMetrics';
-import { calculateNetWorkdayMs } from './operationalTime';
-import { isProjectActivityClosed } from './projectActivityStatus';
-import { isCurrentProjectRevision } from './projectRevision';
+import {
+  ActivityCanonicalStatus,
+  ActivityDeadlineStatus,
+  calculateDaysDifference,
+  evaluateDeadlineStatus,
+  formatDisplayDate,
+  getTodayDateString,
+  isActivityBlocked,
+  isActivityClosed,
+  isActivityInProgress,
+  normalizeActivityStatus
+} from './activityOperationalModel';
+import { getProjectFamilyId, getProjectRevisionNumber, isCurrentProjectRevision } from './projectRevision';
 
-const HOUR_MS = 60 * 60 * 1000;
-// Centralized management bands: up to 75% leaves a comfortable margin;
-// 75-90% requires attention; 90-100% is at risk; above 100% is infeasible.
-const ON_TRACK_MAX_UTILIZATION = 0.75;
-const ATTENTION_MAX_UTILIZATION = 0.9;
-const CAPACITY_EPSILON_MS = 1000;
-
-export enum DeliveryForecastStatus {
-  ON_TRACK = 'DENTRO DO PRAZO',
+export enum ProjectDeliveryPredictabilityStatus {
+  ON_TRACK = 'NO PRAZO',
   ATTENTION = 'ATENÇÃO',
-  AT_RISK = 'PRAZO EM RISCO',
-  INFEASIBLE = 'PRAZO INVIÁVEL',
   OVERDUE = 'ATRASADO',
-  INCOMPLETE = 'PREVISÃO INCOMPLETA'
+  INSUFFICIENT_DATA = 'SEM DADOS SUFICIENTES'
 }
 
-export interface AssigneeDeliveryForecast {
-  internalUserId: string;
-  userName: string;
-  remainingRequiredMs: number;
-  regularCapacityMs: number;
-  overtimeCapacityMs: number;
-  availableCapacityMs: number;
-  marginMs: number;
-}
+/**
+ * Backward compatibility alias mapping previous forecast status to canonical predictability.
+ */
+export const DeliveryForecastStatus = {
+  ON_TRACK: ProjectDeliveryPredictabilityStatus.ON_TRACK,
+  ATTENTION: ProjectDeliveryPredictabilityStatus.ATTENTION,
+  AT_RISK: ProjectDeliveryPredictabilityStatus.ATTENTION,
+  INFEASIBLE: ProjectDeliveryPredictabilityStatus.OVERDUE,
+  OVERDUE: ProjectDeliveryPredictabilityStatus.OVERDUE,
+  INCOMPLETE: ProjectDeliveryPredictabilityStatus.INSUFFICIENT_DATA
+} as const;
 
-export interface ProjectDeliveryForecast {
+export type DeliveryForecastStatus = ProjectDeliveryPredictabilityStatus;
+
+export interface ProjectDeliveryPredictability {
   projectId: string;
   projectCode: string;
   projectName: string;
+  clientId?: string;
+  assigneeId?: string;
+  status: ProjectDeliveryPredictabilityStatus;
   deliveryDate?: string;
-  status: DeliveryForecastStatus;
-  remainingRequiredMs: number;
-  regularCapacityMs: number;
-  overtimeCapacityMs: number;
-  availableCapacityMs: number;
-  marginMs: number;
-  unestimatedActivities: number;
-  unassignedActivities: number;
-  assignees: AssigneeDeliveryForecast[];
+  originalDeliveryDate?: string;
+  formattedDeliveryDate: string;
+  formattedOriginalDeliveryDate?: string;
+  daysRemaining: number | null;
+  isOverdue: boolean;
+  isNearDeadline: boolean;
+  totalActivitiesCount: number;
+  openActivitiesCount: number;
+  inProgressActivitiesCount: number;
+  blockedActivitiesCount: number;
+  overdueActivitiesCount: number;
+  completedActivitiesCount: number;
+  reprogrammingCount: number;
+  attentionReasons: string[];
+  assigneeIds: string[];
 }
 
-export interface DeliveryForecastInput {
+export interface ProjectDeliveryPredictabilityInput {
   projects: Project[];
-  users: InternalUser[];
   activities: ProjectActivity[];
-  executions: ActivityExecution[];
-  sessions: WorkSession[];
-  overtimeEntries: ActivityOvertimeEntry[];
-  company: Company | undefined;
-  nowMs: number;
+  todayStr?: string;
+  nearDeadlineDaysThreshold?: number; // default 5 days
 }
-
-const parseDateOnly = (value?: string): Date | null => {
-  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  return Number.isFinite(date.getTime()) ? date : null;
-};
-
-const dateKey = (date: Date): string => (
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-);
-
-const startOfDay = (value: number): Date => {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
-};
-
-const listWorkdayKeys = (
-  start: Date,
-  end: Date,
-  workDays: number[]
-): string[] => {
-  if (start > end) return [];
-  const keys: string[] = [];
-  const cursor = new Date(start);
-  cursor.setHours(0, 0, 0, 0);
-  const lastDay = new Date(end);
-  lastDay.setHours(0, 0, 0, 0);
-
-  while (cursor <= lastDay) {
-    if (workDays.includes(cursor.getDay())) keys.push(dateKey(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return keys;
-};
-
-const classifyForecast = (
-  requiredMs: number,
-  availableMs: number,
-  hasTemporalDeficit: boolean
-): DeliveryForecastStatus => {
-  if (hasTemporalDeficit || requiredMs > availableMs + CAPACITY_EPSILON_MS) {
-    return DeliveryForecastStatus.INFEASIBLE;
-  }
-  if (requiredMs <= CAPACITY_EPSILON_MS) return DeliveryForecastStatus.ON_TRACK;
-
-  const utilization = availableMs > 0 ? requiredMs / availableMs : Number.POSITIVE_INFINITY;
-  if (utilization <= ON_TRACK_MAX_UTILIZATION) return DeliveryForecastStatus.ON_TRACK;
-  if (utilization <= ATTENTION_MAX_UTILIZATION) return DeliveryForecastStatus.ATTENTION;
-  return DeliveryForecastStatus.AT_RISK;
-};
 
 /**
- * Forecasts delivery capacity in the browser's local timezone.
+ * Evaluates active projects and produces reliable, objective delivery predictability metrics
+ * based on deadlines, remaining days, blockers, overdue activities, and reprogrammings.
  *
- * Regular capacity is calculated once per user/day from the Workspace journey.
- * Other projects consume that capacity by spreading their remaining estimate
- * evenly across their planned workdays, matching the active capacity model.
- * Activities in the forecast project then share the remaining daily buckets,
- * so overlapping activities never duplicate a professional's available hours.
+ * Absolutely NO hours, fake percentages, or unvalidated probability models.
  */
-export const buildProjectDeliveryForecasts = ({
+export const calculateProjectDeliveryPredictability = ({
   projects,
-  users,
   activities,
-  executions,
-  sessions,
-  overtimeEntries,
-  company,
-  nowMs
-}: DeliveryForecastInput): ProjectDeliveryForecast[] => {
-  const today = startOfDay(nowMs);
-  const workDays = company?.workDays || [1, 2, 3, 4, 5];
-  const dailyCapacityMs = calculateNetWorkdayMs(company);
+  todayStr = getTodayDateString(),
+  nearDeadlineDaysThreshold = 5
+}: ProjectDeliveryPredictabilityInput): ProjectDeliveryPredictability[] => {
+  // Only evaluate active revisions (QUEUE, IN_PROGRESS, PAUSED)
   const activeProjects = projects.filter(project => (
     isCurrentProjectRevision(project)
-    && project.status !== ProjectStatus.DONE
-    && project.status !== ProjectStatus.CANCELED
+    && [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(project.status)
   ));
-  const activeProjectIds = new Set(activeProjects.map(project => project.id));
-  const projectById = new Map(projects.map(project => [project.id, project]));
-  const userById = new Map(users.map(user => [user.id, user]));
-  const metrics = buildActivityOperationalMetrics({
-    activities,
-    executions,
-    sessions,
-    overtimeEntries,
-    company,
-    nowMs
-  });
-  const metricByActivityId = new Map(metrics.map(metric => [metric.activityId, metric]));
-  const openActivities = activities.filter(activity => (
-    activeProjectIds.has(activity.projectId) && !isProjectActivityClosed(activity.status)
-  ));
-
-  const remainingByActivityId = new Map<string, number | null>();
-  for (const activity of openActivities) {
-    const metric = metricByActivityId.get(activity.id);
-    remainingByActivityId.set(
-      activity.id,
-      metric?.estimatedMs === null || metric?.estimatedMs === undefined
-        ? null
-        : Math.max(0, metric.remainingEstimatedMs ?? metric.estimatedMs)
-    );
-  }
 
   return activeProjects.map(project => {
-    const projectActivities = activities.filter(activity => activity.projectId === project.id);
-    const remainingActivities = projectActivities.filter(activity => !isProjectActivityClosed(activity.status));
-    const deadline = parseDateOnly(project.deliveryDate);
-    const isOverdue = Boolean(deadline && deadline < today);
-    const unestimatedActivities = remainingActivities.filter(activity => remainingByActivityId.get(activity.id) === null).length;
-    const unassignedActivities = remainingActivities.filter(activity => (
-      !activity.assigneeId || !userById.get(activity.assigneeId)?.isActive
-    )).length;
+    // Locate family revisions to track reprogrammings and original delivery date
+    const familyId = getProjectFamilyId(project);
+    const familyRevisions = projects.filter(p => (
+      p.code === project.code || getProjectFamilyId(p) === familyId
+    ));
+    const sortedRevisions = [...familyRevisions].sort((a, b) => (
+      getProjectRevisionNumber(a) - getProjectRevisionNumber(b)
+    ));
+    const originalRevision = sortedRevisions[0] || project;
+    const originalDeliveryDate = originalRevision.deliveryDate || project.deliveryDate;
+    const reprogrammingCount = Math.max(0, sortedRevisions.length - 1);
 
-    const emptyForecast: ProjectDeliveryForecast = {
+    // Filter activities belonging to this project
+    const projectActivities = activities.filter(activity => activity.projectId === project.id);
+    const openActivities = projectActivities.filter(activity => !isActivityClosed(activity.status));
+    const inProgressActivities = openActivities.filter(activity => isActivityInProgress(activity.status));
+    const blockedActivities = openActivities.filter(activity => isActivityBlocked(activity.status));
+    const completedActivities = projectActivities.filter(activity => isActivityClosed(activity.status));
+
+    // Overdue activities: open activities whose planned delivery date has already passed
+    const overdueActivities = openActivities.filter(activity => {
+      const deadlineEval = evaluateDeadlineStatus(activity, todayStr);
+      return deadlineEval.status === ActivityDeadlineStatus.OVERDUE;
+    });
+
+    const assigneeIds = Array.from(new Set(
+      projectActivities
+        .map(activity => activity.assigneeId)
+        .filter((id): id is string => Boolean(id))
+    ));
+
+    // Deadline difference in calendar days
+    const daysRemaining = project.deliveryDate
+      ? calculateDaysDifference(project.deliveryDate, todayStr)
+      : null;
+
+    const isOverdue = daysRemaining !== null && daysRemaining < 0;
+    const isNearDeadline = daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= nearDeadlineDaysThreshold;
+
+    let status: ProjectDeliveryPredictabilityStatus;
+    const attentionReasons: string[] = [];
+
+    // Rule 1: Insufficient data when no delivery date or no activities configured
+    if (!project.deliveryDate || projectActivities.length === 0) {
+      status = ProjectDeliveryPredictabilityStatus.INSUFFICIENT_DATA;
+      if (!project.deliveryDate) {
+        attentionReasons.push('Sem prazo de entrega definido');
+      }
+      if (projectActivities.length === 0) {
+        attentionReasons.push('Sem atividades cadastradas');
+      }
+    }
+    // Rule 2: Overdue project (project's global delivery date has passed today)
+    else if (isOverdue) {
+      status = ProjectDeliveryPredictabilityStatus.OVERDUE;
+      const daysOverdue = Math.abs(daysRemaining!);
+      attentionReasons.push(`Prazo ultrapassado há ${daysOverdue} dia${daysOverdue > 1 ? 's' : ''}`);
+
+      if (blockedActivities.length > 0) {
+        attentionReasons.push(`${blockedActivities.length} atividade(s) bloqueada(s)`);
+      }
+      if (overdueActivities.length > 0) {
+        attentionReasons.push(`${overdueActivities.length} atividade(s) com prazo vencido`);
+      }
+      if (reprogrammingCount > 0 && originalDeliveryDate && project.deliveryDate && originalDeliveryDate !== project.deliveryDate) {
+        attentionReasons.push(`Reprogramado (${reprogrammingCount}ª revisão)`);
+      }
+    }
+    // Rule 3: On-track or Attention based on blockers, overdue tasks, near deadline, or reprogrammings
+    else {
+      const reasons: string[] = [];
+
+      if (blockedActivities.length > 0) {
+        reasons.push(`${blockedActivities.length} atividade(s) bloqueada(s)`);
+      }
+      if (overdueActivities.length > 0) {
+        reasons.push(`${overdueActivities.length} atividade(s) com prazo vencido`);
+      }
+      if (isNearDeadline) {
+        const deadlineLabel = daysRemaining === 0
+          ? 'Prazo vence hoje'
+          : daysRemaining === 1
+            ? 'Prazo vence amanhã'
+            : `Prazo vence em ${daysRemaining} dias`;
+        reasons.push(deadlineLabel);
+      }
+      if (reprogrammingCount > 0 && originalDeliveryDate && project.deliveryDate && originalDeliveryDate !== project.deliveryDate) {
+        reasons.push(`Reprogramado (${reprogrammingCount}ª revisão)`);
+      }
+
+      if (reasons.length > 0) {
+        status = ProjectDeliveryPredictabilityStatus.ATTENTION;
+        attentionReasons.push(...reasons);
+      } else {
+        status = ProjectDeliveryPredictabilityStatus.ON_TRACK;
+      }
+    }
+
+    return {
       projectId: project.id,
       projectCode: project.code,
       projectName: project.name,
+      clientId: project.clientId,
+      assigneeId: project.assigneeId,
+      status,
       deliveryDate: project.deliveryDate,
-      status: DeliveryForecastStatus.INCOMPLETE,
-      remainingRequiredMs: 0,
-      regularCapacityMs: 0,
-      overtimeCapacityMs: 0,
-      availableCapacityMs: 0,
-      marginMs: 0,
-      unestimatedActivities,
-      unassignedActivities,
-      assignees: []
-    };
-
-    if (!deadline) return emptyForecast;
-    if (projectActivities.length === 0) {
-      return isOverdue ? { ...emptyForecast, status: DeliveryForecastStatus.OVERDUE } : emptyForecast;
-    }
-
-    const horizonWorkdays = listWorkdayKeys(today, deadline, workDays);
-    const assigneeIds = Array.from(new Set(
-      remainingActivities
-        .map(activity => activity.assigneeId)
-        .filter((id): id is string => Boolean(id && userById.get(id)?.isActive))
-    ));
-
-    const assignees = assigneeIds.map(internalUserId => {
-      const currentActivities = remainingActivities.filter(activity => activity.assigneeId === internalUserId);
-      const requiredMs = currentActivities.reduce((total, activity) => (
-        total + (remainingByActivityId.get(activity.id) ?? 0)
-      ), 0);
-      const freeByDay = new Map(horizonWorkdays.map(key => [key, dailyCapacityMs]));
-
-      const externalActivities = openActivities.filter(activity => (
-        activity.assigneeId === internalUserId
-        && activity.projectId !== project.id
-        && remainingByActivityId.get(activity.id) !== null
-      ));
-
-      for (const activity of externalActivities) {
-        const remainingMs = remainingByActivityId.get(activity.id) ?? 0;
-        if (remainingMs <= 0) continue;
-
-        const parentDeadline = parseDateOnly(projectById.get(activity.projectId)?.deliveryDate);
-        const activityStart = parseDateOnly(activity.startDate) || today;
-        const activityEnd = parseDateOnly(activity.deliveryDate) || parentDeadline || deadline;
-        const plannedStart = activityStart > today ? activityStart : today;
-        const plannedDays = listWorkdayKeys(plannedStart, activityEnd, workDays);
-        if (plannedDays.length === 0) continue;
-
-        const dailyLoadMs = remainingMs / plannedDays.length;
-        for (const key of plannedDays) {
-          if (!freeByDay.has(key)) continue;
-          freeByDay.set(key, Math.max(0, (freeByDay.get(key) ?? 0) - dailyLoadMs));
-        }
-      }
-
-      const usableDayKeys = new Set<string>();
-      for (const activity of currentActivities) {
-        const activityStart = parseDateOnly(activity.startDate) || today;
-        const effectiveStart = activityStart > today ? activityStart : today;
-        listWorkdayKeys(effectiveStart, deadline, workDays).forEach(key => usableDayKeys.add(key));
-      }
-      const regularCapacityMs = Array.from(usableDayKeys).reduce((total, key) => total + (freeByDay.get(key) ?? 0), 0);
-
-      const currentActivityIds = new Set(currentActivities.map(activity => activity.id));
-      const overtimeCapacityMs = overtimeEntries.reduce((total, entry) => {
-        if (!currentActivityIds.has(entry.projectActivityId)) return total;
-        const entryDate = parseDateOnly(entry.date);
-        if (!entryDate || entryDate < today || entryDate > deadline) return total;
-        return total + Math.max(0, entry.authorizedHours) * HOUR_MS;
-      }, 0);
-      const availableCapacityMs = regularCapacityMs + overtimeCapacityMs;
-
-      return {
-        internalUserId,
-        userName: userById.get(internalUserId)?.username || 'Responsável indisponível',
-        remainingRequiredMs: requiredMs,
-        regularCapacityMs,
-        overtimeCapacityMs,
-        availableCapacityMs,
-        marginMs: availableCapacityMs - requiredMs
-      };
-    });
-
-    const remainingRequiredMs = remainingActivities.reduce((total, activity) => (
-      total + (remainingByActivityId.get(activity.id) ?? 0)
-    ), 0);
-    const regularCapacityMs = assignees.reduce((total, assignee) => total + assignee.regularCapacityMs, 0);
-    const overtimeCapacityMs = assignees.reduce((total, assignee) => total + assignee.overtimeCapacityMs, 0);
-    const availableCapacityMs = regularCapacityMs + overtimeCapacityMs;
-    const marginMs = availableCapacityMs - remainingRequiredMs;
-    const hasTemporalDeficit = assignees.some(assignee => assignee.marginMs < -CAPACITY_EPSILON_MS);
-    const isIncomplete = unestimatedActivities > 0 || unassignedActivities > 0;
-
-    return {
-      ...emptyForecast,
-      status: isOverdue
-        ? DeliveryForecastStatus.OVERDUE
-        : isIncomplete
-          ? DeliveryForecastStatus.INCOMPLETE
-          : classifyForecast(remainingRequiredMs, availableCapacityMs, hasTemporalDeficit),
-      remainingRequiredMs,
-      regularCapacityMs,
-      overtimeCapacityMs,
-      availableCapacityMs,
-      marginMs,
-      assignees
+      originalDeliveryDate,
+      formattedDeliveryDate: formatDisplayDate(project.deliveryDate),
+      formattedOriginalDeliveryDate: formatDisplayDate(originalDeliveryDate),
+      daysRemaining,
+      isOverdue,
+      isNearDeadline,
+      totalActivitiesCount: projectActivities.length,
+      openActivitiesCount: openActivities.length,
+      inProgressActivitiesCount: inProgressActivities.length,
+      blockedActivitiesCount: blockedActivities.length,
+      overdueActivitiesCount: overdueActivities.length,
+      completedActivitiesCount: completedActivities.length,
+      reprogrammingCount,
+      attentionReasons,
+      assigneeIds
     };
   });
+};
+
+/**
+ * Returns color tokens and styling classes for delivery predictability badges.
+ */
+export const getDeliveryPredictabilityBadge = (
+  status: ProjectDeliveryPredictabilityStatus
+): {
+  label: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+  dotColor: string;
+} => {
+  switch (status) {
+    case ProjectDeliveryPredictabilityStatus.ON_TRACK:
+      return {
+        label: 'NO PRAZO',
+        badgeBg: 'bg-emerald-500/10 dark:bg-emerald-500/15',
+        badgeText: 'text-emerald-700 dark:text-emerald-300',
+        badgeBorder: 'border-emerald-500/25',
+        dotColor: 'bg-emerald-500'
+      };
+    case ProjectDeliveryPredictabilityStatus.ATTENTION:
+      return {
+        label: 'ATENÇÃO',
+        badgeBg: 'bg-amber-500/10 dark:bg-amber-500/15',
+        badgeText: 'text-amber-700 dark:text-amber-300',
+        badgeBorder: 'border-amber-500/25',
+        dotColor: 'bg-amber-500'
+      };
+    case ProjectDeliveryPredictabilityStatus.OVERDUE:
+      return {
+        label: 'ATRASADO',
+        badgeBg: 'bg-rose-500/10 dark:bg-rose-500/15',
+        badgeText: 'text-rose-700 dark:text-rose-300',
+        badgeBorder: 'border-rose-500/25',
+        dotColor: 'bg-rose-500'
+      };
+    case ProjectDeliveryPredictabilityStatus.INSUFFICIENT_DATA:
+    default:
+      return {
+        label: 'SEM DADOS',
+        badgeBg: 'bg-slate-500/10 dark:bg-slate-500/15',
+        badgeText: 'text-slate-600 dark:text-slate-400',
+        badgeBorder: 'border-slate-500/20',
+        dotColor: 'bg-slate-400'
+      };
+  }
 };

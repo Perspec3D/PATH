@@ -26,6 +26,11 @@ import {
   isActivityInPeriod
 } from '../utils/activityOperationalModel';
 import {
+  calculateProjectDeliveryPredictability,
+  ProjectDeliveryPredictabilityStatus,
+  getDeliveryPredictabilityBadge
+} from '../utils/deliveryForecast';
+import {
   ActivityCanonicalStatus,
   ActivityDeadlineStatus,
   ProjectActivity,
@@ -599,22 +604,28 @@ const projectActivitiesMock: ProjectActivity[] = [
     id: 'act-b1',
     workspaceId: 'ws-1',
     projectId: 'proj-1',
-    title: 'Fundações',
+    name: 'Fundações',
     status: ActivityCanonicalStatus.BLOCKED,
     assigneeId: 'user-a',
-    createdAt: 1729000000000
+    orderIndex: 0,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
   },
   {
     id: 'act-b2',
     workspaceId: 'ws-1',
     projectId: 'proj-1',
-    title: 'Estrutura Metálica',
+    name: 'Estrutura Metálica',
     status: ActivityCanonicalStatus.IN_PROGRESS,
     assigneeId: 'user-a',
-    createdAt: 1729000000000
+    orderIndex: 1,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
   }
 ];
-const blockedActivitiesCount = projectActivitiesMock.filter(isActivityBlocked).length;
+const blockedActivitiesCount = projectActivitiesMock.filter(act => isActivityBlocked(act.status)).length;
 assert(blockedActivitiesCount === 1, 'Project has 1 blocked activity');
 assert(inProgressProject.status === ProjectStatus.IN_PROGRESS, 'Project status is unaffected by blocked activity');
 
@@ -648,6 +659,306 @@ assert(reopenedProject.status === ProjectStatus.IN_PROGRESS, 'Project reopened t
 assert(reopenedProject.actualEndDate === undefined, 'actualEndDate cleared upon reopening');
 assert(reopenedProject.conclusionResponsibleId === undefined, 'conclusionResponsibleId cleared');
 assert(reopenedProject.deadlineAtConclusion === undefined, 'deadlineAtConclusion cleared');
+
+console.log('\n10. Project Delivery Predictability & Elimination of Hourly Indicators');
+
+const testToday = '2026-10-17';
+
+// 1. Project with overdue deadline (expired in the past)
+const overdueProject: Project = {
+  id: 'proj-overdue',
+  code: 'PRJ-OD',
+  name: 'Projeto Atrasado',
+  clientId: 'client-1',
+  assigneeId: 'user-a',
+  status: ProjectStatus.IN_PROGRESS,
+  revision: 'Rev.00',
+  startDate: '2026-10-01',
+  deliveryDate: '2026-10-10', // 7 days in the past
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const overdueAct: ProjectActivity = {
+  id: 'act-od-1',
+  workspaceId: 'ws-1',
+  projectId: 'proj-overdue',
+  name: 'Tarefa Atrasada',
+  status: ActivityCanonicalStatus.IN_PROGRESS,
+  assigneeId: 'user-a',
+  orderIndex: 0,
+  deadlineChangesCount: 0,
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const predOverdue = calculateProjectDeliveryPredictability({
+  projects: [overdueProject],
+  activities: [overdueAct],
+  todayStr: testToday
+});
+assert(predOverdue.length === 1, 'Predictability returned 1 project');
+assert(predOverdue[0].status === ProjectDeliveryPredictabilityStatus.OVERDUE, 'Project with past deadline classified as ATRASADO');
+assert(predOverdue[0].isOverdue === true, 'isOverdue is true');
+assert(predOverdue[0].daysRemaining === -7, 'Days remaining is -7');
+
+// 2. Project with blocked activity and future deadline -> ATENÇÃO (NOT atrasado)
+const blockedProject: Project = {
+  id: 'proj-blocked',
+  code: 'PRJ-BLK',
+  name: 'Projeto com Bloqueio',
+  clientId: 'client-1',
+  assigneeId: 'user-b',
+  status: ProjectStatus.IN_PROGRESS,
+  revision: 'Rev.00',
+  startDate: '2026-10-10',
+  deliveryDate: '2026-10-30', // 13 days in the future
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const blockedAct: ProjectActivity = {
+  id: 'act-blk-1',
+  workspaceId: 'ws-1',
+  projectId: 'proj-blocked',
+  name: 'Aguardando Aprovação Externa',
+  status: ActivityCanonicalStatus.BLOCKED,
+  assigneeId: 'user-b',
+  deliveryDate: '2026-10-25',
+  orderIndex: 0,
+  deadlineChangesCount: 0,
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const predBlocked = calculateProjectDeliveryPredictability({
+  projects: [blockedProject],
+  activities: [blockedAct],
+  todayStr: testToday
+});
+assert(predBlocked[0].status === ProjectDeliveryPredictabilityStatus.ATTENTION, 'Project with blocked activity is ATENÇÃO');
+assert(predBlocked[0].isOverdue === false, 'Blocked project with future deadline is NOT overdue');
+assert(predBlocked[0].blockedActivitiesCount === 1, 'Blocked activities count is 1');
+assert(predBlocked[0].attentionReasons.some(r => r.includes('bloqueada')), 'Attention reason includes blocked activity note');
+
+// 3. Project near deadline (<= 5 days) -> ATENÇÃO
+const nearProject: Project = {
+  id: 'proj-near',
+  code: 'PRJ-NEAR',
+  name: 'Projeto Próximo do Vencimento',
+  clientId: 'client-1',
+  assigneeId: 'user-a',
+  status: ProjectStatus.IN_PROGRESS,
+  revision: 'Rev.00',
+  startDate: '2026-10-01',
+  deliveryDate: '2026-10-19', // 2 days in the future
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const nearAct: ProjectActivity = {
+  id: 'act-near-1',
+  workspaceId: 'ws-1',
+  projectId: 'proj-near',
+  name: 'Finalização',
+  status: ActivityCanonicalStatus.IN_PROGRESS,
+  assigneeId: 'user-a',
+  deliveryDate: '2026-10-19',
+  orderIndex: 0,
+  deadlineChangesCount: 0,
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const predNear = calculateProjectDeliveryPredictability({
+  projects: [nearProject],
+  activities: [nearAct],
+  todayStr: testToday
+});
+assert(predNear[0].status === ProjectDeliveryPredictabilityStatus.ATTENTION, 'Project with deadline in 2 days classified as ATENÇÃO');
+assert(predNear[0].isNearDeadline === true, 'isNearDeadline is true');
+assert(predNear[0].daysRemaining === 2, 'daysRemaining is 2');
+
+// 4. Project without valid delivery date -> SEM DADOS SUFICIENTES
+const noDeadlineProject: Project = {
+  id: 'proj-no-date',
+  code: 'PRJ-ND',
+  name: 'Projeto Sem Prazo',
+  clientId: 'client-1',
+  assigneeId: 'user-a',
+  status: ProjectStatus.IN_PROGRESS,
+  revision: 'Rev.00',
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const predNoDeadline = calculateProjectDeliveryPredictability({
+  projects: [noDeadlineProject],
+  activities: [nearAct],
+  todayStr: testToday
+});
+assert(predNoDeadline[0].status === ProjectDeliveryPredictabilityStatus.INSUFFICIENT_DATA, 'Project without delivery date is SEM DADOS SUFICIENTES');
+
+// 5. Project without activities -> SEM DADOS SUFICIENTES
+const noActivitiesProject: Project = {
+  id: 'proj-no-acts',
+  code: 'PRJ-NA',
+  name: 'Projeto Sem Atividades',
+  clientId: 'client-1',
+  assigneeId: 'user-a',
+  status: ProjectStatus.IN_PROGRESS,
+  revision: 'Rev.00',
+  deliveryDate: '2026-10-30',
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const predNoActs = calculateProjectDeliveryPredictability({
+  projects: [noActivitiesProject],
+  activities: [],
+  todayStr: testToday
+});
+assert(predNoActs[0].status === ProjectDeliveryPredictabilityStatus.INSUFFICIENT_DATA, 'Project without activities is SEM DADOS SUFICIENTES');
+
+// 6. Project completely on track (future deadline, comfortable, no blocks, no overdue activities)
+const onTrackProject: Project = {
+  id: 'proj-ontrack',
+  code: 'PRJ-OK',
+  name: 'Projeto No Prazo',
+  clientId: 'client-1',
+  assigneeId: 'user-a',
+  status: ProjectStatus.IN_PROGRESS,
+  revision: 'Rev.00',
+  deliveryDate: '2026-11-15', // 29 days in the future
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const onTrackAct: ProjectActivity = {
+  id: 'act-ok-1',
+  workspaceId: 'ws-1',
+  projectId: 'proj-ontrack',
+  name: 'Modelagem 3D',
+  status: ActivityCanonicalStatus.IN_PROGRESS,
+  assigneeId: 'user-a',
+  deliveryDate: '2026-11-10',
+  orderIndex: 0,
+  deadlineChangesCount: 0,
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const predOnTrack = calculateProjectDeliveryPredictability({
+  projects: [onTrackProject],
+  activities: [onTrackAct],
+  todayStr: testToday
+});
+assert(predOnTrack[0].status === ProjectDeliveryPredictabilityStatus.ON_TRACK, 'Healthy project classified as NO PRAZO');
+assert(predOnTrack[0].attentionReasons.length === 0, 'No attention reasons for healthy project');
+
+// 7. Reprogrammed project tracking
+const rev01Project: Project = {
+  id: 'proj-rev01',
+  familyId: 'fam-rep',
+  code: 'PRJ-REP',
+  name: 'Projeto Reprogramado',
+  clientId: 'client-1',
+  status: ProjectStatus.DONE,
+  revision: 'Rev.00',
+  revisionNumber: 0,
+  isCurrentRevision: false,
+  deliveryDate: '2026-10-15',
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const rev02Project: Project = {
+  id: 'proj-rev02',
+  familyId: 'fam-rep',
+  code: 'PRJ-REP',
+  name: 'Projeto Reprogramado',
+  clientId: 'client-1',
+  status: ProjectStatus.IN_PROGRESS,
+  revision: 'Rev.01',
+  revisionNumber: 1,
+  isCurrentRevision: true,
+  deliveryDate: '2026-10-25', // 8 days away, but reprogrammed from 2026-10-15
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const repAct: ProjectActivity = {
+  id: 'act-rep-1',
+  workspaceId: 'ws-1',
+  projectId: 'proj-rev02',
+  name: 'Execução pós-reprogramação',
+  status: ActivityCanonicalStatus.IN_PROGRESS,
+  assigneeId: 'user-a',
+  orderIndex: 0,
+  deadlineChangesCount: 1,
+  createdAt: 1729000000000,
+  updatedAt: 1729000000000
+};
+
+const predRep = calculateProjectDeliveryPredictability({
+  projects: [rev01Project, rev02Project],
+  activities: [repAct],
+  todayStr: testToday
+});
+assert(predRep.length === 1, 'Only current revision evaluated');
+assert(predRep[0].status === ProjectDeliveryPredictabilityStatus.ATTENTION, 'Reprogrammed project classified as ATENÇÃO');
+assert(predRep[0].reprogrammingCount === 1, 'Reprogramming count is 1');
+assert(predRep[0].originalDeliveryDate === '2026-10-15', 'Original delivery date preserved from Rev.00');
+assert(predRep[0].deliveryDate === '2026-10-25', 'Updated delivery date reflects current revision');
+
+// 8. Badge tokens test
+const badgeOnTrack = getDeliveryPredictabilityBadge(ProjectDeliveryPredictabilityStatus.ON_TRACK);
+assert(badgeOnTrack.label === 'NO PRAZO', 'Badge label is NO PRAZO');
+assert(badgeOnTrack.dotColor.includes('emerald'), 'Badge dot is emerald');
+
+const badgeAttention = getDeliveryPredictabilityBadge(ProjectDeliveryPredictabilityStatus.ATTENTION);
+assert(badgeAttention.label === 'ATENÇÃO', 'Badge label is ATENÇÃO');
+assert(badgeAttention.dotColor.includes('amber'), 'Badge dot is amber');
+
+const badgeOverdue = getDeliveryPredictabilityBadge(ProjectDeliveryPredictabilityStatus.OVERDUE);
+assert(badgeOverdue.label === 'ATRASADO', 'Badge label is ATRASADO');
+assert(badgeOverdue.dotColor.includes('rose'), 'Badge dot is rose');
+
+// 9. Work Distribution & WIP Overview tests
+const allTestActs: ProjectActivity[] = [
+  overdueAct,
+  blockedAct,
+  nearAct,
+  onTrackAct,
+  repAct
+];
+
+const testWipOverview = calculateWipOverview(
+  allTestActs,
+  { 'user-a': 2, 'user-b': 1 },
+  testToday
+);
+assert(testWipOverview.totalWip === 4, 'Total canonical WIP is 4 (overdueAct, nearAct, onTrackAct, repAct)');
+assert(testWipOverview.totalBlocked === 1, 'Total blocked is 1 (blockedAct)');
+assert(testWipOverview.wipByAssignee['user-a'] === 4, 'User A has 4 activities in progress');
+assert((testWipOverview.wipByAssignee['user-b'] || 0) === 0, 'User B has 0 WIP (only 1 blocked activity)');
+assert(testWipOverview.blockedByAssignee['user-b'] === 1, 'User B has 1 blocked activity');
+assert(testWipOverview.exceededUsers.includes('user-a'), 'User A exceeds advisory WIP limit of 2 (4 > 2)');
+assert(!testWipOverview.exceededUsers.includes('user-b'), 'User B does not exceed limit (0 <= 1)');
+
+// 10. Delivery Metrics per Professional
+const testTeamMetrics = calculateProfessionalDeliveryMetrics(
+  allTestActs,
+  [{ id: 'user-a', username: 'Usuário A' }, { id: 'user-b', username: 'Usuário B' }],
+  undefined,
+  testToday,
+  { 'user-a': 2, 'user-b': 1 }
+);
+assert(testTeamMetrics[0].inProgressCount === 4, 'User A has 4 in progress');
+assert(testTeamMetrics[0].isWipLimitExceeded === true, 'User A is marked as limit exceeded');
+assert(testTeamMetrics[1].inProgressCount === 0, 'User B has 0 in progress (WIP zero)');
+assert(testTeamMetrics[1].blockedCount === 1, 'User B has 1 blocked');
+assert(testTeamMetrics[1].isWipLimitExceeded === false, 'User B is within limit');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {

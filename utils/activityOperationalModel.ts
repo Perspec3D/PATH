@@ -9,6 +9,8 @@ import {
   ProjectStatus
 } from '../types';
 
+export { ActivityCanonicalStatus, ActivityDeadlineStatus };
+
 /**
  * Normalizes any activity status (canonical or legacy) into one of the four canonical states:
  * - A FAZER
