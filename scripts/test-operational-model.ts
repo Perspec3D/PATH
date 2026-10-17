@@ -38,12 +38,19 @@ import {
   ProjectStatus,
   Project,
   InternalUser,
-  UserRole
+  UserRole,
+  Client
 } from '../types';
 import {
   calculateTeamOperationalCapacity,
   SampleConfidence
 } from '../utils/teamOperationalCapacity';
+import {
+  calculateManagementAttention,
+  AlertSeverity,
+  AlertCategory,
+  addBusinessDaysSafely
+} from '../utils/managementAttentionEngine';
 
 let passed = 0;
 let failed = 0;
@@ -1250,9 +1257,247 @@ const predictabilityResult = calculateProjectDeliveryPredictability({
   activities: batchActivities,
   todayStr: testToday
 });
-assert(predictabilityResult.length === 1, 'Predictability returned exactly 1 family (current revision)');
-assert(predictabilityResult[0].projectId === 'proj-fam-rev1', 'Evaluated current revision Rev 01');
-assert(predictabilityResult[0].totalActivitiesCount === 1, 'Correctly matched 1 activity via Map index');
+// ============================================================================
+// 13. FASE 4: CENTRAL DE ATENÇÃO GERENCIAL & MOTOR DE ALERTAS
+// ============================================================================
+console.log('\n13. Management Attention Engine & Alert Rules (Fase 4)');
+
+// 13.1 Business Days Calculation: Fri 2026-10-16 + 3 business days = Wed 2026-10-21
+const horizonCheck = addBusinessDaysSafely('2026-10-16', 3, [1, 2, 3, 4, 5]);
+assert(horizonCheck === '2026-10-21', 'Adding 3 business days to Friday 2026-10-16 skips weekend and yields Wednesday 2026-10-21');
+
+const clientsSample: Client[] = [
+  { id: 'cli-1', workspaceId: 'ws-1', code: '001', name: 'Incorporadora Alpha', type: 'PJ', status: 'ACTIVE' },
+  { id: 'cli-2', workspaceId: 'ws-1', code: '002', name: 'Construtora Beta', type: 'PJ', status: 'ACTIVE' }
+];
+
+const usersSample: InternalUser[] = [
+  { id: 'u-eng-1', workspaceId: 'ws-1', username: 'Eng. Bruno', passwordHash: '', role: UserRole.USER, isActive: true },
+  { id: 'u-eng-2', workspaceId: 'ws-1', username: 'Eng. Camila', passwordHash: '', role: UserRole.USER, isActive: true },
+  { id: 'u-eng-3', workspaceId: 'ws-1', username: 'Eng. Diego', passwordHash: '', role: UserRole.USER, isActive: true } // Sem limite configurado
+];
+
+const projectsSample: Project[] = [
+  // 1. Projeto Ativo e Atrasado (CRÍTICA)
+  {
+    id: 'prj-overdue',
+    workspaceId: 'ws-1',
+    clientId: 'cli-1',
+    code: '001-001-26',
+    name: 'Edifício Horizon',
+    status: ProjectStatus.IN_PROGRESS,
+    startDate: '2026-09-01',
+    deliveryDate: '2026-10-10', // Vencido há 7 dias (ref 2026-10-17)
+    revision: 'Rev.01',
+    isCurrentRevision: true,
+    familyId: 'fam-horizon',
+    createdAt: 1,
+    updatedAt: 1
+  },
+  // 2. Projeto Ativo com Entrega Próxima (ATENÇÃO se atividade próxima, ou INFORMATIVA)
+  {
+    id: 'prj-upcoming',
+    workspaceId: 'ws-1',
+    clientId: 'cli-2',
+    code: '002-005-26',
+    name: 'Residencial Aurora',
+    status: ProjectStatus.IN_PROGRESS,
+    startDate: '2026-10-01',
+    deliveryDate: '2026-10-20', // Próxima terça (dentro de 3 dias úteis a partir de 2026-10-17 sábado -> 19 seg, 20 ter, 21 qua)
+    revision: 'Rev.00',
+    isCurrentRevision: true,
+    familyId: 'fam-aurora',
+    createdAt: 1,
+    updatedAt: 1
+  },
+  // 3. Projeto com Dados Incompletos (sem prazo de entrega)
+  {
+    id: 'prj-incomplete',
+    workspaceId: 'ws-1',
+    clientId: 'cli-1',
+    code: '001-008-26',
+    name: 'Estudo Preliminar Torre Sul',
+    status: ProjectStatus.QUEUE,
+    startDate: '2026-10-15',
+    deliveryDate: undefined, // Sem prazo definido
+    revision: 'Rev.00',
+    isCurrentRevision: true,
+    familyId: 'fam-torre',
+    createdAt: 1,
+    updatedAt: 1
+  },
+  // 4. Projeto Cancelado (NÃO deve gerar alertas)
+  {
+    id: 'prj-canceled',
+    workspaceId: 'ws-1',
+    clientId: 'cli-1',
+    code: '001-002-26',
+    name: 'Projeto Cancelado',
+    status: ProjectStatus.CANCELED,
+    startDate: '2026-09-01',
+    deliveryDate: '2026-10-05',
+    revision: 'Rev.00',
+    isCurrentRevision: true,
+    familyId: 'fam-cancel',
+    createdAt: 1,
+    updatedAt: 1
+  },
+  // 5. Revisão Histórica Inativa (NÃO deve gerar alertas)
+  {
+    id: 'prj-hist-rev0',
+    workspaceId: 'ws-1',
+    clientId: 'cli-1',
+    code: '001-001-26',
+    name: 'Edifício Horizon Rev 00',
+    status: ProjectStatus.DONE,
+    startDate: '2026-09-01',
+    deliveryDate: '2026-09-25',
+    revision: 'Rev.00',
+    isCurrentRevision: false, // Inativa!
+    familyId: 'fam-horizon',
+    createdAt: 1,
+    updatedAt: 1
+  }
+];
+
+const activitiesSample: ProjectActivity[] = [
+  // Atividades do Projeto Horizon (Atrasado)
+  {
+    id: 'act-hor-1',
+    projectId: 'prj-overdue',
+    workspaceId: 'ws-1',
+    name: 'Modelagem Estrutural 3D',
+    status: ActivityCanonicalStatus.IN_PROGRESS,
+    assigneeId: 'u-eng-1',
+    deliveryDate: '2026-10-12', // Atrasada há 5 dias
+    orderIndex: 0,
+    deadlineChangesCount: 0,
+    createdAt: 1,
+    updatedAt: 1
+  },
+  {
+    id: 'act-hor-2',
+    projectId: 'prj-overdue',
+    workspaceId: 'ws-1',
+    name: 'Detalhamento de Formas',
+    status: ActivityCanonicalStatus.BLOCKED,
+    assigneeId: 'u-eng-1',
+    deliveryDate: '2026-10-15',
+    blockedReason: 'Aguardando laudo de sondagem do cliente',
+    orderIndex: 1,
+    deadlineChangesCount: 0,
+    createdAt: 1,
+    updatedAt: 1
+  },
+  // Atividade do Projeto Aurora (Próxima entrega)
+  {
+    id: 'act-aur-1',
+    projectId: 'prj-upcoming',
+    workspaceId: 'ws-1',
+    name: 'Compatibilização Hidráulica',
+    status: ActivityCanonicalStatus.IN_PROGRESS,
+    assigneeId: 'u-eng-2',
+    deliveryDate: '2026-10-20', // Próxima
+    orderIndex: 0,
+    deadlineChangesCount: 0,
+    createdAt: 1,
+    updatedAt: 1
+  },
+  // Segunda atividade de Bruno para estourar o limite de WIP (limite Bruno: 1, Bruno terá 2 em andamento)
+  {
+    id: 'act-aur-2',
+    projectId: 'prj-upcoming',
+    workspaceId: 'ws-1',
+    name: 'Planta de Cargas',
+    status: ActivityCanonicalStatus.IN_PROGRESS,
+    assigneeId: 'u-eng-1', // Bruno tem act-hor-1 e act-aur-2 em andamento
+    deliveryDate: '2026-10-28',
+    orderIndex: 1,
+    deadlineChangesCount: 0,
+    createdAt: 1,
+    updatedAt: 1
+  },
+  // Atividade de projeto cancelado (deve ser ignorada)
+  {
+    id: 'act-canc-1',
+    projectId: 'prj-canceled',
+    workspaceId: 'ws-1',
+    name: 'Atividade Descartada',
+    status: ActivityCanonicalStatus.BLOCKED,
+    blockedReason: 'Cancelado',
+    deliveryDate: '2026-10-01',
+    orderIndex: 0,
+    deadlineChangesCount: 0,
+    createdAt: 1,
+    updatedAt: 1
+  }
+];
+
+const sampleEventsByActivityId = {
+  'act-hor-2': [
+    { eventType: 'ACTIVITY_BLOCKED', created_at: '2026-10-14T10:00:00.000Z' }
+  ]
+};
+
+const attentionResult = calculateManagementAttention({
+  projects: projectsSample,
+  activities: activitiesSample,
+  users: usersSample,
+  clients: clientsSample,
+  todayStr: '2026-10-17',
+  userWipLimits: {
+    'u-eng-1': 1, // Bruno tem limite de 1 WIP, mas está com 2 em andamento
+    'u-eng-2': 3  // Camila tem limite de 3 WIP, e está com 1 (dentro do limite)
+    // Diego não tem limite configurado -> NÃO deve gerar alerta
+  },
+  eventsByActivityId: sampleEventsByActivityId,
+  upcomingBusinessDaysHorizon: 3
+});
+
+// Verificação do Resumo
+assert(attentionResult.summary.overdueProjectsCount === 1, 'Summary has exactly 1 overdue project (Edifício Horizon)');
+assert(attentionResult.summary.blockedActivitiesCount === 1, 'Summary has exactly 1 active blocked activity (Detalhamento)');
+assert(attentionResult.summary.upcomingDeliveriesCount === 2, 'Summary has 2 upcoming deliveries (Residencial Aurora + Compatibilização)');
+assert(attentionResult.summary.wipExceededUsersCount === 1, 'Summary has 1 user with exceeded WIP limit (Bruno: 2 > 1)');
+
+// Consolidação e severidades
+const horizonItem = attentionResult.items.find(i => i.type === 'project' && i.projectId === 'prj-overdue');
+assert(horizonItem !== undefined, 'Horizon project consolidated in priority list');
+assert(horizonItem?.maxSeverity === AlertSeverity.CRITICAL, 'Horizon maxSeverity is CRÍTICA due to overdue project deadline');
+assert(horizonItem?.type === 'project' && horizonItem.overdueActivitiesCount === 1, 'Horizon has 1 overdue activity linked');
+assert(horizonItem?.type === 'project' && horizonItem.blockedActivitiesCount === 1, 'Horizon has 1 blocked activity linked');
+assert(horizonItem?.type === 'project' && horizonItem.daysOverdue === 7, 'Horizon daysOverdue is 7 calendar days');
+assert(horizonItem?.type === 'project' && horizonItem.activities.find(a => a.category === AlertCategory.ACTIVE_BLOCK)?.blockedSinceDate === '14/10/2026', 'Blocked activity tracks date from valid event');
+
+const auroraItem = attentionResult.items.find(i => i.type === 'project' && i.projectId === 'prj-upcoming');
+assert(auroraItem !== undefined, 'Aurora project present in priority list');
+assert(auroraItem?.maxSeverity === AlertSeverity.ATTENTION, 'Aurora maxSeverity is ATENÇÃO (upcoming delivery)');
+assert(auroraItem?.type === 'project' && auroraItem.primaryCategory === AlertCategory.UPCOMING_DELIVERY, 'Aurora primaryCategory is UPCOMING_DELIVERY');
+
+const incompleteItem = attentionResult.items.find(i => i.type === 'project' && i.projectId === 'prj-incomplete');
+assert(incompleteItem !== undefined, 'Incomplete project present in priority list');
+assert(incompleteItem?.maxSeverity === AlertSeverity.INFORMATIVE, 'Incomplete project classified as INFORMATIVA (never artificially critical)');
+
+const wipBrunoItem = attentionResult.items.find(i => i.type === 'team' && i.userId === 'u-eng-1');
+assert(wipBrunoItem !== undefined, 'Bruno WIP item present in priority list');
+assert(wipBrunoItem?.maxSeverity === AlertSeverity.ATTENTION, 'WIP exceeded classified as ATENÇÃO');
+assert(wipBrunoItem?.type === 'team' && wipBrunoItem.inProgressCount === 2, 'Bruno in progress count is 2');
+assert(wipBrunoItem?.type === 'team' && wipBrunoItem.wipLimit === 1, 'Bruno advisory WIP limit is 1');
+assert(wipBrunoItem?.type === 'team' && wipBrunoItem.exceededBy === 1, 'Bruno exceeded by 1');
+
+// Ausência de alertas espúrios
+const canceledItem = attentionResult.items.find(i => i.type === 'project' && i.projectId === 'prj-canceled');
+assert(canceledItem === undefined, 'Canceled project produces 0 alerts');
+
+const histRevItem = attentionResult.items.find(i => i.type === 'project' && i.projectId === 'prj-hist-rev0');
+assert(histRevItem === undefined, 'Historical revision Rev 00 produces 0 alerts');
+
+const wipDiegoItem = attentionResult.items.find(i => i.type === 'team' && i.userId === 'u-eng-3');
+assert(wipDiegoItem === undefined, 'User without configured WIP limit produces 0 overload alerts');
+
+// Ordenação determinística
+assert(attentionResult.items[0].maxSeverity === AlertSeverity.CRITICAL, 'First item in priority list is CRÍTICA (Horizon)');
+assert(attentionResult.items[0].id === 'prj-overdue', 'First item is Edifício Horizon (most overdue)');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {

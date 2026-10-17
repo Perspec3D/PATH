@@ -29,6 +29,8 @@ import {
 interface TeamProps {
   db: AppDB;
   theme: 'dark' | 'light';
+  initialSelectedUserId?: string;
+  onClearInitialSelectedUserId?: () => void;
 }
 
 const currentMonthValue = () => {
@@ -36,12 +38,26 @@ const currentMonthValue = () => {
   return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 };
 
-export const Team: React.FC<TeamProps> = ({ db }) => {
+export const Team: React.FC<TeamProps> = ({
+  db,
+  theme,
+  initialSelectedUserId,
+  onClearInitialSelectedUserId
+}) => {
   const [activities, setActivities] = useState<ProjectActivity[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthValue);
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [selectedUserId, setSelectedUserId] = useState<string>(() => initialSelectedUserId || '');
+
+  useEffect(() => {
+    if (initialSelectedUserId) {
+      setSelectedUserId(initialSelectedUserId);
+      if (onClearInitialSelectedUserId) {
+        onClearInitialSelectedUserId();
+      }
+    }
+  }, [initialSelectedUserId]);
   const [isWipLimitModalOpen, setIsWipLimitModalOpen] = useState(false);
 
   const workspaceId = db.company?.id;

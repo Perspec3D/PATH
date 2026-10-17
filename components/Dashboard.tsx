@@ -38,10 +38,15 @@ import {
   HistoricalWindowWeeks,
   SampleConfidence
 } from '../utils/teamOperationalCapacity';
+import { ManagementAttentionCenter } from './ManagementAttentionCenter';
+import { fetchProjectActivitiesEventsBatch } from '../storage';
 
 interface DashboardProps {
   db: AppDB;
   theme?: 'dark' | 'light';
+  onOpenProject?: (project: Project) => void;
+  onOpenActivity?: (project: Project, activity: ProjectActivity) => void;
+  onNavigateToTeam?: (userId?: string) => void;
 }
 
 interface HealthGaugeProps {
@@ -509,7 +514,13 @@ const RiskDetailModal: React.FC<{
 };
 
 
-export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
+export const Dashboard: React.FC<DashboardProps> = ({
+  db,
+  theme = 'dark',
+  onOpenProject,
+  onOpenActivity,
+  onNavigateToTeam
+}) => {
   const [predictabilityFilter, setPredictabilityFilter] = useState<'ALL' | ProjectDeliveryPredictabilityStatus>('ALL');
   const [predictabilitySearch, setPredictabilitySearch] = useState('');
   const [capacityWindow, setCapacityWindow] = useState<HistoricalWindowWeeks>(8);
@@ -521,6 +532,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   const clients = db.clients || [];
   const [projectActivities, setProjectActivities] = useState<ProjectActivity[]>([]);
   const [forecastDataset, setForecastDataset] = useState<OperationalMetricsDataset | null>(null);
+  const [activityEventsBatch, setActivityEventsBatch] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     const loadForecastDataset = async () => {
@@ -535,6 +547,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
     };
     loadForecastDataset();
   }, [db.company?.id]);
+
+  useEffect(() => {
+    const loadBlockedEvents = async () => {
+      if (!db.company?.id) return;
+      const blockedIds = projectActivities
+        .filter(a => normalizeActivityStatus(a.status) === ActivityCanonicalStatus.BLOCKED)
+        .map(a => a.id);
+      if (blockedIds.length > 0) {
+        try {
+          const events = await fetchProjectActivitiesEventsBatch(db.company.id, blockedIds);
+          setActivityEventsBatch(events);
+        } catch (e) {
+          console.error("Erro ao carregar eventos de atividades bloqueadas no Dashboard:", e);
+        }
+      }
+    };
+    loadBlockedEvents();
+  }, [db.company?.id, projectActivities]);
 
   const now = new Date();
   const next7Days = new Date();
@@ -1143,6 +1173,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* CENTRAL DE ATENÇÃO GERENCIAL (FASE 4) */}
+        <div className="lg:col-span-3">
+          <ManagementAttentionCenter
+            projects={projects}
+            activities={projectActivities}
+            users={users}
+            clients={clients}
+            theme={theme}
+            todayStr={todayStr}
+            userWipLimits={userWipLimits}
+            eventsByActivityId={activityEventsBatch}
+            onOpenProject={onOpenProject}
+            onOpenActivity={onOpenActivity}
+            onNavigateToTeam={onNavigateToTeam}
+          />
         </div>
 
         {/* PREVISIBILIDADE DE ENTREGA */}

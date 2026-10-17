@@ -1371,6 +1371,15 @@ export const Projects: React.FC<ProjectsProps> = ({
     setShowModal(true);
   };
 
+  useEffect(() => {
+    if (initialEditingProject) {
+      openEdit(initialEditingProject);
+      if (clearInitialEditingProject) {
+        clearInitialEditingProject();
+      }
+    }
+  }, [initialEditingProject]);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isHistoricalRevision) {

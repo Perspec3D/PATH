@@ -31,6 +31,7 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [initialEditingProject, setInitialEditingProject] = useState<Project | null>(null);
   const [initialEditingActivity, setInitialEditingActivity] = useState<ProjectActivity | null>(null);
+  const [initialTeamUserId, setInitialTeamUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentAlert, setCurrentAlert] = useState<TeamTask | null>(null);
   const notifiedTasksRef = useRef<Record<string, boolean>>({});
@@ -753,7 +754,25 @@ const App: React.FC = () => {
         db={db}
       >
         <ErrorBoundary moduleName={`Módulo ${currentPage.toUpperCase()}`}>
-          {currentPage === 'dashboard' && <Dashboard db={db} theme={theme} />}
+          {currentPage === 'dashboard' && (
+            <Dashboard
+              db={db}
+              theme={theme}
+              onOpenProject={(project) => {
+                setInitialEditingProject(project);
+                setCurrentPage('projects');
+              }}
+              onOpenActivity={(project, activity) => {
+                setInitialEditingProject(project);
+                setInitialEditingActivity(activity);
+                setCurrentPage('projects');
+              }}
+              onNavigateToTeam={(userId) => {
+                setInitialTeamUserId(userId || null);
+                setCurrentPage('team');
+              }}
+            />
+          )}
           {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
           {currentPage === 'projects' && (
             <Projects
@@ -797,7 +816,14 @@ const App: React.FC = () => {
               }}
             />
           )}
-          {currentPage === 'team' && userSession.role === UserRole.ADMIN && <Team db={db} theme={theme} />}
+          {currentPage === 'team' && userSession.role === UserRole.ADMIN && (
+            <Team
+              db={db}
+              theme={theme}
+              initialSelectedUserId={initialTeamUserId || undefined}
+              onClearInitialSelectedUserId={() => setInitialTeamUserId(null)}
+            />
+          )}
           {currentPage === 'reports' && userSession.role === UserRole.ADMIN && <Reports db={db} theme={theme} />}
           {currentPage === 'settings' && userSession.role === UserRole.ADMIN && (
             <Settings db={db} setDb={setDb} currentUser={userSession} theme={theme} />
