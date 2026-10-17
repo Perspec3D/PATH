@@ -811,3 +811,586 @@ export const createActivityEventPayload = (
   actorId: actor.id,
   actorName: actor.username
 });
+
+// ============================================================================
+// ETAPA 2: MOTOR UNIFICADO DE KPI E INTELIGÊNCIA GERENCIAL
+// ============================================================================
+
+export interface KPIPeriodFilter {
+  monthStr?: string;   // e.g. "2026-10" (YYYY-MM)
+  startDate?: string;  // YYYY-MM-DD
+  endDate?: string;    // YYYY-MM-DD
+}
+
+export interface UnifiedDeliveryKPIs {
+  // Prazos e Entregas
+  completedCount: number;
+  completedWithOriginalDeadlineCount: number;
+  completedOnOriginalDeadlineCount: number;
+  originalDeliveryRatePercent: number | null; // null se denominador for 0 ("Dados insuficientes")
+
+  completedWithUpdatedDeadlineCount: number;
+  completedOnUpdatedDeadlineCount: number;
+  updatedDeliveryRatePercent: number | null;
+
+  openOverdueCount: number;
+  openUpcomingCount: number;
+  openOnTimeCount: number;
+
+  averageDelayDaysCompletedLate: number | null; // em dias
+  delayedCompletedCount: number;
+
+  averageLeadTimeDaysCompleted: number | null; // em dias
+  leadTimeSampleCount: number;
+
+  // Fluxo de Trabalho
+  toDoCount: number;
+  inProgressCount: number; // WIP canônico (estritamente EM ANDAMENTO)
+  blockedCount: number;    // Estritamente BLOQUEADA, sem duplicação no WIP
+  canonicalWipCount: number;
+  totalActivitiesCount: number;
+
+  // Confiabilidade do Planejamento
+  rescheduledActivitiesCount: number;
+  totalReschedulingsCount: number;
+  rescheduledRatePercent: number | null;
+  averageOriginalDeviationDays: number | null;
+
+  // Impedimentos
+  activeBlocksCount: number;
+  blockedReasonsDistribution: Record<string, number>;
+  totalBlockedDays: number;
+}
+
+export interface UpcomingDeliveryItem {
+  id: string;
+  projectId: string;
+  name: string;
+  deliveryDate: string;
+  status: ActivityCanonicalStatus;
+  deadlineStatus: ActivityDeadlineStatus;
+  deadlineLabel: string;
+  isOverdue: boolean;
+  isUpcoming: boolean;
+}
+
+export interface ProfessionalDeliveryMetrics {
+  userId: string;
+  username?: string;
+  inProgressCount: number; // WIP
+  blockedCount: number;
+  overdueCount: number;
+  completedInPeriodCount: number;
+  completedOnTimeCount: number;
+  completedWithDeadlineCount: number;
+  onTimeRatePercent: number | null;
+  averageLeadTimeDays: number | null;
+  leadTimeSampleCount: number;
+  upcomingDeliveries: UpcomingDeliveryItem[];
+  wipLimit?: number;
+  isWipLimitExceeded: boolean;
+}
+
+export interface WipOverview {
+  totalWip: number;       // Canonical EM ANDAMENTO
+  totalBlocked: number;   // Canonical BLOQUEADA
+  totalOverdue: number;   // Open past deadline
+  wipByAssignee: Record<string, number>;
+  blockedByAssignee: Record<string, number>;
+  overdueByAssignee: Record<string, number>;
+  userLimits: Record<string, number>;
+  exceededUsers: string[];
+}
+
+/**
+ * Checks whether a completed activity belongs to the requested period.
+ * If no period is specified, returns true.
+ */
+export const isActivityInPeriod = (
+  activity: ProjectActivity,
+  period?: KPIPeriodFilter
+): boolean => {
+  if (!period) return true;
+  const canonical = normalizeActivityStatus(activity.status);
+  
+  // For open activities, they reflect current state unless strict date range is required
+  if (canonical !== ActivityCanonicalStatus.COMPLETED) {
+    return true;
+  }
+
+  const completionDate = activity.actualEndDate;
+  if (!completionDate) return false;
+
+  if (period.monthStr) {
+    return completionDate.startsWith(period.monthStr);
+  }
+
+  if (period.startDate && completionDate < period.startDate) {
+    return false;
+  }
+
+  if (period.endDate && completionDate > period.endDate) {
+    return false;
+  }
+
+  return true;
+};
+
+/**
+ * Consolidates all delivery, workflow, reliability and impedance KPIs for a set of activities.
+ */
+export const calculateUnifiedKPIs = (
+  activities: ProjectActivity[],
+  eventsInput: ProjectActivityEvent[] | Record<string, ProjectActivityEvent[]> = [],
+  period?: KPIPeriodFilter,
+  todayStr: string = getTodayDateString(),
+  activeProjectIds?: Set<string>
+): UnifiedDeliveryKPIs => {
+  // Normalize events input
+  const eventsByActivityId: Record<string, ProjectActivityEvent[]> = {};
+  if (Array.isArray(eventsInput)) {
+    for (const evt of eventsInput) {
+      if (!eventsByActivityId[evt.activityId]) {
+        eventsByActivityId[evt.activityId] = [];
+      }
+      eventsByActivityId[evt.activityId].push(evt);
+    }
+  } else if (eventsInput) {
+    Object.assign(eventsByActivityId, eventsInput);
+  }
+
+  // Filter activities by active project / revision if provided to avoid duplicate historical revisions
+  const filteredActivities = activities.filter(act => {
+    if (activeProjectIds && !activeProjectIds.has(act.projectId)) {
+      return false;
+    }
+    return isActivityInPeriod(act, period);
+  });
+
+  let toDoCount = 0;
+  let inProgressCount = 0;
+  let blockedCount = 0;
+  let completedCount = 0;
+
+  let openOverdueCount = 0;
+  let openUpcomingCount = 0;
+  let openOnTimeCount = 0;
+
+  // On-time tracking (Original deadline)
+  let completedWithOriginalDeadlineCount = 0;
+  let completedOnOriginalDeadlineCount = 0;
+
+  // On-time tracking (Updated deadline)
+  let completedWithUpdatedDeadlineCount = 0;
+  let completedOnUpdatedDeadlineCount = 0;
+
+  // Delay of late completed
+  let sumDelayDaysCompletedLate = 0;
+  let delayedCompletedCount = 0;
+
+  // Lead time of completed
+  let sumLeadTimeDays = 0;
+  let leadTimeSampleCount = 0;
+
+  // Reschedulings
+  let rescheduledActivitiesCount = 0;
+  let totalReschedulingsCount = 0;
+  let sumOriginalDeviationDays = 0;
+  let deviationSampleCount = 0;
+
+  // Blockages
+  const blockedReasonsDistribution: Record<string, number> = {};
+  let totalBlockedDays = 0;
+
+  for (const act of filteredActivities) {
+    const canonical = normalizeActivityStatus(act.status);
+    const deadlineEval = evaluateDeadlineStatus(act, todayStr);
+    const actEvents = eventsByActivityId[act.id] || [];
+
+    // Calculate reschedulings for reliability metrics
+    const rescheduleEventsCount = actEvents.filter(e => e.eventType === 'RESCHEDULED').length;
+    const effectiveChangesCount = Math.max(act.deadlineChangesCount || 0, rescheduleEventsCount);
+    const hasDifferentOriginal = Boolean(
+      act.originalDeliveryDate &&
+      act.deliveryDate &&
+      act.originalDeliveryDate !== act.deliveryDate
+    );
+
+    if (effectiveChangesCount > 0 || hasDifferentOriginal) {
+      rescheduledActivitiesCount++;
+      totalReschedulingsCount += Math.max(1, effectiveChangesCount);
+    }
+
+    if (act.deliveryDate && act.originalDeliveryDate) {
+      const dev = calculateDaysDifference(act.deliveryDate, act.originalDeliveryDate);
+      if (dev !== null && dev !== 0) {
+        sumOriginalDeviationDays += Math.abs(dev);
+        deviationSampleCount++;
+      }
+    }
+
+    // Status breakdown
+    switch (canonical) {
+      case ActivityCanonicalStatus.TO_DO:
+        toDoCount++;
+        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE) openOverdueCount++;
+        else if (deadlineEval.status === ActivityDeadlineStatus.UPCOMING) openUpcomingCount++;
+        else openOnTimeCount++;
+        break;
+
+      case ActivityCanonicalStatus.IN_PROGRESS:
+        inProgressCount++;
+        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE) openOverdueCount++;
+        else if (deadlineEval.status === ActivityDeadlineStatus.UPCOMING) openUpcomingCount++;
+        else openOnTimeCount++;
+        break;
+
+      case ActivityCanonicalStatus.BLOCKED:
+        blockedCount++;
+        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE) openOverdueCount++;
+        else if (deadlineEval.status === ActivityDeadlineStatus.UPCOMING) openUpcomingCount++;
+        else openOnTimeCount++;
+
+        // Track blocked reason
+        const reason = (act.blockedReason && act.blockedReason.trim()) || 'Motivo não especificado';
+        blockedReasonsDistribution[reason] = (blockedReasonsDistribution[reason] || 0) + 1;
+        break;
+
+      case ActivityCanonicalStatus.COMPLETED:
+        completedCount++;
+
+        // 1. Original Deadline Compliance
+        const originalTarget = act.originalDeliveryDate;
+        if (originalTarget && act.actualEndDate) {
+          completedWithOriginalDeadlineCount++;
+          if (act.actualEndDate <= originalTarget) {
+            completedOnOriginalDeadlineCount++;
+          }
+        }
+
+        // 2. Updated Deadline Compliance
+        const updatedTarget = act.deadlineAtConclusion || act.deliveryDate;
+        if (updatedTarget && act.actualEndDate) {
+          completedWithUpdatedDeadlineCount++;
+          if (act.actualEndDate <= updatedTarget) {
+            completedOnUpdatedDeadlineCount++;
+          } else {
+            // Late completion delay
+            const delayDays = calculateDaysDifference(act.actualEndDate, updatedTarget);
+            if (delayDays !== null && delayDays > 0) {
+              sumDelayDaysCompletedLate += delayDays;
+              delayedCompletedCount++;
+            }
+          }
+        }
+
+        // 3. Lead Time (Difference between actual start and actual end)
+        if (act.actualStartDate && act.actualEndDate) {
+          const leadDays = calculateCalendarDurationDays(act.actualStartDate, act.actualEndDate);
+          if (leadDays !== null && leadDays > 0) {
+            sumLeadTimeDays += leadDays;
+            leadTimeSampleCount++;
+          }
+        }
+        break;
+    }
+
+    // Accumulate blocked days from events or current blocked status
+    const managerial = calculateActivityManagerialMetrics(act, actEvents, todayStr);
+    if (managerial.blockedDurationDays && managerial.blockedDurationDays > 0) {
+      totalBlockedDays += managerial.blockedDurationDays;
+    }
+  }
+
+  // Calculate percentages with rigorous zero-division protection ("Dados insuficientes" -> null)
+  const originalDeliveryRatePercent = completedWithOriginalDeadlineCount > 0
+    ? Math.round((completedOnOriginalDeadlineCount / completedWithOriginalDeadlineCount) * 100)
+    : null;
+
+  const updatedDeliveryRatePercent = completedWithUpdatedDeadlineCount > 0
+    ? Math.round((completedOnUpdatedDeadlineCount / completedWithUpdatedDeadlineCount) * 100)
+    : null;
+
+  const averageDelayDaysCompletedLate = delayedCompletedCount > 0
+    ? Math.round((sumDelayDaysCompletedLate / delayedCompletedCount) * 10) / 10
+    : null;
+
+  const averageLeadTimeDaysCompleted = leadTimeSampleCount > 0
+    ? Math.round((sumLeadTimeDays / leadTimeSampleCount) * 10) / 10
+    : null;
+
+  const totalConsidered = filteredActivities.length;
+  const rescheduledRatePercent = totalConsidered > 0
+    ? Math.round((rescheduledActivitiesCount / totalConsidered) * 100)
+    : null;
+
+  const averageOriginalDeviationDays = deviationSampleCount > 0
+    ? Math.round((sumOriginalDeviationDays / deviationSampleCount) * 10) / 10
+    : null;
+
+  return {
+    completedCount,
+    completedWithOriginalDeadlineCount,
+    completedOnOriginalDeadlineCount,
+    originalDeliveryRatePercent,
+    completedWithUpdatedDeadlineCount,
+    completedOnUpdatedDeadlineCount,
+    updatedDeliveryRatePercent,
+    openOverdueCount,
+    openUpcomingCount,
+    openOnTimeCount,
+    averageDelayDaysCompletedLate,
+    delayedCompletedCount,
+    averageLeadTimeDaysCompleted,
+    leadTimeSampleCount,
+    toDoCount,
+    inProgressCount,
+    blockedCount,
+    canonicalWipCount: inProgressCount,
+    totalActivitiesCount: totalConsidered,
+    rescheduledActivitiesCount,
+    totalReschedulingsCount,
+    rescheduledRatePercent,
+    averageOriginalDeviationDays,
+    activeBlocksCount: blockedCount,
+    blockedReasonsDistribution,
+    totalBlockedDays
+  };
+};
+
+/**
+ * Calculates delivery and WIP metrics per professional.
+ */
+export const calculateProfessionalDeliveryMetrics = (
+  activities: ProjectActivity[],
+  users: Array<{ id: string; username: string }>,
+  period?: KPIPeriodFilter,
+  todayStr: string = getTodayDateString(),
+  userWipLimits: Record<string, number> = {},
+  activeProjectIds?: Set<string>
+): ProfessionalDeliveryMetrics[] => {
+  return users.map(user => {
+    // Filter activities where user is assignee or conclusion responsible
+    const userActivities = activities.filter(act => {
+      if (activeProjectIds && !activeProjectIds.has(act.projectId)) {
+        return false;
+      }
+      return act.assigneeId === user.id || act.conclusionResponsibleId === user.id;
+    });
+
+    let inProgressCount = 0;
+    let blockedCount = 0;
+    let overdueCount = 0;
+
+    let completedInPeriodCount = 0;
+    let completedOnTimeCount = 0;
+    let completedWithDeadlineCount = 0;
+
+    let sumLeadTimeDays = 0;
+    let leadTimeSampleCount = 0;
+
+    const openActivitiesForUpcoming: UpcomingDeliveryItem[] = [];
+
+    for (const act of userActivities) {
+      const canonical = normalizeActivityStatus(act.status);
+      const deadlineEval = evaluateDeadlineStatus(act, todayStr);
+
+      if (canonical === ActivityCanonicalStatus.IN_PROGRESS) {
+        if (act.assigneeId === user.id) {
+          inProgressCount++;
+        }
+        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE) overdueCount++;
+        if (act.deliveryDate && act.assigneeId === user.id) {
+          openActivitiesForUpcoming.push({
+            id: act.id,
+            projectId: act.projectId,
+            name: act.name,
+            deliveryDate: act.deliveryDate,
+            status: canonical,
+            deadlineStatus: deadlineEval.status,
+            deadlineLabel: deadlineEval.label,
+            isOverdue: deadlineEval.status === ActivityDeadlineStatus.OVERDUE,
+            isUpcoming: deadlineEval.status === ActivityDeadlineStatus.UPCOMING
+          });
+        }
+      } else if (canonical === ActivityCanonicalStatus.BLOCKED) {
+        if (act.assigneeId === user.id) {
+          blockedCount++;
+        }
+        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE) overdueCount++;
+        if (act.deliveryDate && act.assigneeId === user.id) {
+          openActivitiesForUpcoming.push({
+            id: act.id,
+            projectId: act.projectId,
+            name: act.name,
+            deliveryDate: act.deliveryDate,
+            status: canonical,
+            deadlineStatus: deadlineEval.status,
+            deadlineLabel: deadlineEval.label,
+            isOverdue: deadlineEval.status === ActivityDeadlineStatus.OVERDUE,
+            isUpcoming: deadlineEval.status === ActivityDeadlineStatus.UPCOMING
+          });
+        }
+      } else if (canonical === ActivityCanonicalStatus.TO_DO) {
+        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE) overdueCount++;
+        if (act.deliveryDate && act.assigneeId === user.id) {
+          openActivitiesForUpcoming.push({
+            id: act.id,
+            projectId: act.projectId,
+            name: act.name,
+            deliveryDate: act.deliveryDate,
+            status: canonical,
+            deadlineStatus: deadlineEval.status,
+            deadlineLabel: deadlineEval.label,
+            isOverdue: deadlineEval.status === ActivityDeadlineStatus.OVERDUE,
+            isUpcoming: deadlineEval.status === ActivityDeadlineStatus.UPCOMING
+          });
+        }
+      } else if (canonical === ActivityCanonicalStatus.COMPLETED) {
+        if (isActivityInPeriod(act, period)) {
+          completedInPeriodCount++;
+
+          const target = act.deadlineAtConclusion || act.deliveryDate;
+          if (target && act.actualEndDate) {
+            completedWithDeadlineCount++;
+            if (act.actualEndDate <= target) {
+              completedOnTimeCount++;
+            }
+          }
+
+          if (act.actualStartDate && act.actualEndDate) {
+            const lead = calculateCalendarDurationDays(act.actualStartDate, act.actualEndDate);
+            if (lead !== null && lead > 0) {
+              sumLeadTimeDays += lead;
+              leadTimeSampleCount++;
+            }
+          }
+        }
+      }
+    }
+
+    const onTimeRatePercent = completedWithDeadlineCount > 0
+      ? Math.round((completedOnTimeCount / completedWithDeadlineCount) * 100)
+      : null;
+
+    const averageLeadTimeDays = leadTimeSampleCount > 0
+      ? Math.round((sumLeadTimeDays / leadTimeSampleCount) * 10) / 10
+      : null;
+
+    // Sort upcoming deliveries ascending by delivery date
+    openActivitiesForUpcoming.sort((a, b) => a.deliveryDate.localeCompare(b.deliveryDate));
+    const upcomingDeliveries = openActivitiesForUpcoming.slice(0, 5);
+
+    const wipLimit = userWipLimits[user.id];
+    const isWipLimitExceeded = Boolean(wipLimit && wipLimit > 0 && inProgressCount > wipLimit);
+
+    return {
+      userId: user.id,
+      username: user.username,
+      inProgressCount,
+      blockedCount,
+      overdueCount,
+      completedInPeriodCount,
+      completedOnTimeCount,
+      completedWithDeadlineCount,
+      onTimeRatePercent,
+      averageLeadTimeDays,
+      leadTimeSampleCount,
+      upcomingDeliveries,
+      wipLimit,
+      isWipLimitExceeded
+    };
+  });
+};
+
+/**
+ * Calculates global WIP overview, team distribution, and advisory limit alerts.
+ */
+export const calculateWipOverview = (
+  activities: ProjectActivity[],
+  userLimits: Record<string, number> = {},
+  todayStr: string = getTodayDateString(),
+  activeProjectIds?: Set<string>
+): WipOverview => {
+  let totalWip = 0;
+  let totalBlocked = 0;
+  let totalOverdue = 0;
+
+  const wipByAssignee: Record<string, number> = {};
+  const blockedByAssignee: Record<string, number> = {};
+  const overdueByAssignee: Record<string, number> = {};
+
+  for (const act of activities) {
+    if (activeProjectIds && !activeProjectIds.has(act.projectId)) {
+      continue;
+    }
+
+    const canonical = normalizeActivityStatus(act.status);
+    const deadline = evaluateDeadlineStatus(act, todayStr);
+    const assignee = act.assigneeId || 'unassigned';
+
+    if (canonical === ActivityCanonicalStatus.IN_PROGRESS) {
+      totalWip++;
+      wipByAssignee[assignee] = (wipByAssignee[assignee] || 0) + 1;
+      if (deadline.status === ActivityDeadlineStatus.OVERDUE) {
+        totalOverdue++;
+        overdueByAssignee[assignee] = (overdueByAssignee[assignee] || 0) + 1;
+      }
+    } else if (canonical === ActivityCanonicalStatus.BLOCKED) {
+      totalBlocked++;
+      blockedByAssignee[assignee] = (blockedByAssignee[assignee] || 0) + 1;
+      if (deadline.status === ActivityDeadlineStatus.OVERDUE) {
+        totalOverdue++;
+        overdueByAssignee[assignee] = (overdueByAssignee[assignee] || 0) + 1;
+      }
+    } else if (canonical === ActivityCanonicalStatus.TO_DO) {
+      if (deadline.status === ActivityDeadlineStatus.OVERDUE) {
+        totalOverdue++;
+        overdueByAssignee[assignee] = (overdueByAssignee[assignee] || 0) + 1;
+      }
+    }
+  }
+
+  const exceededUsers: string[] = [];
+  for (const [userId, limit] of Object.entries(userLimits)) {
+    if (limit > 0 && (wipByAssignee[userId] || 0) > limit) {
+      exceededUsers.push(userId);
+    }
+  }
+
+  return {
+    totalWip,
+    totalBlocked,
+    totalOverdue,
+    wipByAssignee,
+    blockedByAssignee,
+    overdueByAssignee,
+    userLimits,
+    exceededUsers
+  };
+};
+
+/**
+ * Formats a percentage with clear numerator and denominator or explicit "Dados insuficientes".
+ */
+export const formatKpiRateWithFraction = (
+  percent: number | null,
+  numerator?: number,
+  denominator?: number
+): string => {
+  if (percent === null || denominator === 0 || denominator === undefined) {
+    return 'Dados insuficientes';
+  }
+  return `${percent}% (${numerator}/${denominator})`;
+};
+
+/**
+ * Formats duration in calendar days or "Dados insuficientes".
+ */
+export const formatKpiLeadTimeDays = (days: number | null): string => {
+  if (days === null || !Number.isFinite(days)) {
+    return 'Dados insuficientes';
+  }
+  return `${days} ${days === 1 ? 'dia' : 'dias'}`;
+};
+

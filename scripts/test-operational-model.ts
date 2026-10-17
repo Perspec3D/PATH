@@ -17,7 +17,13 @@ import {
   getActivityStatusTheme,
   getActivityGanttBarStyle,
   addCalendarDays,
-  calculateRescheduledDates
+  calculateRescheduledDates,
+  calculateUnifiedKPIs,
+  calculateProfessionalDeliveryMetrics,
+  calculateWipOverview,
+  formatKpiRateWithFraction,
+  formatKpiLeadTimeDays,
+  isActivityInPeriod
 } from '../utils/activityOperationalModel';
 import {
   ActivityCanonicalStatus,
@@ -337,7 +343,224 @@ assert(oneDayMove.newStartDate === '2026-10-17', '1-day bar moved start');
 assert(oneDayMove.newDeliveryDate === '2026-10-17', '1-day bar moved end');
 assert(calculateCalendarDurationDays(oneDayMove.newStartDate, oneDayMove.newDeliveryDate) === 1, '1-day duration preserved');
 
+// 8. Unified KPI Engine, WIP and Professional Delivery
+console.log('\n8. Unified KPI Engine, WIP and Delivery Metrics');
+
+// Zero sample division safety
+const emptyKpi = calculateUnifiedKPIs([], [], undefined, '2026-10-16');
+assert(emptyKpi.completedCount === 0, 'Empty KPI completed count is 0');
+assert(emptyKpi.originalDeliveryRatePercent === null, 'Empty KPI original rate is null (Dados insuficientes)');
+assert(emptyKpi.updatedDeliveryRatePercent === null, 'Empty KPI updated rate is null (Dados insuficientes)');
+assert(emptyKpi.averageDelayDaysCompletedLate === null, 'Empty KPI delay is null');
+assert(emptyKpi.averageLeadTimeDaysCompleted === null, 'Empty KPI lead time is null');
+assert(emptyKpi.canonicalWipCount === 0, 'Empty KPI WIP count is 0');
+assert(emptyKpi.blockedCount === 0, 'Empty KPI blocked count is 0');
+
+// Comprehensive activities sample
+const sampleActivities: ProjectActivity[] = [
+  // 1. Completed on original deadline
+  {
+    id: 'kpi-1',
+    workspaceId: 'ws-1',
+    projectId: 'proj-1',
+    name: 'Atividade 1',
+    status: ActivityCanonicalStatus.COMPLETED,
+    startDate: '2026-10-01',
+    actualStartDate: '2026-10-01',
+    deliveryDate: '2026-10-10',
+    originalDeliveryDate: '2026-10-10',
+    actualEndDate: '2026-10-08', // 2 days ahead of original
+    orderIndex: 1,
+    deadlineChangesCount: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    assigneeId: 'user-a'
+  },
+  // 2. Completed late vs original, but ON TIME vs updated deadline
+  {
+    id: 'kpi-2',
+    workspaceId: 'ws-1',
+    projectId: 'proj-1',
+    name: 'Atividade 2',
+    status: ActivityCanonicalStatus.COMPLETED,
+    startDate: '2026-10-01',
+    actualStartDate: '2026-10-02',
+    originalDeliveryDate: '2026-10-08',
+    deliveryDate: '2026-10-15',
+    actualEndDate: '2026-10-14', // late vs original (8), on time vs updated (15)
+    orderIndex: 2,
+    deadlineChangesCount: 1,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    assigneeId: 'user-a'
+  },
+  // 3. Completed late vs updated deadline
+  {
+    id: 'kpi-3',
+    workspaceId: 'ws-1',
+    projectId: 'proj-1',
+    name: 'Atividade 3',
+    status: ActivityCanonicalStatus.COMPLETED,
+    startDate: '2026-10-01',
+    actualStartDate: '2026-10-01',
+    originalDeliveryDate: '2026-10-10',
+    deliveryDate: '2026-10-10',
+    actualEndDate: '2026-10-16', // 6 days late
+    orderIndex: 3,
+    deadlineChangesCount: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    assigneeId: 'user-b'
+  },
+  // 4. In Progress (Canonical WIP)
+  {
+    id: 'kpi-4',
+    workspaceId: 'ws-1',
+    projectId: 'proj-1',
+    name: 'Atividade 4 - Em Andamento',
+    status: ActivityCanonicalStatus.IN_PROGRESS,
+    startDate: '2026-10-10',
+    actualStartDate: '2026-10-10',
+    deliveryDate: '2026-10-20',
+    orderIndex: 4,
+    deadlineChangesCount: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    assigneeId: 'user-a'
+  },
+  // 5. Another In Progress for user-a (testing WIP limits)
+  {
+    id: 'kpi-5',
+    workspaceId: 'ws-1',
+    projectId: 'proj-1',
+    name: 'Atividade 5 - Em Andamento',
+    status: ActivityCanonicalStatus.IN_PROGRESS,
+    startDate: '2026-10-12',
+    actualStartDate: '2026-10-12',
+    deliveryDate: '2026-10-22',
+    orderIndex: 5,
+    deadlineChangesCount: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    assigneeId: 'user-a'
+  },
+  // 6. Blocked (MUST NOT be in canonical WIP)
+  {
+    id: 'kpi-6',
+    workspaceId: 'ws-1',
+    projectId: 'proj-1',
+    name: 'Atividade 6 - Bloqueada',
+    status: ActivityCanonicalStatus.BLOCKED,
+    blockedReason: 'Aguardando aprovação do cliente',
+    startDate: '2026-10-10',
+    deliveryDate: '2026-10-18',
+    orderIndex: 6,
+    deadlineChangesCount: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    assigneeId: 'user-a'
+  },
+  // 7. To Do (Open overdue)
+  {
+    id: 'kpi-7',
+    workspaceId: 'ws-1',
+    projectId: 'proj-1',
+    name: 'Atividade 7 - A Fazer Atrasada',
+    status: ActivityCanonicalStatus.TO_DO,
+    startDate: '2026-10-01',
+    deliveryDate: '2026-10-14', // overdue at 2026-10-16
+    orderIndex: 7,
+    deadlineChangesCount: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    assigneeId: 'user-b'
+  }
+];
+
+const kpiResult = calculateUnifiedKPIs(sampleActivities, [], undefined, '2026-10-16');
+
+// Delivery Indicators
+assert(kpiResult.completedCount === 3, 'Calculates 3 completed activities');
+assert(kpiResult.completedWithOriginalDeadlineCount === 3, 'All 3 completed have original deadline');
+assert(kpiResult.completedOnOriginalDeadlineCount === 1, 'Only activity 1 met original deadline (1 / 3)');
+assert(kpiResult.originalDeliveryRatePercent === 33, 'Original delivery compliance rate is 33% (1/3)');
+
+assert(kpiResult.completedWithUpdatedDeadlineCount === 3, 'All 3 completed have updated deadline');
+assert(kpiResult.completedOnUpdatedDeadlineCount === 2, 'Activities 1 and 2 met updated deadline (2 / 3)');
+assert(kpiResult.updatedDeliveryRatePercent === 67, 'Updated delivery compliance rate is 67% (2/3)');
+
+assert(kpiResult.delayedCompletedCount === 1, '1 activity completed with delay');
+assert(kpiResult.averageDelayDaysCompletedLate === 6, 'Average delay of late completed is 6 days');
+
+// Lead Time (act-1: Oct 1-8 = 8d; act-2: Oct 2-14 = 13d; act-3: Oct 1-16 = 16d) -> (8 + 13 + 16) / 3 = 37 / 3 = 12.3 days
+assert(kpiResult.leadTimeSampleCount === 3, 'Lead time sample is 3');
+assert(kpiResult.averageLeadTimeDaysCompleted === 12.3, 'Average lead time is 12.3 calendar days');
+
+// Workflow & Strict WIP Isolation
+assert(kpiResult.inProgressCount === 2, 'Canonical WIP is strictly 2 (only EM ANDAMENTO)');
+assert(kpiResult.canonicalWipCount === 2, 'canonicalWipCount matches inProgressCount');
+assert(kpiResult.blockedCount === 1, 'Blocked count is strictly 1 (separated from WIP)');
+assert(kpiResult.toDoCount === 1, 'To-do count is 1');
+assert(kpiResult.totalActivitiesCount === 7, 'Total activities considered is 7');
+
+// Planning Reliability & Blockage
+assert(kpiResult.rescheduledActivitiesCount === 1, '1 activity rescheduled');
+assert(kpiResult.activeBlocksCount === 1, '1 active block');
+assert(kpiResult.blockedReasonsDistribution['Aguardando aprovação do cliente'] === 1, 'Blocked reason tracked');
+
+// Professional Delivery Metrics & Advisory WIP Limits
+const testUsers = [
+  { id: 'user-a', username: 'Engenheiro A' },
+  { id: 'user-b', username: 'Engenheiro B' }
+];
+
+const profMetrics = calculateProfessionalDeliveryMetrics(
+  sampleActivities,
+  testUsers,
+  undefined,
+  '2026-10-16',
+  { 'user-a': 1 } // user-a has advisory WIP limit of 1, but has 2 in progress
+);
+
+const profA = profMetrics.find(p => p.userId === 'user-a')!;
+assert(profA !== undefined, 'Found metrics for user-a');
+assert(profA.inProgressCount === 2, 'User A has 2 WIP');
+assert(profA.blockedCount === 1, 'User A has 1 blocked');
+assert(profA.completedInPeriodCount === 2, 'User A has 2 completed in period');
+assert(profA.completedOnTimeCount === 2, 'User A completed 2 on time');
+assert(profA.onTimeRatePercent === 100, 'User A on-time rate is 100%');
+assert(profA.isWipLimitExceeded === true, 'User A WIP limit of 1 is exceeded (2 > 1)');
+
+const profB = profMetrics.find(p => p.userId === 'user-b')!;
+assert(profB !== undefined, 'Found metrics for user-b');
+assert(profB.inProgressCount === 0, 'User B has 0 WIP');
+assert(profB.overdueCount === 1, 'User B has 1 overdue open activity');
+assert(profB.isWipLimitExceeded === false, 'User B WIP limit not exceeded');
+
+// Global WIP Overview
+const wipOverview = calculateWipOverview(
+  sampleActivities,
+  { 'user-a': 1, 'user-b': 3 },
+  '2026-10-16'
+);
+assert(wipOverview.totalWip === 2, 'Global WIP overview totalWip is 2');
+assert(wipOverview.totalBlocked === 1, 'Global WIP overview totalBlocked is 1');
+assert(wipOverview.totalOverdue === 1, 'Global WIP overview totalOverdue is 1');
+assert(wipOverview.exceededUsers.length === 1 && wipOverview.exceededUsers[0] === 'user-a', 'User A correctly identified as exceeded');
+
+// Formatters
+assert(formatKpiRateWithFraction(null) === 'Dados insuficientes', 'Null percent formats as Dados insuficientes');
+assert(formatKpiRateWithFraction(80, 4, 5) === '80% (4/5)', 'Formats rate with fraction 80% (4/5)');
+assert(formatKpiLeadTimeDays(null) === 'Dados insuficientes', 'Null lead time formats as Dados insuficientes');
+assert(formatKpiLeadTimeDays(1) === '1 dia', '1 day lead time formats as 1 dia');
+assert(formatKpiLeadTimeDays(5.4) === '5.4 dias', '5.4 days lead time formats as 5.4 dias');
+
+// Period Filtering
+assert(isActivityInPeriod(sampleActivities[0], { monthStr: '2026-10' }) === true, 'Activity in 2026-10 passes month filter');
+assert(isActivityInPeriod(sampleActivities[0], { monthStr: '2026-09' }) === false, 'Activity in 2026-10 excluded from 2026-09 filter');
+
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {
   process.exit(1);
 }
+
