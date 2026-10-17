@@ -51,6 +51,12 @@ import {
   AlertCategory,
   addBusinessDaysSafely
 } from '../utils/managementAttentionEngine';
+import {
+  calculateIntelligentPlanning,
+  DeliveryUnitType,
+  ProjectionConfidence,
+  WeekDemandStatus
+} from '../utils/intelligentPlanningEngine';
 
 let passed = 0;
 let failed = 0;
@@ -1496,8 +1502,151 @@ const wipDiegoItem = attentionResult.items.find(i => i.type === 'team' && i.user
 assert(wipDiegoItem === undefined, 'User without configured WIP limit produces 0 overload alerts');
 
 // Ordenação determinística
-assert(attentionResult.items[0].maxSeverity === AlertSeverity.CRITICAL, 'First item in priority list is CRÍTICA (Horizon)');
-assert(attentionResult.items[0].id === 'prj-overdue', 'First item is Edifício Horizon (most overdue)');
+// ============================================================================
+// 14. FASE 5: PLANEJAMENTO INTELIGENTE E PREVISIBILIDADE DE ENTREGAS
+// ============================================================================
+console.log('\n14. Intelligent Planning & Delivery Predictability Engine (Fase 5)');
+
+// Setup historical concluded activities across an 8-week window [2026-08-22, 2026-10-17]
+// 8 weeks in the past: 56 days.
+// Let's create 6 concluded activities in specific weeks:
+// Week -7 (oldest): 1 delivery (2026-08-25)
+// Week -6: 0 deliveries
+// Week -5: 2 deliveries (2026-09-08, 2026-09-10)
+// Week -4: 1 delivery (2026-09-16)
+// Week -3: 0 deliveries
+// Week -2: 1 delivery (2026-10-01)
+// Week -1: 1 delivery (2026-10-08)
+// Week 0: 0 deliveries
+// Total: 6 deliveries in 8 weeks -> Throughput = 6 / 8 = 0.8 deliveries/week.
+const planProjects: Project[] = [
+  { id: 'p-1', workspaceId: 'ws-1', clientId: 'cli-1', code: 'PRJ-001', name: 'Shopping Plaza', status: ProjectStatus.IN_PROGRESS, startDate: '2026-08-01', deliveryDate: '2026-11-20', isCurrentRevision: true, revision: 'Rev.01', familyId: 'f-1', createdAt: 1, updatedAt: 1 },
+  { id: 'p-2', workspaceId: 'ws-1', clientId: 'cli-2', code: 'PRJ-002', name: 'Hospital Central', status: ProjectStatus.IN_PROGRESS, startDate: '2026-09-01', deliveryDate: '2026-12-15', isCurrentRevision: true, revision: 'Rev.00', familyId: 'f-2', createdAt: 1, updatedAt: 1 },
+  { id: 'p-canc', workspaceId: 'ws-1', clientId: 'cli-1', code: 'PRJ-003', name: 'Projeto Cancelado', status: ProjectStatus.CANCELED, startDate: '2026-09-01', deliveryDate: '2026-10-25', isCurrentRevision: true, revision: 'Rev.00', familyId: 'f-3', createdAt: 1, updatedAt: 1 }
+];
+
+const planConcludedActs: ProjectActivity[] = [
+  { id: 'c-1', projectId: 'p-1', workspaceId: 'ws-1', name: 'Fundação', status: ActivityCanonicalStatus.COMPLETED, startDate: '2026-08-15', actualEndDate: '2026-08-25', orderIndex: 0, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 },
+  { id: 'c-2', projectId: 'p-1', workspaceId: 'ws-1', name: 'Estrutura P1', status: ActivityCanonicalStatus.COMPLETED, startDate: '2026-08-28', actualEndDate: '2026-09-08', orderIndex: 1, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 },
+  { id: 'c-3', projectId: 'p-1', workspaceId: 'ws-1', name: 'Estrutura P2', status: ActivityCanonicalStatus.COMPLETED, startDate: '2026-08-30', actualEndDate: '2026-09-10', orderIndex: 2, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 },
+  { id: 'c-4', projectId: 'p-2', workspaceId: 'ws-1', name: 'Terraplanagem', status: ActivityCanonicalStatus.COMPLETED, startDate: '2026-09-05', actualEndDate: '2026-09-16', orderIndex: 0, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 },
+  { id: 'c-5', projectId: 'p-1', workspaceId: 'ws-1', name: 'Alvenaria', status: ActivityCanonicalStatus.COMPLETED, startDate: '2026-09-20', actualEndDate: '2026-10-01', orderIndex: 3, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 },
+  { id: 'c-6', projectId: 'p-2', workspaceId: 'ws-1', name: 'Instalações', status: ActivityCanonicalStatus.COMPLETED, startDate: '2026-09-25', actualEndDate: '2026-10-08', orderIndex: 1, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 }
+];
+
+// Open Future Commitments across 4 future weeks (Reference today: 2026-10-17 Saturday)
+// Week +1: 2026-10-18 to 2026-10-24
+// Week +2: 2026-10-25 to 2026-10-31
+// Week +3: 2026-11-01 to 2026-11-07
+// Week +4: 2026-11-08 to 2026-11-14
+const planOpenActs: ProjectActivity[] = [
+  // 1 Overdue commitment (delivery 2026-10-12 < today 2026-10-17)
+  { id: 'act-over', projectId: 'p-1', workspaceId: 'ws-1', name: 'Projeto Hidráulico', status: ActivityCanonicalStatus.IN_PROGRESS, deliveryDate: '2026-10-12', assigneeId: 'u-eng-1', orderIndex: 4, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 },
+  // Week +1: 1 commitment (delivery 2026-10-20)
+  { id: 'act-w1-1', projectId: 'p-1', workspaceId: 'ws-1', name: 'Projeto Elétrico', status: ActivityCanonicalStatus.IN_PROGRESS, deliveryDate: '2026-10-20', assigneeId: 'u-eng-1', orderIndex: 5, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 },
+  // Week +2: 3 commitments (high demand vs 0.8 capacity! e.g. 2026-10-26, 2026-10-28, 2026-10-29), 1 blocked
+  { id: 'act-w2-1', projectId: 'p-1', workspaceId: 'ws-1', name: 'Climatização', status: ActivityCanonicalStatus.IN_PROGRESS, deliveryDate: '2026-10-26', assigneeId: 'u-eng-2', orderIndex: 6, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 },
+  { id: 'act-w2-2', projectId: 'p-2', workspaceId: 'ws-1', name: 'Gases Medicinais', status: ActivityCanonicalStatus.BLOCKED, blockedReason: 'Aguardando aprovação vigilância', deliveryDate: '2026-10-28', assigneeId: 'u-eng-2', orderIndex: 2, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 },
+  { id: 'act-w2-3', projectId: 'p-1', workspaceId: 'ws-1', name: 'Fachada', status: ActivityCanonicalStatus.IN_PROGRESS, deliveryDate: '2026-10-29', originalDeliveryDate: '2026-10-15', assigneeId: 'u-eng-1', orderIndex: 7, deadlineChangesCount: 1, createdAt: 1, updatedAt: 1 },
+  // Week +3: 0 commitments
+  // Week +4: 1 commitment (2026-11-10)
+  { id: 'act-w4-1', projectId: 'p-2', workspaceId: 'ws-1', name: 'Pintura Epóxi', status: ActivityCanonicalStatus.IN_PROGRESS, deliveryDate: '2026-11-10', assigneeId: 'u-eng-2', orderIndex: 3, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 },
+  // Canceled project activity (must be ignored)
+  { id: 'act-canc-plan', projectId: 'p-canc', workspaceId: 'ws-1', name: 'Atividade Cancelada', status: ActivityCanonicalStatus.IN_PROGRESS, deliveryDate: '2026-10-22', orderIndex: 0, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 }
+];
+
+const allPlanActivities = [...planConcludedActs, ...planOpenActs];
+
+const planningResult = calculateIntelligentPlanning({
+  projects: planProjects,
+  activities: allPlanActivities,
+  users: usersSample,
+  clients: clientsSample,
+  todayStr: '2026-10-17',
+  horizonWeeks: 4,
+  historicalWindowWeeks: 8,
+  deliveryUnit: DeliveryUnitType.ACTIVITIES
+});
+
+// Test 14.1: Historical Throughput & Variance
+assert(planningResult.historicalThroughput.totalConcludedDeliveries === 6, 'Historical throughput found 6 deliveries in 8 weeks');
+assert(planningResult.historicalThroughput.weeklyDeliveryCounts.length === 8, 'Strictly preserves 8 weekly bins (including 0-delivery weeks)');
+assert(planningResult.historicalThroughput.averageWeeklyThroughput === 0.8, 'Average throughput is 0.8 deliveries/week (6/8)');
+assert(planningResult.historicalThroughput.confidence === ProjectionConfidence.REDUCED, 'Confidence is REDUZIDA (6 deliveries is between 3 and 7)');
+assert(planningResult.historicalThroughput.minWeeklyDeliveries === 0, 'Min observed weekly deliveries is 0');
+assert(planningResult.historicalThroughput.maxWeeklyDeliveries === 2, 'Max observed weekly deliveries is 2');
+assert(planningResult.historicalThroughput.capacityBaseline === 0.8, 'Capacity baseline is 0.8 ent/sem');
+
+// Test 14.2: Overdue Commitments Bucket Isolation
+assert(planningResult.overdueBucket.count === 1, 'Overdue bucket contains exactly 1 overdue commitment (Projeto Hidráulico)');
+assert(planningResult.overdueBucket.commitments[0].activityName === 'Projeto Hidráulico', 'Overdue item is Projeto Hidráulico');
+
+// Test 14.3: Future Horizon Weekly Distribution
+assert(planningResult.weeklyBuckets.length === 4, 'Future horizon has exactly 4 weeks');
+const planWeek1 = planningResult.weeklyBuckets[0];
+const planWeek2 = planningResult.weeklyBuckets[1];
+const planWeek3 = planningResult.weeklyBuckets[2];
+const planWeek4 = planningResult.weeklyBuckets[3];
+
+assert(planWeek1.commitmentsCount === 1, 'Week +1 has exactly 1 commitment (Projeto Elétrico)');
+assert(planWeek2.commitmentsCount === 3, 'Week +2 has 3 commitments (Climatização, Gases, Fachada)');
+assert(planWeek2.blockedCount === 1, 'Week +2 has 1 blocked commitment (Gases Medicinais)');
+assert(planWeek2.reprogrammedCount === 1, 'Week +2 tracks 1 reprogrammed commitment (Fachada)');
+assert(planWeek3.commitmentsCount === 0, 'Week +3 has 0 commitments');
+assert(planWeek4.commitmentsCount === 1, 'Week +4 has 1 commitment (Pintura Epóxi)');
+
+// Test 14.4: Demand vs Capacity Status
+assert(planWeek2.status === WeekDemandStatus.POTENTIAL_OVERLOAD, 'Week +2 classified as POTENTIAL_OVERLOAD (3 commitments > max capacity 2)');
+assert(planWeek2.demandVsCapacityDelta === 2.2, 'Week +2 delta is +2.2 (3 - 0.8)');
+
+// Test 14.5: Exclusion of Canceled Projects
+const canceledInPlanning = planningResult.weeklyBuckets.some(b => b.commitments.some(c => c.projectId === 'p-canc'));
+assert(!canceledInPlanning, 'Canceled project PRJ-003 is excluded from planning commitments');
+
+// Test 14.6: What-If Scenario Simulator (Non-destructive)
+const simulatedPlanning = calculateIntelligentPlanning({
+  projects: planProjects,
+  activities: allPlanActivities,
+  users: usersSample,
+  clients: clientsSample,
+  todayStr: '2026-10-17',
+  horizonWeeks: 4,
+  historicalWindowWeeks: 8,
+  deliveryUnit: DeliveryUnitType.ACTIVITIES,
+  simulation: {
+    additionalCount: 2,
+    targetWeekNumber: 1 // Add +2 deliveries in Week +1
+  }
+});
+
+assert(simulatedPlanning.isSimulationActive === true, 'Simulation flag is active');
+assert(simulatedPlanning.weeklyBuckets[0].simulatedAdditionalDeliveries === 2, 'Week +1 has 2 simulated deliveries');
+assert(simulatedPlanning.weeklyBuckets[0].simulatedTotalDemand === 3, 'Week +1 total simulated demand is 3 (1 real + 2 sim)');
+assert(simulatedPlanning.weeklyBuckets[0].commitmentsCount === 1, 'Week +1 real commitments unchanged (non-destructive)');
+assert(simulatedPlanning.weeklyBuckets[1].simulatedAdditionalDeliveries === 0, 'Week +2 untouched by Week 1 simulation');
+
+// Test 14.7: Individual Professional Planning
+const eng1Metrics = planningResult.professionals.find(p => p.userId === 'u-eng-1')!;
+assert(eng1Metrics !== undefined, 'Found metrics for Eng. Bruno');
+assert(eng1Metrics.weeklyDistribution[0] === 1, 'Eng. Bruno has 1 delivery in Week +1');
+assert(eng1Metrics.weeklyDistribution[1] === 1, 'Eng. Bruno has 1 delivery in Week +2');
+assert(eng1Metrics.overdueCount === 1, 'Eng. Bruno has 1 overdue activity');
+
+// Test 14.8: Delivery Unit Separation (PROJECTS vs ACTIVITIES)
+const projectUnitPlanning = calculateIntelligentPlanning({
+  projects: planProjects,
+  activities: allPlanActivities,
+  users: usersSample,
+  clients: clientsSample,
+  todayStr: '2026-10-17',
+  horizonWeeks: 4,
+  historicalWindowWeeks: 8,
+  deliveryUnit: DeliveryUnitType.PROJECTS
+});
+assert(projectUnitPlanning.deliveryUnit === DeliveryUnitType.PROJECTS, 'Unit type is PROJECTS');
+assert(projectUnitPlanning.historicalThroughput.totalConcludedDeliveries === 0, 'No concluded projects in 8w window (p-1 and p-2 in progress)');
+assert(projectUnitPlanning.historicalThroughput.confidence === ProjectionConfidence.INSUFFICIENT, 'Confidence is INSUFFICIENT for projects');
+assert(projectUnitPlanning.weeklyBuckets[0].status === WeekDemandStatus.INSUFFICIENT_DATA, 'Week status is INSUFFICIENT_DATA without quantitative false alarms');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {

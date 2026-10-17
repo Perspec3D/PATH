@@ -39,6 +39,7 @@ import {
   SampleConfidence
 } from '../utils/teamOperationalCapacity';
 import { ManagementAttentionCenter } from './ManagementAttentionCenter';
+import { IntelligentPlanning } from './IntelligentPlanning';
 import { fetchProjectActivitiesEventsBatch } from '../storage';
 
 interface DashboardProps {
@@ -1377,23 +1378,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                {/* Seletor de Janela Histórica */}
-                <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
-                  <span className="text-[9px] font-black uppercase text-slate-400 px-2.5">Janela:</span>
-                  {([4, 8, 12] as HistoricalWindowWeeks[]).map(w => (
-                    <button
-                      key={w}
-                      onClick={() => setCapacityWindow(w)}
-                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                        capacityWindow === w
-                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      {w} Semanas
-                    </button>
-                  ))}
-                </div>
+                {/* Seletor de Janela Histórica (para Visão Geral e Profissionais) */}
+                {capacityTab !== 'projection' && (
+                  <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
+                    <span className="text-[9px] font-black uppercase text-slate-400 px-2.5">Janela:</span>
+                    {([4, 8, 12] as HistoricalWindowWeeks[]).map(w => (
+                      <button
+                        key={w}
+                        onClick={() => setCapacityWindow(w)}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                          capacityWindow === w
+                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                            : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        {w} Semanas
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {/* Seletor de Visualização */}
                 <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
@@ -1419,13 +1422,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </button>
                   <button
                     onClick={() => setCapacityTab('projection')}
-                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                    className={`px-3.5 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 ${
                       capacityTab === 'projection'
-                        ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-black'
+                        ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20 font-black'
                         : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
-                    Planejamento Futuro
+                    <Sparkles size={12} className={capacityTab === 'projection' ? 'text-white' : 'text-purple-500'} />
+                    <span>Planejamento &amp; Previsibilidade</span>
                   </button>
                 </div>
               </div>
@@ -1723,110 +1727,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             )}
 
-            {/* ABA 3: PLANEJAMENTO FUTURO (PRÓXIMAS 4 SEMANAS) */}
+            {/* ABA 3: PLANEJAMENTO INTELIGENTE E PREVISIBILIDADE (FASE 5) */}
             {capacityTab === 'projection' && (
-              <div className="space-y-6 animate-in fade-in duration-300">
-                <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-200/50 dark:border-indigo-500/20 text-xs text-slate-600 dark:text-slate-300 flex items-start sm:items-center gap-3">
-                  <Target size={18} className="text-indigo-500 shrink-0 mt-0.5 sm:mt-0" />
-                  <p className="leading-relaxed font-medium">
-                    <strong className="uppercase tracking-wider font-black text-indigo-700 dark:text-indigo-300">Planejamento por Vazão Histórica:</strong>{' '}
-                    Compara os compromissos cadastrados com data para as próximas 4 semanas em relação ao ritmo histórico comprovado da equipe ({teamCapacity.teamWeeklyThroughput !== null ? `${teamCapacity.teamWeeklyThroughput} entregas/semana` : 'aguardando histórico'}).
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {teamCapacity.weeklyProjections.map(proj => {
-                    const isDemandHigher = proj.demandVsCapacityDelta !== null && proj.demandVsCapacityDelta > 0;
-                    return (
-                      <div
-                        key={proj.weekNumber}
-                        className="p-6 rounded-3xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between space-y-4"
-                      >
-                        {/* Header da Semana */}
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
-                              Semana +{proj.weekNumber}
-                            </span>
-                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">
-                              {proj.weekNumber === 1 ? 'Próximos 7 dias' : `${(proj.weekNumber - 1) * 7 + 1} a ${proj.weekNumber * 7} dias`}
-                            </span>
-                          </div>
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
-                            {formatDisplayDate(proj.startDate)} a {formatDisplayDate(proj.endDate)}
-                          </span>
-                        </div>
-
-                        {/* Bloco 1: Compromissos Agendados */}
-                        <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-950/40 border border-slate-200/60 dark:border-white/5 space-y-1">
-                          <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
-                            Compromissos Agendados
-                          </span>
-                          <span className="text-2xl font-black text-slate-900 dark:text-white block">
-                            {proj.commitmentsCount}
-                          </span>
-                          <span className="text-[8px] text-slate-400 font-bold uppercase block">
-                            atividades com prazo
-                          </span>
-                        </div>
-
-                        {/* Bloco 2: Capacidade Projetada (Vazão Histórica) */}
-                        <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-950/40 border border-slate-200/60 dark:border-white/5 space-y-1">
-                          <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
-                            Capacidade Projetada (Vazão)
-                          </span>
-                          <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 block">
-                            {proj.projectedCapacity !== null ? proj.projectedCapacity : '---'}
-                          </span>
-                          <span className="text-[8px] text-slate-400 font-bold uppercase block">
-                            {proj.projectedCapacity !== null ? 'entregas esperadas / semana' : 'Histórico insuficiente'}
-                          </span>
-                        </div>
-
-                        {/* Bloco 3: Balanço Estimado */}
-                        <div>
-                          {proj.projectedCapacity !== null ? (
-                            <div className={`p-2.5 rounded-xl border text-[9px] font-bold ${
-                              isDemandHigher
-                                ? 'bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-300'
-                                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-                            }`}>
-                              {isDemandHigher
-                                ? `Demanda acima da vazão (+${proj.demandVsCapacityDelta} ent)`
-                                : `Demanda absorvível pelo ritmo histórico`}
-                            </div>
-                          ) : (
-                            <div className="p-2.5 rounded-xl border border-slate-200/60 dark:border-white/5 text-[9px] font-bold text-slate-400 text-center">
-                              Sem base histórica para projeção
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Bloco 4: Riscos e Impedimentos Atuais */}
-                        <div className="pt-3 border-t border-slate-200/60 dark:border-white/5 space-y-1 text-[8px] font-bold">
-                          <div className="flex items-center justify-between text-slate-500">
-                            <span>Impedimentos na semana:</span>
-                            <span className={proj.blockedCommitmentsCount > 0 ? 'text-amber-500 font-black' : 'text-slate-400'}>
-                              {proj.blockedCommitmentsCount} bloqueada(s)
-                            </span>
-                          </div>
-                          {proj.overdueCommitmentsCount > 0 && (
-                            <div className="flex items-center justify-between text-rose-500">
-                              <span>Prazos já vencidos pendentes:</span>
-                              <span className="font-black">{proj.overdueCommitmentsCount} atividade(s)</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 text-[10px] text-slate-400 font-medium leading-relaxed">
-                  <strong className="text-slate-600 dark:text-slate-300 uppercase tracking-wider font-bold">Nota de Confiabilidade:</strong>{' '}
-                  A projeção futura reflete a taxa de entregas efetivamente demonstrada na janela histórica e não garante precisão matemática absoluta. Fatores como complexidade de escopo, aprovações de terceiros e disponibilidade de calendário devem ser avaliados nas reuniões de planejamento.
-                </div>
-              </div>
+              <IntelligentPlanning
+                projects={projects}
+                activities={projectActivities}
+                users={users}
+                clients={clients}
+                theme={theme}
+                todayStr={todayStr}
+                userWipLimits={userWipLimits}
+                onOpenProject={onOpenProject}
+                onOpenActivity={onOpenActivity}
+                onNavigateToTeam={onNavigateToTeam}
+              />
             )}
           </div>
         </div>
