@@ -760,6 +760,7 @@ const App: React.FC = () => {
             clearInitialEditingProject={() => setInitialEditingProject(null)}
             initialEditingActivity={initialEditingActivity}
             clearInitialEditingActivity={() => setInitialEditingActivity(null)}
+            onNavigateToTimeline={() => setCurrentPage('timeline')}
           />
         )}
         {currentPage === 'tasks' && <Tasks db={db} setDb={setDb} currentUser={userSession} theme={theme} />}

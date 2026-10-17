@@ -1,7 +1,14 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { ProjectStatus, Project, InternalUser, Client, ProjectActivity } from '../types';
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
-import { normalizeActivityStatus } from '../utils/activityOperationalModel';
+import {
+  normalizeActivityStatus,
+  calculateUnifiedKPIs,
+  getTodayDateString,
+  formatKpiRateWithFraction,
+  formatKpiLeadTimeDays,
+  addCalendarDays
+} from '../utils/activityOperationalModel';
 import { AppDB, fetchOperationalMetricsDataset, OperationalMetricsDataset } from '../storage';
 import { buildProjectDeliveryForecasts, DeliveryForecastStatus } from '../utils/deliveryForecast';
 import { calculateNetWorkdayMs, calculateRegularOperationalMs, calculateOvertimeMs } from '../utils/operationalTime';
@@ -11,19 +18,29 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar, Trophy, Medal, Eye, ArrowRight, Search } from 'lucide-react';
+import {
+  CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar,
+  Trophy, Medal, Eye, ArrowRight, Search, Ban, Activity
+} from 'lucide-react';
 
 interface DashboardProps {
   db: AppDB;
   theme?: 'dark' | 'light';
 }
 
-const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ value, theme = 'dark' }) => {
+interface HealthGaugeProps {
+  value: number | null;
+  label?: string;
+  subtitle?: string;
+  theme?: 'dark' | 'light';
+}
+
+const HealthGauge: React.FC<HealthGaugeProps> = ({ value, label = 'CONFIABILIDADE DE ENTREGAS', subtitle, theme = 'dark' }) => {
   const [displayValue, setDisplayValue] = React.useState(0);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
-      setDisplayValue(value);
+      setDisplayValue(value ?? 0);
     }, 100);
     return () => clearTimeout(timer);
   }, [value]);
@@ -181,15 +198,26 @@ const HealthGauge: React.FC<{ value: number; theme?: 'dark' | 'light' }> = ({ va
       </svg>
 
       <div className="mt-2 flex flex-col items-center">
-        <span
-          className="text-4xl font-black tracking-tighter leading-none transition-colors duration-500"
-          style={{ color: getInterpolatedColor(normalizedValue) }}
-        >
-          {Math.round(normalizedValue)}%
-        </span>
-        <p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.4em] mt-3">
-          INTEGRIDADE OPERACIONAL
+        {value === null ? (
+          <span className="text-2xl font-black text-slate-400 dark:text-slate-500 tracking-tight leading-none">
+            Dados insuficientes
+          </span>
+        ) : (
+          <span
+            className="text-4xl font-black tracking-tighter leading-none transition-colors duration-500"
+            style={{ color: getInterpolatedColor(normalizedValue) }}
+          >
+            {Math.round(normalizedValue)}%
+          </span>
+        )}
+        <p className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] mt-3 text-center">
+          {label}
         </p>
+        {subtitle && (
+          <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mt-1 text-center">
+            {subtitle}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -521,33 +549,81 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   const now = new Date();
   const next7Days = new Date();
   next7Days.setDate(now.getDate() + 7);
+  const todayStr = useMemo(() => getTodayDateString(), []);
 
-  // 1. Métricas de Saúde
-  const activeProjects = projects.filter((p: Project) =>
+  // 1. Métricas de Saúde e Confiabilidade
+  const activeProjects = useMemo(() => projects.filter((p: Project) =>
     isCurrentProjectRevision(p) &&
     [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(p.status)
-  );
-  const currentProjectIds = new Set(projects.filter(isCurrentProjectRevision).map(project => project.id));
+  ), [projects]);
 
-  const overdueProjects = projects.filter((p: Project) => {
+  const currentProjectIds = useMemo(() => new Set(projects.filter(isCurrentProjectRevision).map(project => project.id)), [projects]);
+
+  const unifiedKPIs = useMemo(() => {
+    return calculateUnifiedKPIs(
+      projectActivities,
+      [],
+      undefined,
+      todayStr,
+      currentProjectIds
+    );
+  }, [projectActivities, todayStr, currentProjectIds]);
+
+  const overdueProjects = useMemo(() => projects.filter((p: Project) => {
     if (!isCurrentProjectRevision(p) || !p.deliveryDate || p.status === ProjectStatus.DONE || p.status === ProjectStatus.CANCELED) return false;
-    const [y, m, d] = p.deliveryDate.split('-').map(Number);
-    return new Date(y, m - 1, d) < now;
-  });
+    return p.deliveryDate < todayStr;
+  }), [projects, todayStr]);
 
-  const health = useMemo(() => {
-    if (activeProjects.length === 0) return 100;
-    const overdueWeight = overdueProjects.length / activeProjects.length;
-    return Math.max(0, Math.min(100, Math.round((1 - overdueWeight) * 100)));
-  }, [activeProjects, overdueProjects]);
+  const healthInfo = useMemo(() => {
+    // 1. Se houver atividades concluídas com prazo válido, reflete a taxa real de cumprimento
+    if (unifiedKPIs.completedWithUpdatedDeadlineCount > 0) {
+      const val = unifiedKPIs.updatedDeliveryRatePercent;
+      return {
+        value: val,
+        label: 'CONFIABILIDADE DE ENTREGAS',
+        subtitle: formatKpiRateWithFraction(
+          val,
+          unifiedKPIs.completedOnUpdatedDeadlineCount,
+          unifiedKPIs.completedWithUpdatedDeadlineCount
+        ),
+        explanation: 'Taxa real de cumprimento de prazos das atividades concluídas. Baseada na proporção de entregas realizadas até o prazo aplicável.',
+        calculation: `${unifiedKPIs.completedOnUpdatedDeadlineCount} entregas no prazo de ${unifiedKPIs.completedWithUpdatedDeadlineCount} concluídas (${val}%)`
+      };
+    }
 
-  // 2. Projetos da Próxima Semana
-  const upcomingProjects = projects.filter((p: Project) => {
-    if (!isCurrentProjectRevision(p) || !p.deliveryDate || p.status === ProjectStatus.DONE || p.status === ProjectStatus.CANCELED) return false;
-    const [y, m, d] = p.deliveryDate.split('-').map(Number);
-    const due = new Date(y, m - 1, d);
-    return due >= now && due <= next7Days;
-  });
+    // 2. Se não houver histórico de conclusões ainda, reflete a pontualidade dos projetos ativos
+    if (activeProjects.length > 0) {
+      const onTimeCount = Math.max(0, activeProjects.length - overdueProjects.length);
+      const val = Math.round((onTimeCount / activeProjects.length) * 100);
+      return {
+        value: val,
+        label: 'PROJETOS ATIVOS NO PRAZO',
+        subtitle: `${onTimeCount} de ${activeProjects.length} ativos no prazo`,
+        explanation: 'Proporção de projetos ativos cujo prazo final ainda não foi ultrapassado. Sem histórico de conclusões registradas no período.',
+        calculation: `${onTimeCount} projetos no prazo de ${activeProjects.length} ativos (${val}%)`
+      };
+    }
+
+    // 3. Sem projetos ativos e sem entregas: dados insuficientes
+    return {
+      value: null,
+      label: 'DADOS INSUFICIENTES',
+      subtitle: 'Nenhum projeto ativo ou entrega registrada',
+      explanation: 'Não há dados operacionais suficientes cadastrados para calcular o índice de confiabilidade.',
+      calculation: 'Dados insuficientes'
+    };
+  }, [unifiedKPIs, activeProjects, overdueProjects]);
+
+  const health = healthInfo.value ?? 0;
+
+  // 2. Projetos da Próxima Semana (seguro com datas de calendário)
+  const upcomingProjects = useMemo(() => {
+    const deadlineLimit = addCalendarDays(todayStr, 7) || todayStr;
+    return projects.filter((p: Project) => {
+      if (!isCurrentProjectRevision(p) || !p.deliveryDate || p.status === ProjectStatus.DONE || p.status === ProjectStatus.CANCELED) return false;
+      return p.deliveryDate >= todayStr && p.deliveryDate <= deadlineLimit;
+    });
+  }, [projects, todayStr]);
 
   // 4. Tendência Mensal (Criados vs Concluídos)
   const monthlyTimeline = useMemo(() => {
@@ -1045,17 +1121,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           <div className="flex flex-col items-center justify-center">
             <div className="w-full mb-8 flex justify-start">
               <h3 className="text-[12px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] px-2 flex items-center transition-colors">
-                Saúde Estratégica
+                Confiabilidade de Prazos
                 <InfoTooltip
-                  title="Saúde da Operação"
-                  content="Métrica de integridade que reflete a pontualidade das entregas ativas. Quanto maior a porcentagem, menos atrasos críticos existem no sistema."
-                  calculation="(Total_Ativos - Total_Atrasados) / Total_Ativos * 100"
+                  title={healthInfo.label}
+                  content={healthInfo.explanation}
+                  calculation={healthInfo.calculation}
                   position="bottom"
                 />
               </h3>
             </div>
 
-            <HealthGauge value={health} theme={theme} />
+            <HealthGauge
+              value={healthInfo.value}
+              label={healthInfo.label}
+              subtitle={healthInfo.subtitle}
+              theme={theme}
+            />
 
             {/* STATUS HUD DISCRETO */}
             <div className="flex items-center justify-center space-x-3 w-full mt-10">
@@ -1082,10 +1163,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           {/* COLUNA DIREITA: KPIs EMPILHADOS */}
           <div className="flex flex-col space-y-4 lg:border-l lg:border-slate-100 lg:dark:border-white/5 lg:pl-12 transition-colors">
             {[
-              { label: 'Ciclo Médio', value: `${avgExecutionTime} dias`, color: 'indigo', icon: Clock },
-              { label: 'Prazos Expirados', value: `${overdueProjects.length}`, color: 'rose', icon: AlertTriangle },
-              { label: 'Em Aberto', value: `${activeProjects.length}`, color: 'amber', icon: Eye },
-              { label: 'Concluídos', value: `${projects.filter(p => p.status === ProjectStatus.DONE).length}`, color: 'emerald', icon: CheckCircle2 }
+              {
+                label: 'Lead Time Médio',
+                value: formatKpiLeadTimeDays(unifiedKPIs.averageLeadTimeDaysCompleted),
+                color: 'indigo',
+                icon: Clock
+              },
+              {
+                label: 'Projetos Atrasados',
+                value: `${overdueProjects.length}`,
+                color: overdueProjects.length > 0 ? 'rose' : 'slate',
+                icon: AlertTriangle
+              },
+              {
+                label: 'WIP (Em Andamento)',
+                value: `${unifiedKPIs.canonicalWipCount}`,
+                color: 'sky',
+                icon: Activity
+              },
+              {
+                label: 'Bloqueios Ativos',
+                value: `${unifiedKPIs.activeBlocksCount}`,
+                color: unifiedKPIs.activeBlocksCount > 0 ? 'amber' : 'slate',
+                icon: Ban
+              }
             ].map((kpi, idx) => {
               const Icon = kpi.icon;
               return (

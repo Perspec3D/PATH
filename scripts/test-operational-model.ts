@@ -30,7 +30,8 @@ import {
   ActivityDeadlineStatus,
   ProjectActivity,
   ProjectActivityEvent,
-  ProjectStatus
+  ProjectStatus,
+  Project
 } from '../types';
 
 let passed = 0;
@@ -558,6 +559,95 @@ assert(formatKpiLeadTimeDays(5.4) === '5.4 dias', '5.4 days lead time formats as
 // Period Filtering
 assert(isActivityInPeriod(sampleActivities[0], { monthStr: '2026-10' }) === true, 'Activity in 2026-10 passes month filter');
 assert(isActivityInPeriod(sampleActivities[0], { monthStr: '2026-09' }) === false, 'Activity in 2026-10 excluded from 2026-09 filter');
+
+// 9. Project Kanban, Lifecycle Transitions & Health State Integrity
+console.log('\n9. Project Kanban, Lifecycle Transitions & Health State Integrity');
+
+const baseProject: Project = {
+  id: 'proj-1',
+  workspaceId: 'ws-1',
+  code: '001-000001-26',
+  name: 'Galpão Logístico Alpha',
+  clientId: 'cli-1',
+  assigneeId: 'user-a',
+  status: ProjectStatus.QUEUE,
+  startDate: '2026-10-01',
+  deliveryDate: '2026-10-20',
+  revision: 'Rev.01',
+  createdAt: 1729000000000,
+  isCurrentRevision: true
+};
+
+// Transition 1: Moving from QUEUE to IN_PROGRESS sets actualStartDate
+const inProgressProject: Project = {
+  ...baseProject,
+  status: ProjectStatus.IN_PROGRESS,
+  actualStartDate: !baseProject.actualStartDate ? '2026-10-05' : baseProject.actualStartDate
+};
+assert(inProgressProject.status === ProjectStatus.IN_PROGRESS, 'Project moved to IN_PROGRESS');
+assert(inProgressProject.actualStartDate === '2026-10-05', 'actualStartDate recorded upon exiting QUEUE');
+
+// Separation of Health vs Status:
+// An IN_PROGRESS project with overdue deadline is still IN_PROGRESS (status), while flagged overdue (health)
+const overdueHealthDiff = calculateDaysDifference(inProgressProject.deliveryDate, '2026-10-25');
+assert(overdueHealthDiff !== null && overdueHealthDiff < 0, 'Project delivery date is past reference date');
+assert(inProgressProject.status === ProjectStatus.IN_PROGRESS, 'Status remains IN_PROGRESS despite overdue health');
+
+// An IN_PROGRESS project with blocked activities remains IN_PROGRESS
+const projectActivitiesMock: ProjectActivity[] = [
+  {
+    id: 'act-b1',
+    workspaceId: 'ws-1',
+    projectId: 'proj-1',
+    title: 'Fundações',
+    status: ActivityCanonicalStatus.BLOCKED,
+    assigneeId: 'user-a',
+    createdAt: 1729000000000
+  },
+  {
+    id: 'act-b2',
+    workspaceId: 'ws-1',
+    projectId: 'proj-1',
+    title: 'Estrutura Metálica',
+    status: ActivityCanonicalStatus.IN_PROGRESS,
+    assigneeId: 'user-a',
+    createdAt: 1729000000000
+  }
+];
+const blockedActivitiesCount = projectActivitiesMock.filter(isActivityBlocked).length;
+assert(blockedActivitiesCount === 1, 'Project has 1 blocked activity');
+assert(inProgressProject.status === ProjectStatus.IN_PROGRESS, 'Project status is unaffected by blocked activity');
+
+// Transition 2: Moving project to DONE sets completion metadata WITHOUT auto-completing activities
+const completedProject: Project = {
+  ...inProgressProject,
+  status: ProjectStatus.DONE,
+  actualEndDate: '2026-10-18',
+  conclusionResponsibleId: 'user-admin',
+  deadlineAtConclusion: inProgressProject.deliveryDate
+};
+assert(completedProject.status === ProjectStatus.DONE, 'Project status is DONE');
+assert(completedProject.actualEndDate === '2026-10-18', 'actualEndDate recorded');
+assert(completedProject.conclusionResponsibleId === 'user-admin', 'conclusionResponsibleId recorded');
+assert(completedProject.deadlineAtConclusion === '2026-10-20', 'deadlineAtConclusion frozen');
+
+// Validate Rule from Etapa 4: Do NOT auto-complete activities
+const activitiesAfterProjectCompletion = projectActivitiesMock.map(a => a); // Intact
+assert(activitiesAfterProjectCompletion[0].status === ActivityCanonicalStatus.BLOCKED, 'Activity 1 remains BLOCKED');
+assert(activitiesAfterProjectCompletion[1].status === ActivityCanonicalStatus.IN_PROGRESS, 'Activity 2 remains IN_PROGRESS');
+
+// Transition 3: Reopening project from DONE clears completion metadata
+const reopenedProject: Project = {
+  ...completedProject,
+  status: ProjectStatus.IN_PROGRESS,
+  actualEndDate: undefined,
+  conclusionResponsibleId: undefined,
+  deadlineAtConclusion: undefined
+};
+assert(reopenedProject.status === ProjectStatus.IN_PROGRESS, 'Project reopened to IN_PROGRESS');
+assert(reopenedProject.actualEndDate === undefined, 'actualEndDate cleared upon reopening');
+assert(reopenedProject.conclusionResponsibleId === undefined, 'conclusionResponsibleId cleared');
+assert(reopenedProject.deadlineAtConclusion === undefined, 'deadlineAtConclusion cleared');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {

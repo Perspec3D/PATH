@@ -16,9 +16,17 @@ import {
  * - BLOQUEADA
  * - CONCLUÍDA
  */
-export const normalizeActivityStatus = (status: string | undefined): ActivityCanonicalStatus => {
+export const normalizeActivityStatus = (status: string | any | undefined): ActivityCanonicalStatus => {
   if (!status) return ActivityCanonicalStatus.TO_DO;
-  const upper = status.trim().toUpperCase();
+  let rawStr = '';
+  if (typeof status === 'string') {
+    rawStr = status;
+  } else if (typeof status === 'object' && status !== null && 'status' in status) {
+    return normalizeActivityStatus((status as any).status);
+  } else {
+    rawStr = String(status);
+  }
+  const upper = rawStr.trim().toUpperCase();
 
   // A FAZER
   if (

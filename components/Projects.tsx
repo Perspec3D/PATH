@@ -1,5 +1,24 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import {
+  List,
+  LayoutGrid,
+  Calendar,
+  MoreVertical,
+  AlertTriangle,
+  Clock,
+  CheckCircle2,
+  Ban,
+  ChevronRight,
+  User,
+  Plus,
+  ArrowRight,
+  Check,
+  AlertCircle,
+  Eye,
+  CalendarDays,
+  ExternalLink
+} from 'lucide-react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry, ActivityCanonicalStatus, ActivityDeadlineStatus, ProjectActivityEvent } from '../types';
 import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, logActionsBatch, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision, fetchProjectActivityEvents, fetchProjectActivitiesEventsBatch, logProjectActivityEvent } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
@@ -18,6 +37,7 @@ interface ProjectsProps {
   clearInitialEditingProject?: () => void;
   initialEditingActivity?: ProjectActivity | null;
   clearInitialEditingActivity?: () => void;
+  onNavigateToTimeline?: () => void;
 }
 
 export const Projects: React.FC<ProjectsProps> = ({
@@ -28,7 +48,8 @@ export const Projects: React.FC<ProjectsProps> = ({
   initialEditingProject,
   clearInitialEditingProject,
   initialEditingActivity,
-  clearInitialEditingActivity
+  clearInitialEditingActivity,
+  onNavigateToTimeline
 }) => {
   const [showModal, setShowModal] = useState(false);
   const [showImageZoom, setShowImageZoom] = useState<string | null>(null);
@@ -38,6 +59,11 @@ export const Projects: React.FC<ProjectsProps> = ({
   const [clientFilter, setClientFilter] = useState<string>('ALL');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('ALL');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [showCanceledColumn, setShowCanceledColumn] = useState(false);
+  const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<ProjectStatus | null>(null);
+  const [menuOpenProjectId, setMenuOpenProjectId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form State
@@ -98,18 +124,20 @@ export const Projects: React.FC<ProjectsProps> = ({
   const [transitioningActivityId, setTransitioningActivityId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (showActivityModal) {
-      const loadAllActs = async () => {
-        try {
-          const acts = await fetchProjectActivities(currentUser.workspaceId);
+    let isMounted = true;
+    const loadAllActs = async () => {
+      try {
+        const acts = await fetchProjectActivities(currentUser.workspaceId);
+        if (isMounted) {
           setAllWorkspaceActivities(acts);
-        } catch (e) {
-          console.error("Erro ao carregar atividades do workspace", e);
         }
-      };
-      loadAllActs();
-    }
-  }, [showActivityModal, currentUser.workspaceId]);
+      } catch (e) {
+        console.error("Erro ao carregar atividades do workspace", e);
+      }
+    };
+    loadAllActs();
+    return () => { isMounted = false; };
+  }, [currentUser.workspaceId]);
 
   const formatDecimalHours = (hours: number): string => {
     const isNegative = hours < 0;
@@ -1978,61 +2006,346 @@ export const Projects: React.FC<ProjectsProps> = ({
     return usePrefix && codePrefix ? `${codePrefix}-${baseCode}` : baseCode;
   };
 
+  // Map of blocked activities count per project for O(1) card lookups
+  const blockedActivitiesCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const act of allWorkspaceActivities) {
+      if (isActivityBlocked(act.status)) {
+        map.set(act.projectId, (map.get(act.projectId) || 0) + 1);
+      }
+    }
+    return map;
+  }, [allWorkspaceActivities]);
+
+  const kanbanColumns = useMemo(() => {
+    const cols: Record<ProjectStatus, Project[]> = {
+      [ProjectStatus.QUEUE]: [],
+      [ProjectStatus.IN_PROGRESS]: [],
+      [ProjectStatus.PAUSED]: [],
+      [ProjectStatus.DONE]: [],
+      [ProjectStatus.CANCELED]: []
+    };
+    for (const proj of filteredProjects) {
+      if (cols[proj.status]) {
+        cols[proj.status].push(proj);
+      }
+    }
+    return cols;
+  }, [filteredProjects]);
+
+  const kanbanColumnConfigs = useMemo(() => {
+    const base = [
+      {
+        status: ProjectStatus.QUEUE,
+        title: 'FILA DE ESPERA',
+        badge: 'A Fazer',
+        headerBg: 'bg-slate-100 dark:bg-slate-800/80',
+        headerBorder: 'border-slate-300 dark:border-slate-700',
+        headerText: 'text-slate-700 dark:text-slate-300'
+      },
+      {
+        status: ProjectStatus.IN_PROGRESS,
+        title: 'EM ANDAMENTO',
+        badge: 'Em Execução',
+        headerBg: 'bg-sky-50 dark:bg-sky-500/10',
+        headerBorder: 'border-sky-300 dark:border-sky-500/40',
+        headerText: 'text-sky-700 dark:text-sky-300'
+      },
+      {
+        status: ProjectStatus.PAUSED,
+        title: 'PAUSADO',
+        badge: 'Suspenso',
+        headerBg: 'bg-purple-50 dark:bg-purple-500/10',
+        headerBorder: 'border-purple-300 dark:border-purple-500/40',
+        headerText: 'text-purple-700 dark:text-purple-300'
+      },
+      {
+        status: ProjectStatus.DONE,
+        title: 'CONCLUÍDO',
+        badge: 'Finalizado',
+        headerBg: 'bg-emerald-50 dark:bg-emerald-500/10',
+        headerBorder: 'border-emerald-300 dark:border-emerald-500/40',
+        headerText: 'text-emerald-700 dark:text-emerald-300'
+      }
+    ];
+
+    if (showCanceledColumn || statusFilter === ProjectStatus.CANCELED || kanbanColumns[ProjectStatus.CANCELED].length > 0) {
+      base.push({
+        status: ProjectStatus.CANCELED,
+        title: 'CANCELADO',
+        badge: 'Cancelado',
+        headerBg: 'bg-rose-50 dark:bg-rose-500/10',
+        headerBorder: 'border-rose-300 dark:border-rose-500/40',
+        headerText: 'text-rose-700 dark:text-rose-300'
+      });
+    }
+
+    return base;
+  }, [showCanceledColumn, statusFilter, kanbanColumns]);
+
+  const evaluateProjectHealth = (project: Project, todayDate: string) => {
+    const isHistorical = !isCurrentProjectRevision(project);
+    const blockedCount = blockedActivitiesCountMap.get(project.id) || 0;
+    const isClosed = project.status === ProjectStatus.DONE || project.status === ProjectStatus.CANCELED;
+
+    let isOverdue = false;
+    let isDueToday = false;
+    let isDueSoon = false;
+    let daysDiff: number | null = null;
+
+    if (project.deliveryDate && !isClosed) {
+      daysDiff = calculateDaysDifference(project.deliveryDate, todayDate);
+      if (daysDiff !== null) {
+        if (daysDiff < 0) {
+          isOverdue = true;
+        } else if (daysDiff === 0) {
+          isDueToday = true;
+        } else if (daysDiff <= 3) {
+          isDueSoon = true;
+        }
+      }
+    }
+
+    const familyRevisions = familyRevisionsMap.get(getProjectFamilyId(project)) || [];
+    const isReprogrammed = familyRevisions.length > 1;
+
+    return {
+      isHistorical,
+      blockedCount,
+      isOverdue,
+      isDueToday,
+      isDueSoon,
+      daysDiff,
+      isClosed,
+      isReprogrammed,
+      familyRevisions
+    };
+  };
+
+  const handleProjectStatusTransition = async (project: Project, targetStatus: ProjectStatus) => {
+    if (currentUser.role === UserRole.VIEWER) {
+      alert('Usuários com perfil Visualizador não possuem permissão para alterar o status do projeto.');
+      return;
+    }
+
+    if (!isCurrentProjectRevision(project)) {
+      alert('Esta é uma revisão histórica arquivada. Apenas a revisão ativa do projeto pode ter seu status alterado.');
+      return;
+    }
+
+    if (project.status === targetStatus) return;
+
+    const todayStr = getTodayDateString();
+    const updatedProject: Project = {
+      ...project,
+      status: targetStatus,
+    };
+
+    // Regra 1: Ao sair da Fila de Espera para execução, registrar início real caso não exista
+    if (project.status === ProjectStatus.QUEUE && targetStatus !== ProjectStatus.QUEUE && !updatedProject.actualStartDate) {
+      updatedProject.actualStartDate = todayStr;
+    }
+
+    // Regra 2: Conclusão do projeto (mantendo regras existentes de fechamento e rastreabilidade)
+    if (targetStatus === ProjectStatus.DONE && project.status !== ProjectStatus.DONE) {
+      updatedProject.actualEndDate = todayStr;
+      updatedProject.conclusionResponsibleId = currentUser.id;
+      updatedProject.deadlineAtConclusion = project.deliveryDate || project.dueDate;
+    }
+
+    // Regra 3: Reabertura de projeto concluído
+    if (project.status === ProjectStatus.DONE && targetStatus !== ProjectStatus.DONE) {
+      updatedProject.actualEndDate = undefined;
+      updatedProject.conclusionResponsibleId = undefined;
+      updatedProject.deadlineAtConclusion = undefined;
+    }
+
+    // REGRA FUNDAMENTAL (ETAPA 4): Não concluir automaticamente todas as atividades ao mover o projeto para CONCLUÍDO.
+    // As atividades mantêm seus status reais autênticos no sistema.
+
+    try {
+      const savedProject = await syncProject(updatedProject, currentUser.id);
+      const newProjects = db.projects.map((p: Project) => p.id === savedProject.id ? savedProject : p);
+      setDb({ ...db, projects: newProjects });
+
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.UPDATE,
+        `${currentUser.username} alterou o status do projeto ${project.code} de "${project.status}" para "${targetStatus}" via Kanban`,
+        project.code
+      );
+    } catch (err: any) {
+      console.error('Erro ao atualizar status do projeto no Kanban:', err);
+      alert('Falha ao atualizar o status do projeto. Verifique sua conexão e tente novamente.');
+    }
+  };
+
+  const handleProjectDragStart = (e: React.DragEvent, projectId: string) => {
+    e.dataTransfer.setData('text/plain', projectId);
+    setDraggedProjectId(projectId);
+  };
+
+  const handleProjectDragOver = (e: React.DragEvent, status: ProjectStatus) => {
+    e.preventDefault();
+    if (dragOverColumn !== status) {
+      setDragOverColumn(status);
+    }
+  };
+
+  const handleProjectDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverColumn(null);
+  };
+
+  const handleProjectDrop = (e: React.DragEvent, targetStatus: ProjectStatus) => {
+    e.preventDefault();
+    setDragOverColumn(null);
+    const projectId = e.dataTransfer.getData('text/plain') || draggedProjectId;
+    setDraggedProjectId(null);
+
+    if (!projectId) return;
+    const project = db.projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    handleProjectStatusTransition(project, targetStatus);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (menuOpenProjectId) {
+        setMenuOpenProjectId(null);
+      }
+    };
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [menuOpenProjectId]);
+
+  const todayStr = getTodayDateString();
+
   return (
     <div className="space-y-6">
+      {/* Topo do Módulo com Alternador de Visualização */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors">Gestão de Projetos</h1>
-        {currentUser.role !== UserRole.VIEWER && (
-          <button
-            onClick={() => { resetForm(); setShowModal(true); }}
-            className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 flex items-center font-bold text-sm"
+        <div>
+          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors">Gestão de Projetos</h1>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">Acompanhamento e fluxo operacional dos projetos do workspace</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Alternador de Visualização: Lista | Kanban | Cronograma */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-900/60 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setViewMode('list')}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
+                viewMode === 'list'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <List size={15} />
+              <span>Lista</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('kanban')}
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
+                viewMode === 'kanban'
+                  ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <LayoutGrid size={15} />
+              <span>Kanban</span>
+            </button>
+            {onNavigateToTimeline && (
+              <button
+                type="button"
+                onClick={onNavigateToTimeline}
+                className="flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-black text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-all"
+                title="Acessar Cronograma Geral (Gantt)"
+              >
+                <Calendar size={15} />
+                <span>Cronograma</span>
+              </button>
+            )}
+          </div>
+
+          {currentUser.role !== UserRole.VIEWER && (
+            <button
+              onClick={() => { resetForm(); setShowModal(true); }}
+              className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-500/20 flex items-center font-bold text-sm"
+            >
+              <Plus size={18} className="mr-1.5" />
+              Criar Projeto
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Painel de Filtros Unificado */}
+      <div className="bg-white dark:bg-[#1e293b] p-6 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 flex flex-wrap gap-4 items-center justify-between transition-colors">
+        <div className="flex flex-wrap flex-1 gap-4 items-center">
+          <div className="relative flex-1 min-w-[250px]">
+            <input
+              type="text"
+              placeholder="Pesquisar projetos..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-12 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition text-sm text-slate-900 dark:text-white"
+            />
+            <svg className="w-5 h-5 absolute left-4 top-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          </div>
+          <select
+            className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer transition-colors"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-            Criar Projeto
-          </button>
+            <option value="ALL">Status: Todos</option>
+            {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select
+            className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer transition-colors"
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+          >
+            <option value="ALL">Cliente: Todos</option>
+            {sortedClients.map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
+          </select>
+          <select
+            className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer transition-colors"
+            value={assigneeFilter}
+            onChange={(e) => setAssigneeFilter(e.target.value)}
+          >
+            <option value="ALL">Responsável: Todos</option>
+            {activeUsers.map(u => (
+              <option key={u.id} value={u.id}>{u.username.split(' ')[0]}</option>
+            ))}
+          </select>
+        </div>
+
+        {viewMode === 'kanban' && (
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => setShowCanceledColumn(!showCanceledColumn)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                showCanceledColumn || kanbanColumns[ProjectStatus.CANCELED].length > 0
+                  ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-900 text-rose-700 dark:text-rose-300'
+                  : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              {showCanceledColumn ? 'Ocultar Cancelados' : `Exibir Cancelados (${kanbanColumns[ProjectStatus.CANCELED].length})`}
+            </button>
+          </div>
         )}
       </div>
 
-      <div className="bg-white dark:bg-[#1e293b] p-6 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 flex flex-wrap gap-4 items-center transition-colors">
-        <div className="relative flex-1 min-w-[250px]">
-          <input
-            type="text"
-            placeholder="Pesquisar projetos..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-12 pr-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition text-sm text-slate-900 dark:text-white"
-          />
-          <svg className="w-5 h-5 absolute left-4 top-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-        </div>
-        <select
-          className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer transition-colors"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="ALL">Status: Todos</option>
-          {Object.values(ProjectStatus).map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select
-          className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer transition-colors"
-          value={clientFilter}
-          onChange={(e) => setClientFilter(e.target.value)}
-        >
-          <option value="ALL">Cliente: Todos</option>
-          {sortedClients.map((c: Client) => <option key={c.id} value={c.id}>{c.code.padStart(3, '0')} - {c.name}</option>)}
-        </select>
-        <select
-          className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold cursor-pointer transition-colors"
-          value={assigneeFilter}
-          onChange={(e) => setAssigneeFilter(e.target.value)}
-        >
-          <option value="ALL">Responsável: Todos</option>
-          {activeUsers.map(u => (
-            <option key={u.id} value={u.id}>{u.username.split(' ')[0]}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
+      {/* VISUALIZAÇÃO 1: LISTA (TABELA EXISTENTE) */}
+      {viewMode === 'list' && (
+        <div className="bg-white dark:bg-[#1e293b] rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 z-10">
@@ -2198,6 +2511,281 @@ export const Projects: React.FC<ProjectsProps> = ({
           {filteredProjects.length === 0 && <div className="py-24 text-center text-slate-600 font-black uppercase tracking-[0.2em] text-xs">Nenhum projeto encontrado</div>}
         </div>
       </div>
+      )}
+
+      {/* VISUALIZAÇÃO 2: KANBAN DE PROJETOS */}
+      {viewMode === 'kanban' && (
+        <div className="space-y-4">
+          <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 ${kanbanColumnConfigs.length > 4 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'} gap-4`}>
+            {kanbanColumnConfigs.map((col) => {
+              const projectsInCol = kanbanColumns[col.status] || [];
+              const isDragOver = dragOverColumn === col.status;
+
+              return (
+                <div
+                  key={col.status}
+                  onDragOver={(e) => handleProjectDragOver(e, col.status)}
+                  onDragLeave={handleProjectDragLeave}
+                  onDrop={(e) => handleProjectDrop(e, col.status)}
+                  className={`flex flex-col rounded-3xl p-3 bg-slate-50/70 dark:bg-[#1e293b]/50 border transition-all duration-200 min-h-[500px] ${
+                    isDragOver
+                      ? 'border-indigo-500 bg-indigo-50/30 dark:bg-indigo-500/10 shadow-lg scale-[1.01]'
+                      : 'border-slate-200/80 dark:border-slate-800'
+                  }`}
+                >
+                  {/* Cabeçalho da Coluna */}
+                  <div className={`p-3.5 rounded-2xl border ${col.headerBg} ${col.headerBorder} flex items-center justify-between mb-3 shadow-sm`}>
+                    <div className="flex items-center space-x-2">
+                      <span className={`text-xs font-black uppercase tracking-wider ${col.headerText}`}>
+                        {col.title}
+                      </span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-white/40 dark:bg-black/20 text-current">
+                        {col.badge}
+                      </span>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-black bg-white dark:bg-slate-900 ${col.headerText} shadow-sm`}>
+                      {projectsInCol.length}
+                    </span>
+                  </div>
+
+                  {/* Lista de Cartões */}
+                  <div className="space-y-3 flex-1 overflow-y-auto max-h-[calc(100vh-280px)] custom-scrollbar pr-0.5">
+                    {projectsInCol.map((project: Project) => {
+                      const health = evaluateProjectHealth(project, todayStr);
+                      const client = clientMap.get(project.clientId);
+                      const assignee = userMap.get(project.assigneeId || '');
+                      const isMenuOpen = menuOpenProjectId === project.id;
+                      const revNumber = getProjectRevisionNumber(project);
+
+                      return (
+                        <div
+                          key={project.id}
+                          draggable={!health.isHistorical && currentUser.role !== UserRole.VIEWER}
+                          onDragStart={(e) => handleProjectDragStart(e, project.id)}
+                          onClick={() => openEdit(project)}
+                          className={`p-4 rounded-2xl bg-white dark:bg-[#0f172a] border transition-all cursor-grab active:cursor-grabbing group relative select-none shadow-sm hover:shadow-md hover:border-indigo-500/50 ${
+                            health.isHistorical
+                              ? 'opacity-70 bg-slate-50/60 dark:bg-slate-900/40 cursor-default border-slate-200 dark:border-slate-800'
+                              : 'border-slate-200 dark:border-slate-800/90'
+                          }`}
+                        >
+                          {/* Topo do Card: Código, Revisão & Menu Acessível */}
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                {project.code}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50">
+                                Rev.{String(revNumber).padStart(2, '0')}
+                              </span>
+                              {health.isHistorical && (
+                                <span className="px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                                  Arquivado
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Menu Acessível */}
+                            <div className="relative" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => setMenuOpenProjectId(isMenuOpen ? null : project.id)}
+                                title="Ações do projeto..."
+                                className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                              >
+                                <MoreVertical size={14} />
+                              </button>
+
+                              {/* Dropdown Acessível */}
+                              {isMenuOpen && (
+                                <div
+                                  className="absolute right-0 top-6 z-30 w-52 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-2 space-y-1 text-xs animate-in fade-in duration-150"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                    Mover status para:
+                                  </div>
+
+                                  {project.status !== ProjectStatus.QUEUE && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMenuOpenProjectId(null);
+                                        handleProjectStatusTransition(project, ProjectStatus.QUEUE);
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold flex items-center gap-2"
+                                    >
+                                      <span className="w-2 h-2 rounded-full bg-slate-400" />
+                                      <span>Fila de Espera</span>
+                                    </button>
+                                  )}
+
+                                  {project.status !== ProjectStatus.IN_PROGRESS && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMenuOpenProjectId(null);
+                                        handleProjectStatusTransition(project, ProjectStatus.IN_PROGRESS);
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-sky-600 dark:text-sky-400 font-bold flex items-center gap-2"
+                                    >
+                                      <span className="w-2 h-2 rounded-full bg-sky-500" />
+                                      <span>Em Andamento</span>
+                                    </button>
+                                  )}
+
+                                  {project.status !== ProjectStatus.PAUSED && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMenuOpenProjectId(null);
+                                        handleProjectStatusTransition(project, ProjectStatus.PAUSED);
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-purple-600 dark:text-purple-400 font-bold flex items-center gap-2"
+                                    >
+                                      <span className="w-2 h-2 rounded-full bg-purple-500" />
+                                      <span>Pausado</span>
+                                    </button>
+                                  )}
+
+                                  {project.status !== ProjectStatus.DONE && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMenuOpenProjectId(null);
+                                        handleProjectStatusTransition(project, ProjectStatus.DONE);
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-2"
+                                    >
+                                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                      <span>Concluído</span>
+                                    </button>
+                                  )}
+
+                                  {project.status !== ProjectStatus.CANCELED && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMenuOpenProjectId(null);
+                                        handleProjectStatusTransition(project, ProjectStatus.CANCELED);
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-rose-600 dark:text-rose-400 font-bold flex items-center gap-2"
+                                    >
+                                      <span className="w-2 h-2 rounded-full bg-rose-500" />
+                                      <span>Cancelado</span>
+                                    </button>
+                                  )}
+
+                                  <div className="border-t border-slate-100 dark:border-slate-800 my-1 pt-1" />
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setMenuOpenProjectId(null);
+                                      openEdit(project);
+                                    }}
+                                    className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium flex items-center gap-2"
+                                  >
+                                    <Eye size={13} className="text-slate-400" />
+                                    <span>Ver Detalhes</span>
+                                  </button>
+
+                                  {onNavigateToTimeline && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setMenuOpenProjectId(null);
+                                        onNavigateToTimeline();
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium flex items-center gap-2"
+                                    >
+                                      <Calendar size={13} className="text-slate-400" />
+                                      <span>Ver no Cronograma</span>
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Nome do Projeto */}
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2 mb-1.5 leading-snug">
+                            {project.name}
+                          </h4>
+
+                          {/* Cliente */}
+                          <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate mb-3">
+                            {client?.name || 'Cliente Geral'}
+                          </p>
+
+                          {/* Badges de Saúde Operacional */}
+                          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                            {health.isOverdue && health.daysDiff !== null && (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1">
+                                <AlertTriangle size={10} />
+                                <span>Atrasado ({Math.abs(health.daysDiff)}d)</span>
+                              </span>
+                            )}
+                            {health.isDueToday && (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                                <Clock size={10} />
+                                <span>Vence Hoje</span>
+                              </span>
+                            )}
+                            {health.isDueSoon && health.daysDiff !== null && (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 border border-yellow-500/20 flex items-center gap-1">
+                                <Clock size={10} />
+                                <span>Vence em {health.daysDiff}d</span>
+                              </span>
+                            )}
+                            {health.blockedCount > 0 && (
+                              <span
+                                className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-[#78350F]/20 dark:bg-[#78350F]/50 text-amber-900 dark:text-[#FDE68A] border border-[#FBBF24]/50 flex items-center gap-1"
+                                title={`${health.blockedCount} atividade(s) bloqueada(s) no projeto`}
+                              >
+                                <Ban size={10} className="text-[#FBBF24]" />
+                                <span>{health.blockedCount} bloqueada{health.blockedCount > 1 ? 's' : ''}</span>
+                              </span>
+                            )}
+                            {health.isReprogrammed && (
+                              <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                                {health.familyRevisions.length}ª Rev.
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Rodapé do Card: Responsável & Prazo */}
+                          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
+                            <div className="flex items-center space-x-1.5 min-w-0">
+                              <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[9px] font-black text-slate-700 dark:text-slate-200 flex-shrink-0">
+                                {assignee?.username?.charAt(0).toUpperCase() || '—'}
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 truncate max-w-[85px]">
+                                {assignee?.username?.split(' ')[0] || 'Sem Resp.'}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center space-x-1 text-[10px] font-black text-slate-500 flex-shrink-0">
+                              <Calendar size={11} className="text-slate-400" />
+                              <span>{formatDisplayDate(project.deliveryDate) || 'Sem prazo'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {projectsInCol.length === 0 && (
+                      <div className="py-12 text-center text-slate-400 dark:text-slate-600 text-[11px] font-bold">
+                        Nenhum projeto
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* MODAL: Cadastro/Edição de Projeto */}
       {showModal && (

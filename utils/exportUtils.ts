@@ -27,10 +27,8 @@ export const exportProjectsToExcel = (
             'Entrega': p.deliveryDate ? new Date(p.deliveryDate).toLocaleDateString('pt-BR') : '',
             'Prazo Final': p.dueDate ? new Date(p.dueDate).toLocaleDateString('pt-BR') : '',
             'Atividades': projectActivities.length,
-            'Atividades concluídas': completedActivities,
-            'Progresso (%)': projectActivities.length > 0
-                ? Math.round((completedActivities / projectActivities.length) * 100)
-                : 0
+            'Atividades Concluídas': completedActivities,
+            'Taxa de Conclusão': projectActivities.length > 0 ? `${completedActivities}/${projectActivities.length}` : '0/0'
         };
     });
 
