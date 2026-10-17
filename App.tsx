@@ -768,7 +768,18 @@ const App: React.FC = () => {
               onNavigateToTimeline={() => setCurrentPage('timeline')}
             />
           )}
-          {currentPage === 'tasks' && <Tasks db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+          {currentPage === 'tasks' && (
+            <Tasks
+              db={db}
+              setDb={setDb}
+              currentUser={userSession}
+              theme={theme}
+              onOpenProject={(project) => {
+                setInitialEditingProject(project);
+                setCurrentPage('projects');
+              }}
+            />
+          )}
           {currentPage === 'timeline' && (
             <Gantt
               db={db}

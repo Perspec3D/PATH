@@ -7,6 +7,8 @@ import {
   LogModule,
   LogAction,
   ProjectActivity,
+  Project,
+  ActivityType,
   ActivityCanonicalStatus,
   ActivityDeadlineStatus
 } from '../types';
@@ -16,6 +18,7 @@ import {
   deleteTeamTask,
   logAction,
   fetchProjectActivities,
+  fetchActivityTypes,
   syncProjectActivity,
   logProjectActivityEvent
 } from '../storage';
@@ -45,17 +48,20 @@ import {
   User,
   RotateCcw,
   X,
-  ArrowRight
+  ArrowRight,
+  Eye
 } from 'lucide-react';
+import { ActivityDetailsModal } from './ActivityDetailsModal';
 
 interface TasksProps {
   db: AppDB;
   setDb: (db: AppDB) => void;
   currentUser: InternalUser;
   theme: 'dark' | 'light';
+  onOpenProject?: (project: Project) => void;
 }
 
-export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) => {
+export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onOpenProject }) => {
   // Navigation tab: Kanban (Atividades de Projeto) vs Tarefas Avulsas (Team Tasks)
   const [activeTab, setActiveTab] = useState<'kanban' | 'team_tasks'>('kanban');
 
@@ -90,6 +96,10 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
 
   const [isTransitioning, setIsTransitioning] = useState(false);
 
+  // Details Modal state
+  const [detailsModalActivity, setDetailsModalActivity] = useState<ProjectActivity | null>(null);
+  const [activityTypes, setActivityTypes] = useState<ActivityType[]>([]);
+
   // Load project activities for workspace
   const loadActivities = async () => {
     if (!currentUser?.workspaceId) return;
@@ -108,6 +118,11 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
 
   useEffect(() => {
     loadActivities();
+    if (currentUser?.workspaceId) {
+      fetchActivityTypes(currentUser.workspaceId)
+        .then(types => setActivityTypes(types))
+        .catch(err => console.warn('Erro ao carregar tipos de atividade:', err));
+    }
   }, [currentUser?.workspaceId]);
 
   // Current revisions map for projects
@@ -958,6 +973,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                 onDrop={handleDrop}
                 onDragStart={handleDragStart}
                 onTransition={handleRequestTransition}
+                onOpenDetails={setDetailsModalActivity}
                 menuOpenId={menuOpenActivityId}
                 setMenuOpenId={setMenuOpenActivityId}
               />
@@ -981,6 +997,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                 onDrop={handleDrop}
                 onDragStart={handleDragStart}
                 onTransition={handleRequestTransition}
+                onOpenDetails={setDetailsModalActivity}
                 menuOpenId={menuOpenActivityId}
                 setMenuOpenId={setMenuOpenActivityId}
               />
@@ -1004,6 +1021,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                 onDrop={handleDrop}
                 onDragStart={handleDragStart}
                 onTransition={handleRequestTransition}
+                onOpenDetails={setDetailsModalActivity}
                 menuOpenId={menuOpenActivityId}
                 setMenuOpenId={setMenuOpenActivityId}
               />
@@ -1026,6 +1044,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
                 onDrop={handleDrop}
                 onDragStart={handleDragStart}
                 onTransition={handleRequestTransition}
+                onOpenDetails={setDetailsModalActivity}
                 menuOpenId={menuOpenActivityId}
                 setMenuOpenId={setMenuOpenActivityId}
               />
@@ -1598,6 +1617,23 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme }) =
           </div>
         </div>
       )}
+
+      {/* ==================================================================== */}
+      {/* MODAL: DETALHES DA ATIVIDADE E PROJETO NO KANBAN                     */}
+      {/* ==================================================================== */}
+      {detailsModalActivity && (
+        <ActivityDetailsModal
+          activity={detailsModalActivity}
+          onClose={() => setDetailsModalActivity(null)}
+          onOpenProject={onOpenProject}
+          allActivities={projectActivities}
+          projects={db.projects}
+          clients={db.clients}
+          users={db.users}
+          activityTypes={activityTypes}
+          onSelectActivity={setDetailsModalActivity}
+        />
+      )}
     </div>
   );
 };
@@ -1623,6 +1659,7 @@ interface KanbanColumnProps {
   onDrop: (e: React.DragEvent, status: ActivityCanonicalStatus) => void;
   onDragStart: (e: React.DragEvent, activityId: string) => void;
   onTransition: (activity: ProjectActivity, targetStatus: ActivityCanonicalStatus) => void;
+  onOpenDetails: (activity: ProjectActivity) => void;
   menuOpenId: string | null;
   setMenuOpenId: (id: string | null) => void;
 }
@@ -1645,6 +1682,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   onDrop,
   onDragStart,
   onTransition,
+  onOpenDetails,
   menuOpenId,
   setMenuOpenId
 }) => {
@@ -1712,7 +1750,12 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
                       e.stopPropagation();
                       setMenuOpenId(isMenuOpen ? null : act.id);
                     }}
-                    title="Mover atividade..."
+                    onMouseDown={e => e.stopPropagation()}
+                    onDragStart={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    title="Ações da atividade..."
                     className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   >
                     <MoreVertical className="w-3.5 h-3.5" />
@@ -1721,9 +1764,26 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
                   {/* Dropdown Acessível */}
                   {isMenuOpen && (
                     <div
-                      className="absolute right-0 top-6 z-30 w-44 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-1.5 space-y-1 text-xs animate-in fade-in duration-150"
+                      className="absolute right-0 top-6 z-30 w-48 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-1.5 space-y-1 text-xs animate-in fade-in duration-150"
                       onClick={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
                     >
+                      {/* Ação: Ver detalhes */}
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setMenuOpenId(null);
+                          onOpenDetails(act);
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-2"
+                      >
+                        <Eye className="w-3.5 h-3.5 shrink-0" />
+                        <span>Ver detalhes</span>
+                      </button>
+
+                      <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
+
                       <div className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400">
                         Mover para:
                       </div>
@@ -1768,8 +1828,20 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
                 </div>
               </div>
 
-              {/* Título da Atividade */}
-              <h4 className="text-xs font-bold text-slate-900 dark:text-white leading-snug mb-2.5">
+              {/* Título da Atividade (Clicável para ver detalhes sem disparar drag) */}
+              <h4
+                onClick={e => {
+                  e.stopPropagation();
+                  onOpenDetails(act);
+                }}
+                onMouseDown={e => e.stopPropagation()}
+                onDragStart={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                title="Clique para ver detalhes"
+                className="text-xs font-bold text-slate-900 dark:text-white leading-snug mb-2.5 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+              >
                 {act.name}
               </h4>
 
