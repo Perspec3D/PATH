@@ -233,6 +233,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
             id: data.id,
             name: data.name,
             email: data.email,
+            passwordHash: db.company?.passwordHash || '',
             licenseStatus: data.license_status,
             userLimit: data.user_limit,
             subscriptionId: data.subscription_id,

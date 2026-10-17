@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Company, LicenseStatus, UserRole } from '../types';
+import { Company, InternalUser, LicenseStatus, UserRole } from '../types';
 import { supabase } from '../lib/supabase';
 import { AppDB } from '../storage';
 
@@ -56,8 +56,9 @@ export const CompanyLogin: React.FC<CompanyLoginProps> = ({ db, setDb, onLogin }
           userLimit: 5,
         };
 
-        const adminUser = {
+        const adminUser: InternalUser = {
           id: data.user.id, // Using the auth user ID directly as it's a valid UUID
+          workspaceId: data.user.id,
           username: 'admin',
           passwordHash: 'admin',
           role: UserRole.ADMIN,

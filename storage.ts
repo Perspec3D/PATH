@@ -1,4 +1,4 @@
-import { Company, InternalUser, Client, Project, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, WorkSession, ActivityOvertimeEntry, ActivityTransitionResult, ActiveWorkSessionContext, ProjectActivityEvent } from './types';
+import { Company, InternalUser, Client, Project, ProjectStatus, LicenseStatus, UserRole, TeamTask, TaskType, SystemLog, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, WorkSession, ActivityOvertimeEntry, ActivityTransitionResult, ActiveWorkSessionContext, ProjectActivityEvent } from './types';
 import { supabase } from './lib/supabase';
 
 export interface AppDB {
@@ -25,26 +25,31 @@ const CACHE_TTL = 1000 * 60 * 5; // 5 minutes
 
 const mapProject = (p: any): Project => {
   const family = Array.isArray(p.project_families) ? p.project_families[0] : p.project_families;
+  const parsedRevisionNumber = typeof p.revision_number === 'number'
+    ? p.revision_number
+    : (p.revision_number !== null && p.revision_number !== undefined ? Number(p.revision_number) : undefined);
+
   return {
     id: p.id,
     workspaceId: p.workspace_id,
-    familyId: p.family_id,
-    familyCode: family?.code || p.code,
-    familyName: family?.name || p.name,
-    revisionNumber: p.revision_number,
-    isCurrentRevision: p.is_current_revision,
+    familyId: p.family_id || undefined,
+    familyCode: family?.code || p.code || '',
+    familyName: family?.name || p.name || 'Sem nome',
+    revisionNumber: Number.isFinite(parsedRevisionNumber) ? parsedRevisionNumber : undefined,
+    isCurrentRevision: p.is_current_revision !== false,
     clientId: p.client_id,
-    assigneeId: p.assignee_id,
-    code: p.code,
-    name: p.name,
-    photoUrl: p.photo_url,
-    revision: p.revision,
-    status: p.status,
-    startDate: p.start_date,
-    deliveryDate: p.delivery_date,
-    dueDate: p.due_date,
-    notes: p.notes,
-    createdAt: new Date(p.created_at).getTime()
+    assigneeId: p.assignee_id || undefined,
+    code: p.code || '',
+    name: p.name || 'Sem nome',
+    photoUrl: p.photo_url || undefined,
+    revision: p.revision || 'Rev.00',
+    status: p.status || ProjectStatus.QUEUE,
+    startDate: p.start_date || undefined,
+    deliveryDate: p.delivery_date || undefined,
+    dueDate: p.due_date || undefined,
+    notes: p.notes || undefined,
+    createdAt: p.created_at ? new Date(p.created_at).getTime() : Date.now(),
+    updatedAt: p.updated_at ? new Date(p.updated_at).getTime() : undefined
   };
 };
 

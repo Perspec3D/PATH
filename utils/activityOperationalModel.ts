@@ -887,6 +887,8 @@ export interface UpcomingDeliveryItem {
 export interface ProfessionalDeliveryMetrics {
   userId: string;
   username?: string;
+  userName?: string;
+  openActivitiesCount?: number;
   inProgressCount: number; // WIP
   blockedCount: number;
   overdueCount: number;
@@ -1288,15 +1290,20 @@ export const calculateProfessionalDeliveryMetrics = (
       : null;
 
     // Sort upcoming deliveries ascending by delivery date
-    openActivitiesForUpcoming.sort((a, b) => a.deliveryDate.localeCompare(b.deliveryDate));
+    openActivitiesForUpcoming.sort((a, b) => (a.deliveryDate || '').localeCompare(b.deliveryDate || ''));
     const upcomingDeliveries = openActivitiesForUpcoming.slice(0, 5);
 
     const wipLimit = userWipLimits[user.id];
     const isWipLimitExceeded = Boolean(wipLimit && wipLimit > 0 && inProgressCount > wipLimit);
 
+    const openCount = userActivities.filter(act => !isActivityClosed(act.status)).length;
+    const resolvedName = user.username || 'Profissional';
+
     return {
       userId: user.id,
-      username: user.username,
+      username: resolvedName,
+      userName: resolvedName,
+      openActivitiesCount: openCount,
       inProgressCount,
       blockedCount,
       overdueCount,

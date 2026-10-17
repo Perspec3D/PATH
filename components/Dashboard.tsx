@@ -30,7 +30,7 @@ import {
 } from 'recharts';
 import {
   CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar,
-  Trophy, Medal, Eye, ArrowRight, Search, Ban, Activity
+  Trophy, Medal, Eye, ArrowRight, Search, Ban, Activity, PieChart as PieChartIcon
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -233,10 +233,11 @@ const HealthGauge: React.FC<HealthGaugeProps> = ({ value, label = 'CONFIABILIDAD
   );
 };
 
-const formatDate = (dateStr?: string) => {
+const formatDate = (dateStr?: string | null) => {
   if (!dateStr) return null;
-  const [y, m, d] = dateStr.split('-');
-  return `${d}/${m}/${y.slice(-2)}`;
+  const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[3]}/${match[2]}/${match[1].slice(-2)}`;
+  return String(dateStr);
 };
 
 const UserDetailModal: React.FC<{
@@ -1392,24 +1393,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {teamWipMetrics.map(userMetric => {
-                    const upcoming = userMetric.upcomingDeliveries[0];
+                    const upcoming = userMetric.upcomingDeliveries?.[0];
+                    const displayName = userMetric.userName || userMetric.username || 'Profissional';
+                    const initialLetter = displayName.charAt(0).toUpperCase() || 'P';
+                    const openCount = userMetric.openActivitiesCount ?? (userMetric.inProgressCount + userMetric.blockedCount);
                     return (
                       <div
                         key={userMetric.userId}
-                        onClick={() => setViewingUser({ id: userMetric.userId, name: userMetric.userName })}
+                        onClick={() => setViewingUser({ id: userMetric.userId, name: displayName })}
                         className="p-5 rounded-3xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 hover:border-indigo-500/30 hover:shadow-md transition-all cursor-pointer group"
                       >
                         <div className="flex items-start justify-between gap-2 mb-3">
                           <div className="flex items-center space-x-3 min-w-0">
                             <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-black text-xs flex items-center justify-center shrink-0">
-                              {userMetric.userName.charAt(0).toUpperCase()}
+                              {initialLetter}
                             </div>
                             <div className="min-w-0">
                               <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase truncate block group-hover:text-indigo-500 transition-colors">
-                                {userMetric.userName}
+                                {displayName}
                               </span>
                               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">
-                                {userMetric.openActivitiesCount} atividade(s) sob responsabilidade
+                                {openCount} atividade(s) sob responsabilidade
                               </span>
                             </div>
                           </div>
@@ -1520,7 +1524,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
                 calculation="Projetos_por_Cliente / Projetos_Totais * 100"
               />
             </h3>
-            <PieChart size={20} className="text-indigo-600 dark:text-indigo-500" />
+            <PieChartIcon size={20} className="text-indigo-600 dark:text-indigo-500" />
           </div>
           <div className="p-4 flex-1 flex flex-col items-center justify-center min-h-[300px]">
             <ResponsiveContainer width="100%" height="100%">

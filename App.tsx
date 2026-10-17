@@ -14,6 +14,7 @@ import { InternalUserLogin } from './components/Who';
 import { Reports } from './components/Reports';
 import { Tasks } from './components/Tasks';
 import { Logs } from './components/Logs';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 type Page = 'dashboard' | 'clients' | 'projects' | 'tasks' | 'timeline' | 'team' | 'reports' | 'logs' | 'settings';
 
@@ -173,6 +174,9 @@ const App: React.FC = () => {
         setCompanySession(company);
         setDb(prev => ({ ...prev, company }));
       }
+      setIsLoading(false);
+    }).catch(err => {
+      console.error("Erro ao verificar sessão Supabase:", err);
       setIsLoading(false);
     });
 
@@ -719,19 +723,19 @@ const App: React.FC = () => {
   if (userSession && db.company && userSession.workspaceId !== db.company.id) {
     setUserSession(null);
     localStorage.removeItem('PATH_USER_SESSION');
-    return null;
+    return <InternalUserLogin users={db.users} onLogin={handleUserLogin} onExit={handleLogout} />;
   }
 
   if (activeUser && !activeUser.isActive) {
     setUserSession(null);
     localStorage.removeItem('PATH_USER_SESSION');
-    return null;
+    return <InternalUserLogin users={db.users} onLogin={handleUserLogin} onExit={handleLogout} />;
   }
 
   if (!activeUser && !isLoading && db.users.length > 0) {
     setUserSession(null);
     localStorage.removeItem('PATH_USER_SESSION');
-    return null;
+    return <InternalUserLogin users={db.users} onLogin={handleUserLogin} onExit={handleLogout} />;
   }
 
   return (
@@ -748,45 +752,47 @@ const App: React.FC = () => {
         setTheme={setTheme}
         db={db}
       >
-        {currentPage === 'dashboard' && <Dashboard db={db} theme={theme} />}
-        {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
-        {currentPage === 'projects' && (
-          <Projects
-            db={db}
-            setDb={setDb}
-            currentUser={userSession}
-            theme={theme}
-            initialEditingProject={initialEditingProject}
-            clearInitialEditingProject={() => setInitialEditingProject(null)}
-            initialEditingActivity={initialEditingActivity}
-            clearInitialEditingActivity={() => setInitialEditingActivity(null)}
-            onNavigateToTimeline={() => setCurrentPage('timeline')}
-          />
-        )}
-        {currentPage === 'tasks' && <Tasks db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
-        {currentPage === 'timeline' && (
-          <Gantt
-            db={db}
-            setDb={setDb}
-            currentUser={userSession}
-            theme={theme}
-            onOpenProject={(project) => {
-              setInitialEditingProject(project);
-              setCurrentPage('projects');
-            }}
-            onEditActivity={(project, activity) => {
-              setInitialEditingProject(project);
-              setInitialEditingActivity(activity);
-              setCurrentPage('projects');
-            }}
-          />
-        )}
-        {currentPage === 'team' && userSession.role === UserRole.ADMIN && <Team db={db} theme={theme} />}
-        {currentPage === 'reports' && userSession.role === UserRole.ADMIN && <Reports db={db} theme={theme} />}
-        {currentPage === 'settings' && userSession.role === UserRole.ADMIN && (
-          <Settings db={db} setDb={setDb} currentUser={userSession} theme={theme} />
-        )}
-        {currentPage === 'logs' && userSession.role === UserRole.ADMIN && <Logs db={db} theme={theme} />}
+        <ErrorBoundary moduleName={`Módulo ${currentPage.toUpperCase()}`}>
+          {currentPage === 'dashboard' && <Dashboard db={db} theme={theme} />}
+          {currentPage === 'clients' && <Clients db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+          {currentPage === 'projects' && (
+            <Projects
+              db={db}
+              setDb={setDb}
+              currentUser={userSession}
+              theme={theme}
+              initialEditingProject={initialEditingProject}
+              clearInitialEditingProject={() => setInitialEditingProject(null)}
+              initialEditingActivity={initialEditingActivity}
+              clearInitialEditingActivity={() => setInitialEditingActivity(null)}
+              onNavigateToTimeline={() => setCurrentPage('timeline')}
+            />
+          )}
+          {currentPage === 'tasks' && <Tasks db={db} setDb={setDb} currentUser={userSession} theme={theme} />}
+          {currentPage === 'timeline' && (
+            <Gantt
+              db={db}
+              setDb={setDb}
+              currentUser={userSession}
+              theme={theme}
+              onOpenProject={(project) => {
+                setInitialEditingProject(project);
+                setCurrentPage('projects');
+              }}
+              onEditActivity={(project, activity) => {
+                setInitialEditingProject(project);
+                setInitialEditingActivity(activity);
+                setCurrentPage('projects');
+              }}
+            />
+          )}
+          {currentPage === 'team' && userSession.role === UserRole.ADMIN && <Team db={db} theme={theme} />}
+          {currentPage === 'reports' && userSession.role === UserRole.ADMIN && <Reports db={db} theme={theme} />}
+          {currentPage === 'settings' && userSession.role === UserRole.ADMIN && (
+            <Settings db={db} setDb={setDb} currentUser={userSession} theme={theme} />
+          )}
+          {currentPage === 'logs' && userSession.role === UserRole.ADMIN && <Logs db={db} theme={theme} />}
+        </ErrorBoundary>
       </Layout>
 
       {currentAlert && (

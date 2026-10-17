@@ -126,6 +126,7 @@ export interface Project {
   notes?: string;
   subtasks?: ProjectSubTask[];
   createdAt: number;
+  updatedAt?: number;
   // Historical Tracking
   actualStartDate?: string;
   plannedEndDate?: string;

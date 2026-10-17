@@ -667,6 +667,7 @@ const testToday = '2026-10-17';
 // 1. Project with overdue deadline (expired in the past)
 const overdueProject: Project = {
   id: 'proj-overdue',
+  workspaceId: 'ws-1',
   code: 'PRJ-OD',
   name: 'Projeto Atrasado',
   clientId: 'client-1',
@@ -705,6 +706,7 @@ assert(predOverdue[0].daysRemaining === -7, 'Days remaining is -7');
 // 2. Project with blocked activity and future deadline -> ATENÇÃO (NOT atrasado)
 const blockedProject: Project = {
   id: 'proj-blocked',
+  workspaceId: 'ws-1',
   code: 'PRJ-BLK',
   name: 'Projeto com Bloqueio',
   clientId: 'client-1',
@@ -744,6 +746,7 @@ assert(predBlocked[0].attentionReasons.some(r => r.includes('bloqueada')), 'Atte
 // 3. Project near deadline (<= 5 days) -> ATENÇÃO
 const nearProject: Project = {
   id: 'proj-near',
+  workspaceId: 'ws-1',
   code: 'PRJ-NEAR',
   name: 'Projeto Próximo do Vencimento',
   clientId: 'client-1',
@@ -782,6 +785,7 @@ assert(predNear[0].daysRemaining === 2, 'daysRemaining is 2');
 // 4. Project without valid delivery date -> SEM DADOS SUFICIENTES
 const noDeadlineProject: Project = {
   id: 'proj-no-date',
+  workspaceId: 'ws-1',
   code: 'PRJ-ND',
   name: 'Projeto Sem Prazo',
   clientId: 'client-1',
@@ -802,6 +806,7 @@ assert(predNoDeadline[0].status === ProjectDeliveryPredictabilityStatus.INSUFFIC
 // 5. Project without activities -> SEM DADOS SUFICIENTES
 const noActivitiesProject: Project = {
   id: 'proj-no-acts',
+  workspaceId: 'ws-1',
   code: 'PRJ-NA',
   name: 'Projeto Sem Atividades',
   clientId: 'client-1',
@@ -823,6 +828,7 @@ assert(predNoActs[0].status === ProjectDeliveryPredictabilityStatus.INSUFFICIENT
 // 6. Project completely on track (future deadline, comfortable, no blocks, no overdue activities)
 const onTrackProject: Project = {
   id: 'proj-ontrack',
+  workspaceId: 'ws-1',
   code: 'PRJ-OK',
   name: 'Projeto No Prazo',
   clientId: 'client-1',
@@ -859,6 +865,7 @@ assert(predOnTrack[0].attentionReasons.length === 0, 'No attention reasons for h
 // 7. Reprogrammed project tracking
 const rev01Project: Project = {
   id: 'proj-rev01',
+  workspaceId: 'ws-1',
   familyId: 'fam-rep',
   code: 'PRJ-REP',
   name: 'Projeto Reprogramado',
@@ -874,6 +881,7 @@ const rev01Project: Project = {
 
 const rev02Project: Project = {
   id: 'proj-rev02',
+  workspaceId: 'ws-1',
   familyId: 'fam-rep',
   code: 'PRJ-REP',
   name: 'Projeto Reprogramado',
