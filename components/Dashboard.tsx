@@ -11,6 +11,8 @@ import {
   formatKpiRateWithFraction,
   formatKpiLeadTimeDays,
   addCalendarDays,
+  calculateBusinessDurationDays,
+  calculateCalendarDurationDays,
   ActivityCanonicalStatus,
   ActivityDeadlineStatus,
   evaluateDeadlineStatus
@@ -23,7 +25,7 @@ import {
   getDeliveryPredictabilityBadge
 } from '../utils/deliveryForecast';
 import { InfoTooltip } from './InfoTooltip';
-import { isCurrentProjectRevision } from '../utils/projectRevision';
+import { isCurrentProjectRevision, getProjectFamilyId } from '../utils/projectRevision';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, Legend, ReferenceLine
@@ -667,6 +669,126 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
   }, [projects, todayStr]);
 
+  // 3. Lead Time Médio dos Projetos (Duração real entre início e conclusão de projetos concluídos)
+  const projectLeadTimeMetrics = useMemo(() => {
+    const workDays = db.company?.workDays || [1, 2, 3, 4, 5];
+
+    // Agrupar projetos por família para tratar revisões sem duplicar projetos
+    // Considerar apenas a versão canônica (revisão atual) de cada família
+    const familiesMap = new Map<string, Project[]>();
+    for (const p of projects) {
+      const famId = getProjectFamilyId(p);
+      const list = familiesMap.get(famId) || [];
+      list.push(p);
+      familiesMap.set(famId, list);
+    }
+
+    interface ValidProjectLead {
+      projectId: string;
+      code: string;
+      name: string;
+      startDate: string;
+      endDate: string;
+      businessDays: number;
+      calendarDays: number;
+    }
+
+    const validCompletedProjects: ValidProjectLead[] = [];
+
+    for (const [_, familyRevs] of familiesMap.entries()) {
+      // 1. Identificar a revisão atual da família
+      const currentRev = familyRevs.find(isCurrentProjectRevision) || familyRevs[0];
+      if (!currentRev) continue;
+
+      // 2. Projeto deve estar efetivamente concluído (DONE)
+      if (currentRev.status !== ProjectStatus.DONE) continue;
+
+      // 3. Data de conclusão real: deve ser comprovada por actualEndDate
+      const actualEnd = currentRev.actualEndDate;
+      if (!actualEnd) continue;
+
+      // 4. Data de início real: deve ser comprovada por actualStartDate na revisão atual ou na primeira revisão da família
+      const allStartDates = familyRevs
+        .map(r => r.actualStartDate)
+        .filter((d): d is string => Boolean(d))
+        .sort();
+      const actualStart = currentRev.actualStartDate || allStartDates[0];
+      if (!actualStart) continue;
+
+      // 5. Início deve ser anterior ou igual à conclusão
+      if (actualStart > actualEnd) continue;
+
+      // 6. Calcular duração real em dias úteis e dias corridos
+      const businessDays = calculateBusinessDurationDays(actualStart, actualEnd, workDays);
+      const calendarDays = calculateCalendarDurationDays(actualStart, actualEnd);
+
+      if (businessDays === null || calendarDays === null) continue;
+
+      validCompletedProjects.push({
+        projectId: currentRev.id,
+        code: currentRev.code,
+        name: currentRev.name,
+        startDate: actualStart,
+        endDate: actualEnd,
+        businessDays,
+        calendarDays
+      });
+    }
+
+    if (validCompletedProjects.length === 0) {
+      return {
+        hasSufficientData: false,
+        displayValue: 'Sem dados suficientes',
+        subtext: 'Tempo médio para concluir projetos',
+        tooltipText: 'Lead Time Médio dos Projetos: Nenhum projeto concluído com datas reais comprováveis (actualStartDate e actualEndDate).',
+        tooltipContent: 'Não há projetos com início e conclusão reais cadastrados para calcular o tempo médio de entrega.',
+        tooltipCalculation: 'Sem dados suficientes',
+        analyzedCount: 0,
+        averageBusinessDays: null,
+        averageCalendarDays: null
+      };
+    }
+
+    const totalBusinessDays = validCompletedProjects.reduce((acc, p) => acc + p.businessDays, 0);
+    const totalCalendarDays = validCompletedProjects.reduce((acc, p) => acc + p.calendarDays, 0);
+
+    const averageBusinessDays = Math.round((totalBusinessDays / validCompletedProjects.length) * 10) / 10;
+    const averageCalendarDays = Math.round((totalCalendarDays / validCompletedProjects.length) * 10) / 10;
+
+    const formattedBusDays = averageBusinessDays.toLocaleString('pt-BR', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    });
+
+    const formattedCalDays = averageCalendarDays.toLocaleString('pt-BR', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    });
+
+    // Identificar período de conclusão analisado
+    const endDatesSorted = [...validCompletedProjects.map(p => p.endDate)].sort();
+    const minConcluded = endDatesSorted[0];
+    const maxConcluded = endDatesSorted[endDatesSorted.length - 1];
+    const periodStr = minConcluded === maxConcluded
+      ? `Concluído em ${formatDisplayDate(minConcluded)}`
+      : `De ${formatDisplayDate(minConcluded)} a ${formatDisplayDate(maxConcluded)}`;
+
+    const count = validCompletedProjects.length;
+    const countStr = `${count} ${count === 1 ? 'projeto analisado' : 'projetos analisados'}`;
+
+    return {
+      hasSufficientData: true,
+      displayValue: `${formattedBusDays} dias úteis`,
+      subtext: 'Tempo médio para concluir projetos',
+      tooltipText: `Lead Time Médio: ${formattedBusDays} dias úteis (${countStr}). Período: ${periodStr}. Média em dias corridos: ${formattedCalDays} dias.`,
+      tooltipContent: `Média de duração baseada estritamente no início real e conclusão real de projetos encerrados. Dias não úteis (finais de semana e folgas configuradas) são excluídos.`,
+      tooltipCalculation: `Quantidade: ${countStr}\nPeríodo: ${periodStr}\nCritério: Início real ao término real (actualStartDate → actualEndDate)\nMédia complementar: ${formattedCalDays} dias corridos`,
+      analyzedCount: count,
+      averageBusinessDays,
+      averageCalendarDays
+    };
+  }, [projects, db.company?.workDays]);
+
   // 4. Tendência Mensal (Criados vs Concluídos)
   const monthlyTimeline = useMemo(() => {
     const months: Record<string, { month: string; created: number; done: number }> = {};
@@ -1245,21 +1367,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Card 4: Entregas no Prazo */}
-        <div className="py-3 px-4 rounded-2xl bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border border-slate-200/80 dark:border-white/5 shadow-sm flex items-center justify-between group hover:border-emerald-500/30 transition-all">
-          <div>
-            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">Entregas no Prazo</span>
-            <div className="flex items-baseline space-x-1.5 mt-0.5">
-              <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
-                {healthInfo.value !== null ? `${healthInfo.value}%` : '---'}
+        {/* Card 4: Lead Time Médio dos Projetos */}
+        <div
+          className="py-3 px-4 rounded-2xl bg-white dark:bg-[#1e293b]/40 backdrop-blur-xl border border-slate-200/80 dark:border-white/5 shadow-sm flex items-center justify-between group hover:border-indigo-500/30 transition-all relative"
+          title={projectLeadTimeMetrics.tooltipText}
+        >
+          <div className="min-w-0 pr-2">
+            <div className="flex items-center space-x-1">
+              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block truncate">
+                Lead Time Médio
               </span>
-              <span className="text-[9px] font-bold text-slate-400">
-                {healthInfo.value !== null ? (healthInfo.value >= 80 ? 'excelente' : 'atenção') : 'sem dados'}
+              <InfoTooltip
+                title="Lead Time Médio dos Projetos"
+                content={projectLeadTimeMetrics.tooltipContent}
+                calculation={projectLeadTimeMetrics.tooltipCalculation}
+              />
+            </div>
+            <div className="flex flex-col mt-0.5">
+              <span className={`font-black tracking-tight text-indigo-600 dark:text-indigo-400 truncate ${
+                projectLeadTimeMetrics.hasSufficientData ? 'text-xl' : 'text-xs sm:text-sm'
+              }`}>
+                {projectLeadTimeMetrics.displayValue}
+              </span>
+              <span className="text-[9px] font-bold text-slate-400 truncate" title="Tempo médio para concluir projetos">
+                {projectLeadTimeMetrics.subtext}
               </span>
             </div>
           </div>
-          <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500 shrink-0">
-            <CheckCircle2 size={14} />
+          <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-500 shrink-0">
+            <Clock size={14} />
           </div>
         </div>
 
