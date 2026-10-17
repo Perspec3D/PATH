@@ -30,8 +30,14 @@ import {
 } from 'recharts';
 import {
   CheckCircle2, TrendingUp, Users, Clock, AlertTriangle, Calendar,
-  Trophy, Medal, Eye, ArrowRight, Search, Ban, Activity, PieChart as PieChartIcon
+  Trophy, Medal, Eye, ArrowRight, Search, Ban, Activity, PieChart as PieChartIcon,
+  Sliders, Target, Sparkles, Layers
 } from 'lucide-react';
+import {
+  calculateTeamOperationalCapacity,
+  HistoricalWindowWeeks,
+  SampleConfidence
+} from '../utils/teamOperationalCapacity';
 
 interface DashboardProps {
   db: AppDB;
@@ -506,6 +512,8 @@ const RiskDetailModal: React.FC<{
 export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
   const [predictabilityFilter, setPredictabilityFilter] = useState<'ALL' | ProjectDeliveryPredictabilityStatus>('ALL');
   const [predictabilitySearch, setPredictabilitySearch] = useState('');
+  const [capacityWindow, setCapacityWindow] = useState<HistoricalWindowWeeks>(8);
+  const [capacityTab, setCapacityTab] = useState<'overview' | 'professionals' | 'projection'>('overview');
   const [viewingUser, setViewingUser] = useState<any>(null);
   const [viewingRisk, setViewingRisk] = useState<{ type: 'inertia' | 'scale', data: any } | null>(null);
   const projects = db.projects || [];
@@ -885,6 +893,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
       currentProjectIds
     );
   }, [projectActivities, activeUsers, todayStr, userWipLimits, currentProjectIds]);
+
+  const teamCapacity = useMemo(() => {
+    return calculateTeamOperationalCapacity({
+      projects,
+      activities: projectActivities,
+      users,
+      todayStr,
+      windowWeeks: capacityWindow,
+      userWipLimits,
+      workDays: db.company?.workDays || [1, 2, 3, 4, 5],
+      currentProjectIds
+    });
+  }, [projects, projectActivities, users, todayStr, capacityWindow, userWipLimits, db.company?.workDays, currentProjectIds]);
 
   const COLORS = ['#6366f1', '#a855f7', '#ec4899', '#f97316', '#10b981'];
 
@@ -1286,188 +1307,480 @@ export const Dashboard: React.FC<DashboardProps> = ({ db, theme = 'dark' }) => {
           </div>
         </div>
 
-        {/* --- CARD EXPANDIDO: DISTRIBUIÇÃO DE TRABALHO E WIP --- */}
-        <div className="lg:col-span-3 bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl p-10 rounded-[48px] border border-slate-200 dark:border-white/10 shadow-xl dark:shadow-2xl relative group overflow-hidden transition-all duration-500">
-          <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl group-hover:bg-indigo-500/20 transition-all duration-1000"></div>
+        {/* --- CARD EXPANDIDO: CAPACIDADE OPERACIONAL DA EQUIPE (LEAD TIME, WIP E VAZÃO HISTÓRICA) --- */}
+        <div className="lg:col-span-3 bg-white dark:bg-[#1e293b]/40 backdrop-blur-3xl p-8 sm:p-10 rounded-[48px] border border-slate-200 dark:border-white/10 shadow-xl dark:shadow-2xl relative group overflow-hidden transition-all duration-500">
+          <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl group-hover:bg-indigo-500/20 transition-all duration-1000 pointer-events-none"></div>
 
-          <div className="relative z-10">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
+          <div className="relative z-10 space-y-8">
+            {/* Cabeçalho do Painel com Filtro de Janela e Abas */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-100 dark:border-white/5">
               <div>
-                <h3 className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.4em] mb-2 px-2 flex items-center transition-colors">
-                  Distribuição de Trabalho e WIP
+                <h3 className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.4em] mb-2 px-1 flex items-center transition-colors">
+                  Capacidade Operacional da Equipe
                   <InfoTooltip
-                    title="Distribuição de Trabalho e WIP"
-                    content="Acompanhamento operacional de atividades ativas em andamento (WIP), impedimentos e prazos por profissional. Permite identificar gargalos de fluxo sem suposições de horas."
-                    calculation="WIP = Atividades EM ANDAMENTO · Impedimentos = Atividades BLOQUEADAS"
+                    title="Capacidade Operacional por Fluxo Real"
+                    content="Estimativa gerencial baseada no comportamento real do fluxo: vazão histórica de entregas, lead time e WIP ativo. Sem suposições de horas estimadas ou apontamentos manuais."
+                    calculation="Vazão = Entregas Concluídas / Semanas da Janela · Lead Time = Início Real até Conclusão (dias úteis e corridos)"
                     position="bottom"
                   />
                 </h3>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest px-2 transition-colors">
-                  Atividades ativas em andamento, impedimentos e próximas entregas por profissional
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest px-1 transition-colors">
+                  Vazão histórica de entregas · Lead Time médio · WIP atual · Projeções para próximas semanas
                 </p>
               </div>
 
-              {/* Indicador de Concentração Global */}
-              <div className={`px-4 py-2 rounded-2xl border text-[10px] font-black uppercase tracking-wider flex items-center gap-2 ${
-                wipOverview.exceededUsers.length > 0
-                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
-                  : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-              }`}>
-                {wipOverview.exceededUsers.length > 0 ? (
-                  <>
-                    <AlertTriangle size={14} className="text-amber-500" />
-                    <span>Atenção: {wipOverview.exceededUsers.length} profissional(is) acima do limite orientativo</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={14} className="text-emerald-500" />
-                    <span>Fluxo balanceado · Sem sobreconcentração crítica</span>
-                  </>
-                )}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Seletor de Janela Histórica */}
+                <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[9px] font-black uppercase text-slate-400 px-2.5">Janela:</span>
+                  {([4, 8, 12] as HistoricalWindowWeeks[]).map(w => (
+                    <button
+                      key={w}
+                      onClick={() => setCapacityWindow(w)}
+                      className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                        capacityWindow === w
+                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                          : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {w} Semanas
+                    </button>
+                  ))}
+                </div>
+
+                {/* Seletor de Visualização */}
+                <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={() => setCapacityTab('overview')}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                      capacityTab === 'overview'
+                        ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-black'
+                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Visão Geral
+                  </button>
+                  <button
+                    onClick={() => setCapacityTab('professionals')}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                      capacityTab === 'professionals'
+                        ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-black'
+                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Por Profissional ({teamCapacity.professionals.length})
+                  </button>
+                  <button
+                    onClick={() => setCapacityTab('projection')}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                      capacityTab === 'projection'
+                        ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm font-black'
+                        : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Planejamento Futuro
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              {/* Resumo Global Operacional */}
-              <div className="lg:col-span-4 space-y-4 border-b lg:border-b-0 lg:border-r border-slate-100 dark:border-slate-800/50 pb-6 lg:pb-0 lg:pr-8">
-                <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                      Total WIP em Andamento
-                    </span>
-                    <span className="text-2xl font-black text-sky-600 dark:text-sky-400">
-                      {wipOverview.totalWip}
-                    </span>
+            {/* ABA 1: VISÃO GERAL & VAZÃO HISTÓRICA */}
+            {capacityTab === 'overview' && (
+              <div className="space-y-6 animate-in fade-in duration-300">
+                {/* 4 Cards de Métricas Principais da Equipe */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Card 1: Vazão Semanal (Throughput) */}
+                  <div className="p-6 rounded-3xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                          Vazão da Equipe (Throughput)
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider border ${
+                          teamCapacity.sampleConfidence === SampleConfidence.SUFFICIENT
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                            : teamCapacity.sampleConfidence === SampleConfidence.LOW
+                              ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
+                              : 'bg-slate-500/10 border-slate-500/20 text-slate-500'
+                        }`}>
+                          {teamCapacity.sampleConfidence}
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        {teamCapacity.teamWeeklyThroughput !== null ? (
+                          <>
+                            <span className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                              {teamCapacity.teamWeeklyThroughput}
+                            </span>
+                            <span className="text-xs font-bold text-slate-400 uppercase">entregas/sem</span>
+                          </>
+                        ) : (
+                          <span className="text-sm font-black text-slate-400 dark:text-slate-500 italic">
+                            Histórico insuficiente
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-500">
+                      <span>Projeção mensal:</span>
+                      <span className="text-slate-700 dark:text-slate-300">
+                        {teamCapacity.teamMonthlyThroughput !== null ? `≈ ${teamCapacity.teamMonthlyThroughput} entregas/mês` : '---'}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-[9px] text-slate-500 font-bold">
-                    Atividades ativas em execução simultânea pela equipe
-                  </p>
+
+                  {/* Card 2: Lead Time Médio Realizado */}
+                  <div className="p-6 rounded-3xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                          Lead Time Médio Realizado
+                        </span>
+                        <Clock size={14} className="text-indigo-500" />
+                      </div>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        {teamCapacity.averageBusinessLeadTimeDays !== null ? (
+                          <>
+                            <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight">
+                              {teamCapacity.averageBusinessLeadTimeDays}
+                            </span>
+                            <span className="text-xs font-bold text-slate-400 uppercase">dias úteis</span>
+                          </>
+                        ) : (
+                          <span className="text-sm font-black text-slate-400 dark:text-slate-500 italic">
+                            Sem conclusões
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-500">
+                      <span>Dias corridos:</span>
+                      <span className="text-slate-700 dark:text-slate-300">
+                        {teamCapacity.averageCalendarLeadTimeDays !== null ? `${teamCapacity.averageCalendarLeadTimeDays} dias corridos` : '---'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card 3: WIP Atual e Impedimentos */}
+                  <div className="p-6 rounded-3xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                          WIP em Execução & Impedimentos
+                        </span>
+                        <Activity size={14} className="text-sky-500" />
+                      </div>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-3xl font-black text-sky-600 dark:text-sky-400 tracking-tight">
+                          {teamCapacity.totalWip}
+                        </span>
+                        <span className="text-xs font-bold text-slate-400 uppercase">em andamento</span>
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between text-[9px] font-bold">
+                      <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <Ban size={10} /> {teamCapacity.totalBlocked} bloqueada(s)
+                      </span>
+                      <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                        <AlertTriangle size={10} /> {teamCapacity.totalOverdue} atrasada(s)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card 4: Entregas Concluídas na Janela */}
+                  <div className="p-6 rounded-3xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                          Entregas na Janela ({teamCapacity.windowWeeks} sem)
+                        </span>
+                        <CheckCircle2 size={14} className="text-emerald-500" />
+                      </div>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+                          {teamCapacity.totalConcludedDeliveries}
+                        </span>
+                        <span className="text-xs font-bold text-slate-400 uppercase">entregas</span>
+                      </div>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-500">
+                      <span>Período analisado:</span>
+                      <span className="text-slate-700 dark:text-slate-300">
+                        desde {formatDisplayDate(teamCapacity.windowStartDate)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20">
-                    <span className="text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest block">
-                      Bloqueadas
-                    </span>
-                    <span className="text-xl font-black text-amber-600 dark:text-amber-400 block mt-1">
-                      {wipOverview.totalBlocked}
-                    </span>
-                    <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5 block">
-                      com impedimento
-                    </span>
+                {/* Bloco de Balanço Operacional & Cenário Teórico */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+                  <div className="lg:col-span-7 p-6 rounded-3xl bg-slate-50/60 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 flex flex-col justify-between space-y-4">
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 block mb-1">
+                        Diretrizes de Governança de Fluxo
+                      </span>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                        A capacidade real é calculada pela vazão comprovada de entregas concluídas na janela histórica selecionada. O PERSPECPATH não transforma horas teóricas em capacidade artificial e não desconta atrasos de fluxo.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-200/60 dark:border-white/5 text-[10px] font-bold">
+                      <div className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 ${
+                        teamCapacity.exceededWipProfessionalsCount > 0
+                          ? 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'
+                          : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                      }`}>
+                        {teamCapacity.exceededWipProfessionalsCount > 0 ? (
+                          <>
+                            <AlertTriangle size={12} />
+                            <span>{teamCapacity.exceededWipProfessionalsCount} profissional(is) acima do limite orientativo de WIP</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 size={12} />
+                            <span>WIP da equipe em conformidade com os limites orientativos</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20">
-                    <span className="text-[9px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest block">
-                      Atrasadas
-                    </span>
-                    <span className="text-xl font-black text-rose-600 dark:text-rose-400 block mt-1">
-                      {wipOverview.totalOverdue}
-                    </span>
-                    <span className="text-[8px] text-slate-400 font-bold uppercase mt-0.5 block">
-                      fora do prazo
-                    </span>
+                  {/* Cenário Teórico Restritivo (Little's Law) */}
+                  <div className="lg:col-span-5 p-6 rounded-3xl bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-200/50 dark:border-indigo-500/20 flex flex-col justify-between space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 dark:text-indigo-300">
+                          Cenário Teórico Restritivo (Little's Law)
+                        </span>
+                        <Sparkles size={14} className="text-indigo-500" />
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+                        {teamCapacity.theoreticalExplanation}
+                      </p>
+                    </div>
+                    <div className="pt-3 border-t border-indigo-200/40 dark:border-indigo-500/20 flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Capacidade Teórica:</span>
+                      <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
+                        {teamCapacity.teamTheoreticalWeeklyCapacity !== null ? `${teamCapacity.teamTheoreticalWeeklyCapacity} ent/sem` : 'Histórico insuficiente'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 text-[9px] font-bold text-slate-500 space-y-1">
-                  <span className="font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
-                    Gestão por Entregas e Prazos
-                  </span>
-                  <p>
-                    O PERSPECPATH opera pelo modelo de fluxo contínuo. Alocações são baseadas em datas e prazos reais, sem horas estimadas artificiais.
-                  </p>
                 </div>
               </div>
+            )}
 
-              {/* Detalhamento por Profissional */}
-              <div className="lg:col-span-8">
-                <div className="flex items-center justify-between mb-4 px-1">
-                  <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                    Profissionais Ativos ({teamWipMetrics.length})
-                  </p>
-                  <p className="text-[9px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-widest">
-                    WIP · Bloqueios · Prazos
-                  </p>
+            {/* ABA 2: ANÁLISE POR PROFISSIONAL */}
+            {capacityTab === 'professionals' && (
+              <div className="space-y-4 animate-in fade-in duration-300">
+                <div className="flex items-center justify-between px-1 text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                  <span>Profissionais Ativos ({teamCapacity.professionals.length})</span>
+                  <span>WIP Ativo · Vazão Observada · Lead Time · Compromissos</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {teamWipMetrics.map(userMetric => {
-                    const upcoming = userMetric.upcomingDeliveries?.[0];
-                    const displayName = userMetric.userName || userMetric.username || 'Profissional';
-                    const initialLetter = displayName.charAt(0).toUpperCase() || 'P';
-                    const openCount = userMetric.openActivitiesCount ?? (userMetric.inProgressCount + userMetric.blockedCount);
+                  {teamCapacity.professionals.map(prof => {
+                    const initialLetter = prof.userName.charAt(0).toUpperCase() || 'P';
+                    const nextCommitment = prof.upcomingDeliveries[0];
                     return (
                       <div
-                        key={userMetric.userId}
-                        onClick={() => setViewingUser({ id: userMetric.userId, name: displayName })}
-                        className="p-5 rounded-3xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 hover:border-indigo-500/30 hover:shadow-md transition-all cursor-pointer group"
+                        key={prof.userId}
+                        onClick={() => setViewingUser({ id: prof.userId, name: prof.userName })}
+                        className="p-6 rounded-3xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 hover:border-indigo-500/30 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between space-y-4"
                       >
-                        <div className="flex items-start justify-between gap-2 mb-3">
+                        {/* Header do Card */}
+                        <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center space-x-3 min-w-0">
-                            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-black text-xs flex items-center justify-center shrink-0">
+                            <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-black text-sm flex items-center justify-center shrink-0">
                               {initialLetter}
                             </div>
                             <div className="min-w-0">
-                              <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase truncate block group-hover:text-indigo-500 transition-colors">
-                                {displayName}
+                              <span className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase truncate block group-hover:text-indigo-500 transition-colors">
+                                {prof.userName}
                               </span>
-                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">
-                                {openCount} atividade(s) sob responsabilidade
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                                {prof.openActivitiesCount} atividade(s) sob responsabilidade
                               </span>
                             </div>
                           </div>
 
-                          <Eye size={14} className="text-slate-400 group-hover:text-indigo-500 transition-colors shrink-0 mt-1" />
+                          <Eye size={16} className="text-slate-400 group-hover:text-indigo-500 transition-colors shrink-0 mt-1" />
                         </div>
 
-                        {/* Badges de WIP e Status */}
-                        <div className="flex flex-wrap items-center gap-2 mb-3">
-                          <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${
-                            userMetric.isWipLimitExceeded
+                        {/* Badges de WIP e Bloqueios */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider border ${
+                            prof.isWipLimitExceeded
                               ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400 animate-pulse'
                               : 'bg-sky-500/10 border-sky-500/20 text-sky-600 dark:text-sky-400'
                           }`}>
-                            WIP: {userMetric.inProgressCount} em andamento
-                            {userMetric.wipLimit ? ` / Limite ${userMetric.wipLimit}` : ''}
+                            WIP: {prof.inProgressCount} em andamento
+                            {prof.wipLimit ? ` / Limite ${prof.wipLimit}` : ''}
                           </span>
 
-                          {userMetric.blockedCount > 0 && (
-                            <span className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400">
-                              {userMetric.blockedCount} bloqueada(s)
+                          {prof.blockedCount > 0 && (
+                            <span className="px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400">
+                              {prof.blockedCount} bloqueada(s)
                             </span>
                           )}
 
-                          {userMetric.overdueCount > 0 && (
-                            <span className="px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
-                              {userMetric.overdueCount} atrasada(s)
+                          {prof.overdueCount > 0 && (
+                            <span className="px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400">
+                              {prof.overdueCount} atrasada(s)
                             </span>
                           )}
                         </div>
 
-                        {/* Próxima Entrega */}
+                        {/* Indicadores de Fluxo (Vazão e Lead Time) */}
+                        <div className="grid grid-cols-2 gap-2 p-3 rounded-2xl bg-white/60 dark:bg-slate-950/40 border border-slate-200/50 dark:border-white/5 text-[9px]">
+                          <div>
+                            <span className="text-slate-400 uppercase font-black block tracking-wider">Vazão Observada:</span>
+                            <span className="font-black text-slate-800 dark:text-slate-200 text-xs mt-0.5 block">
+                              {prof.weeklyThroughput !== null ? `${prof.weeklyThroughput} ent/sem` : 'Histórico insuficiente'}
+                            </span>
+                            <span className="text-[8px] text-slate-400 block font-bold">
+                              {prof.concludedCount} entregas na janela
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="text-slate-400 uppercase font-black block tracking-wider">Lead Time Médio:</span>
+                            <span className="font-black text-indigo-600 dark:text-indigo-400 text-xs mt-0.5 block">
+                              {prof.averageBusinessLeadTimeDays !== null ? `${prof.averageBusinessLeadTimeDays}d úteis` : '---'}
+                            </span>
+                            <span className="text-[8px] text-slate-400 block font-bold">
+                              {prof.averageCalendarLeadTimeDays !== null ? `${prof.averageCalendarLeadTimeDays}d corridos` : 'Sem conclusões'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Próximo Compromisso Agendado */}
                         <div className="pt-2 border-t border-slate-200/50 dark:border-white/5 flex items-center justify-between text-[8px] font-bold">
                           <span className="text-slate-400 uppercase tracking-wider">Próxima entrega:</span>
-                          {upcoming ? (
-                            <span className="text-slate-700 dark:text-slate-300 truncate max-w-[170px]" title={upcoming.name}>
-                              {formatDisplayDate(upcoming.deliveryDate)} · {upcoming.name}
+                          {nextCommitment ? (
+                            <span className="text-slate-700 dark:text-slate-300 truncate max-w-[200px]" title={nextCommitment.name}>
+                              {nextCommitment.formattedDeliveryDate} · {nextCommitment.name} ({nextCommitment.projectCode})
                             </span>
                           ) : (
-                            <span className="text-slate-400 italic">Sem entregas pendentes</span>
+                            <span className="text-slate-400 italic">Sem compromissos agendados</span>
                           )}
                         </div>
                       </div>
                     );
                   })}
 
-                  {teamWipMetrics.length === 0 && (
-                    <div className="col-span-2 text-center py-8 text-slate-400 italic text-[10px] font-black uppercase tracking-widest opacity-60">
-                      Nenhum profissional ativo registrado
+                  {teamCapacity.professionals.length === 0 && (
+                    <div className="col-span-2 text-center py-12 text-slate-400 italic text-[11px] font-black uppercase tracking-widest opacity-60">
+                      Nenhum profissional ativo registrado no workspace
                     </div>
                   )}
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* ABA 3: PLANEJAMENTO FUTURO (PRÓXIMAS 4 SEMANAS) */}
+            {capacityTab === 'projection' && (
+              <div className="space-y-6 animate-in fade-in duration-300">
+                <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-500/5 border border-indigo-200/50 dark:border-indigo-500/20 text-xs text-slate-600 dark:text-slate-300 flex items-start sm:items-center gap-3">
+                  <Target size={18} className="text-indigo-500 shrink-0 mt-0.5 sm:mt-0" />
+                  <p className="leading-relaxed font-medium">
+                    <strong className="uppercase tracking-wider font-black text-indigo-700 dark:text-indigo-300">Planejamento por Vazão Histórica:</strong>{' '}
+                    Compara os compromissos cadastrados com data para as próximas 4 semanas em relação ao ritmo histórico comprovado da equipe ({teamCapacity.teamWeeklyThroughput !== null ? `${teamCapacity.teamWeeklyThroughput} entregas/semana` : 'aguardando histórico'}).
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {teamCapacity.weeklyProjections.map(proj => {
+                    const isDemandHigher = proj.demandVsCapacityDelta !== null && proj.demandVsCapacityDelta > 0;
+                    return (
+                      <div
+                        key={proj.weekNumber}
+                        className="p-6 rounded-3xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between space-y-4"
+                      >
+                        {/* Header da Semana */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
+                              Semana +{proj.weekNumber}
+                            </span>
+                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">
+                              {proj.weekNumber === 1 ? 'Próximos 7 dias' : `${(proj.weekNumber - 1) * 7 + 1} a ${proj.weekNumber * 7} dias`}
+                            </span>
+                          </div>
+                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+                            {formatDisplayDate(proj.startDate)} a {formatDisplayDate(proj.endDate)}
+                          </span>
+                        </div>
+
+                        {/* Bloco 1: Compromissos Agendados */}
+                        <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-950/40 border border-slate-200/60 dark:border-white/5 space-y-1">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
+                            Compromissos Agendados
+                          </span>
+                          <span className="text-2xl font-black text-slate-900 dark:text-white block">
+                            {proj.commitmentsCount}
+                          </span>
+                          <span className="text-[8px] text-slate-400 font-bold uppercase block">
+                            atividades com prazo
+                          </span>
+                        </div>
+
+                        {/* Bloco 2: Capacidade Projetada (Vazão Histórica) */}
+                        <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-950/40 border border-slate-200/60 dark:border-white/5 space-y-1">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
+                            Capacidade Projetada (Vazão)
+                          </span>
+                          <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 block">
+                            {proj.projectedCapacity !== null ? proj.projectedCapacity : '---'}
+                          </span>
+                          <span className="text-[8px] text-slate-400 font-bold uppercase block">
+                            {proj.projectedCapacity !== null ? 'entregas esperadas / semana' : 'Histórico insuficiente'}
+                          </span>
+                        </div>
+
+                        {/* Bloco 3: Balanço Estimado */}
+                        <div>
+                          {proj.projectedCapacity !== null ? (
+                            <div className={`p-2.5 rounded-xl border text-[9px] font-bold ${
+                              isDemandHigher
+                                ? 'bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-300'
+                                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                            }`}>
+                              {isDemandHigher
+                                ? `Demanda acima da vazão (+${proj.demandVsCapacityDelta} ent)`
+                                : `Demanda absorvível pelo ritmo histórico`}
+                            </div>
+                          ) : (
+                            <div className="p-2.5 rounded-xl border border-slate-200/60 dark:border-white/5 text-[9px] font-bold text-slate-400 text-center">
+                              Sem base histórica para projeção
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bloco 4: Riscos e Impedimentos Atuais */}
+                        <div className="pt-3 border-t border-slate-200/60 dark:border-white/5 space-y-1 text-[8px] font-bold">
+                          <div className="flex items-center justify-between text-slate-500">
+                            <span>Impedimentos na semana:</span>
+                            <span className={proj.blockedCommitmentsCount > 0 ? 'text-amber-500 font-black' : 'text-slate-400'}>
+                              {proj.blockedCommitmentsCount} bloqueada(s)
+                            </span>
+                          </div>
+                          {proj.overdueCommitmentsCount > 0 && (
+                            <div className="flex items-center justify-between text-rose-500">
+                              <span>Prazos já vencidos pendentes:</span>
+                              <span className="font-black">{proj.overdueCommitmentsCount} atividade(s)</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 text-[10px] text-slate-400 font-medium leading-relaxed">
+                  <strong className="text-slate-600 dark:text-slate-300 uppercase tracking-wider font-bold">Nota de Confiabilidade:</strong>{' '}
+                  A projeção futura reflete a taxa de entregas efetivamente demonstrada na janela histórica e não garante precisão matemática absoluta. Fatores como complexidade de escopo, aprovações de terceiros e disponibilidade de calendário devem ser avaliados nas reuniões de planejamento.
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

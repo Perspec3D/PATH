@@ -36,8 +36,14 @@ import {
   ProjectActivity,
   ProjectActivityEvent,
   ProjectStatus,
-  Project
+  Project,
+  InternalUser,
+  UserRole
 } from '../types';
+import {
+  calculateTeamOperationalCapacity,
+  SampleConfidence
+} from '../utils/teamOperationalCapacity';
 
 let passed = 0;
 let failed = 0;
@@ -962,11 +968,233 @@ const testTeamMetrics = calculateProfessionalDeliveryMetrics(
   testToday,
   { 'user-a': 2, 'user-b': 1 }
 );
-assert(testTeamMetrics[0].inProgressCount === 4, 'User A has 4 in progress');
-assert(testTeamMetrics[0].isWipLimitExceeded === true, 'User A is marked as limit exceeded');
-assert(testTeamMetrics[1].inProgressCount === 0, 'User B has 0 in progress (WIP zero)');
-assert(testTeamMetrics[1].blockedCount === 1, 'User B has 1 blocked');
-assert(testTeamMetrics[1].isWipLimitExceeded === false, 'User B is within limit');
+// 11. Team Operational Capacity by Lead Time, WIP & Historical Throughput
+console.log('\n11. Team Operational Capacity by Lead Time, WIP & Historical Throughput');
+
+const mockTestUsers: InternalUser[] = [
+  { id: 'user-a', workspaceId: 'ws-1', username: 'Engenheiro A', passwordHash: '', role: UserRole.USER, isActive: true },
+  { id: 'user-b', workspaceId: 'ws-1', username: 'Engenheira B', passwordHash: '', role: UserRole.USER, isActive: true },
+  { id: 'user-c', workspaceId: 'ws-1', username: 'Técnico C', passwordHash: '', role: UserRole.USER, isActive: true }
+];
+
+// 11.1 Empty history test -> Insufficient history, null throughput
+const emptyCap = calculateTeamOperationalCapacity({
+  projects: [onTrackProject],
+  activities: [],
+  users: mockTestUsers,
+  todayStr: testToday,
+  windowWeeks: 8
+});
+assert(emptyCap.totalConcludedDeliveries === 0, 'Empty history has 0 concluded deliveries');
+assert(emptyCap.sampleConfidence === SampleConfidence.INSUFFICIENT, 'Empty history has INSUFFICIENT confidence');
+assert(emptyCap.teamWeeklyThroughput === null, 'Empty history team weekly throughput is null (no fake numbers)');
+assert(emptyCap.averageBusinessLeadTimeDays === null, 'Empty history business lead time is null');
+assert(emptyCap.totalWip === 0, 'Empty history total WIP is 0');
+
+// 11.2 Concluded activities with real lead time and throughput
+// Test date reference: '2026-10-17' (Saturday)
+// Act 1: 2026-10-14 (Wed) to 2026-10-16 (Fri) -> 3 calendar days, 3 business days
+// Act 2: 2026-10-09 (Fri) to 2026-10-13 (Tue) -> 5 calendar days, 3 business days (Sat/Sun excluded)
+// Act 3: 2026-10-01 (Thu) to 2026-10-08 (Thu) -> 8 calendar days, 6 business days
+// Act 4: 2026-09-20 (Sun) to 2026-09-25 (Fri) -> 6 calendar days, 5 business days
+// Act 5: 2026-09-10 (Thu) to 2026-09-18 (Fri) -> 9 calendar days, 7 business days
+const sampleConcludedActs: ProjectActivity[] = [
+  {
+    id: 'c-act-1',
+    workspaceId: 'ws-1',
+    projectId: 'proj-ontrack',
+    name: 'Projeto Executivo Elétrico',
+    status: ActivityCanonicalStatus.COMPLETED,
+    assigneeId: 'user-a',
+    actualStartDate: '2026-10-14',
+    actualEndDate: '2026-10-16',
+    orderIndex: 0,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
+  },
+  {
+    id: 'c-act-2',
+    workspaceId: 'ws-1',
+    projectId: 'proj-ontrack',
+    name: 'Cálculo Estrutural',
+    status: ActivityCanonicalStatus.COMPLETED,
+    assigneeId: 'user-a',
+    conclusionResponsibleId: 'user-a',
+    actualStartDate: '2026-10-09',
+    actualEndDate: '2026-10-13',
+    orderIndex: 1,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
+  },
+  {
+    id: 'c-act-3',
+    workspaceId: 'ws-1',
+    projectId: 'proj-ontrack',
+    name: 'Memorial Descritivo',
+    status: ActivityCanonicalStatus.COMPLETED,
+    assigneeId: 'user-b',
+    actualStartDate: '2026-10-01',
+    actualEndDate: '2026-10-08',
+    orderIndex: 2,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
+  },
+  {
+    id: 'c-act-4',
+    workspaceId: 'ws-1',
+    projectId: 'proj-ontrack',
+    name: 'Modelagem BIM',
+    status: ActivityCanonicalStatus.COMPLETED,
+    assigneeId: 'user-b',
+    actualStartDate: '2026-09-20',
+    actualEndDate: '2026-09-25',
+    orderIndex: 3,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
+  },
+  {
+    id: 'c-act-5',
+    workspaceId: 'ws-1',
+    projectId: 'proj-ontrack',
+    name: 'Revisão Técnica Final',
+    status: ActivityCanonicalStatus.COMPLETED,
+    assigneeId: 'user-a',
+    conclusionResponsibleId: 'user-c', // Transferred/concluded by user-c
+    actualStartDate: '2026-09-10',
+    actualEndDate: '2026-09-18',
+    orderIndex: 4,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
+  }
+];
+
+// Open activities to test WIP, blockers, and upcoming commitments
+const sampleOpenActs: ProjectActivity[] = [
+  // User A: 2 WIP, 1 blocked
+  {
+    id: 'o-act-1',
+    workspaceId: 'ws-1',
+    projectId: 'proj-ontrack',
+    name: 'Topografia e Nivelamento',
+    status: ActivityCanonicalStatus.IN_PROGRESS,
+    assigneeId: 'user-a',
+    deliveryDate: '2026-10-21', // Week 1 (4 days away)
+    orderIndex: 5,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
+  },
+  {
+    id: 'o-act-2',
+    workspaceId: 'ws-1',
+    projectId: 'proj-ontrack',
+    name: 'Planta de Formas',
+    status: ActivityCanonicalStatus.IN_PROGRESS,
+    assigneeId: 'user-a',
+    deliveryDate: '2026-10-28', // Week 2 (11 days away)
+    orderIndex: 6,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
+  },
+  {
+    id: 'o-act-3',
+    workspaceId: 'ws-1',
+    projectId: 'proj-ontrack',
+    name: 'Aprovação de Concessionária',
+    status: ActivityCanonicalStatus.BLOCKED,
+    assigneeId: 'user-a',
+    deliveryDate: '2026-10-22',
+    orderIndex: 7,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
+  },
+  // User B: 1 WIP
+  {
+    id: 'o-act-4',
+    workspaceId: 'ws-1',
+    projectId: 'proj-ontrack',
+    name: 'Detalhamento de Armaduras',
+    status: ActivityCanonicalStatus.IN_PROGRESS,
+    assigneeId: 'user-b',
+    deliveryDate: '2026-10-23',
+    orderIndex: 8,
+    deadlineChangesCount: 0,
+    createdAt: 1729000000000,
+    updatedAt: 1729000000000
+  }
+];
+
+const allCombinedActs = [...sampleConcludedActs, ...sampleOpenActs];
+
+const capResult8w = calculateTeamOperationalCapacity({
+  projects: [onTrackProject],
+  activities: allCombinedActs,
+  users: mockTestUsers,
+  todayStr: testToday,
+  windowWeeks: 8,
+  userWipLimits: { 'user-a': 1, 'user-b': 2, 'user-c': 2 }
+});
+
+// General team validations
+assert(capResult8w.totalConcludedDeliveries === 5, 'Team concluded 5 deliveries in 8 weeks');
+assert(capResult8w.sampleConfidence === SampleConfidence.SUFFICIENT, 'Confidence is SUFFICIENT with 5 samples');
+// 5 deliveries in 8 weeks = 0.6 deliveries/week
+assert(capResult8w.teamWeeklyThroughput === 0.6, 'Weekly throughput is 0.6 deliveries/week (5/8)');
+// Calendar days: (3 + 5 + 8 + 6 + 9) / 5 = 31 / 5 = 6.2 days
+assert(capResult8w.averageCalendarLeadTimeDays === 6.2, 'Average calendar lead time is 6.2 days');
+// Business days: (3 + 3 + 6 + 5 + 7) / 5 = 24 / 5 = 4.8 days
+assert(capResult8w.averageBusinessLeadTimeDays === 4.8, 'Average business lead time is 4.8 days');
+
+// WIP & Blockers validations
+assert(capResult8w.totalWip === 3, 'Total team WIP is 3 (2 from User A, 1 from User B)');
+assert(capResult8w.totalBlocked === 1, 'Total team blocked is 1');
+assert(capResult8w.exceededWipProfessionalsCount === 1, 'User A exceeded WIP limit of 1 (2 in progress)');
+
+// Professional A metrics
+const capProfA = capResult8w.professionals.find(p => p.userId === 'user-a');
+assert(capProfA !== undefined, 'Found User A metrics');
+assert(capProfA!.concludedCount === 2, 'User A has 2 concluded deliveries attributed');
+assert(capProfA!.inProgressCount === 2, 'User A has 2 WIP in progress');
+assert(capProfA!.blockedCount === 1, 'User A has 1 blocked activity');
+assert(capProfA!.isWipLimitExceeded === true, 'User A WIP limit exceeded is true');
+assert(capProfA!.upcomingDeliveries.length === 3, 'User A has 3 upcoming delivery commitments');
+
+// Professional C attribution test (concluded Act 5 where conclusionResponsibleId was user-c)
+const capProfC = capResult8w.professionals.find(p => p.userId === 'user-c');
+assert(capProfC !== undefined, 'Found User C metrics');
+assert(capProfC!.concludedCount === 1, 'User C has 1 concluded delivery via conclusionResponsibleId');
+assert(capProfC!.sampleConfidence === SampleConfidence.INSUFFICIENT, 'User C with 1 delivery has INSUFFICIENT sample');
+assert(capProfC!.weeklyThroughput === null, 'User C weekly throughput is null (insufficient sample)');
+
+// Test 4-week window calculation
+const capResult4w = calculateTeamOperationalCapacity({
+  projects: [onTrackProject],
+  activities: allCombinedActs,
+  users: mockTestUsers,
+  todayStr: testToday,
+  windowWeeks: 4
+});
+// In 4 weeks (since 2026-09-19): Acts 1, 2, 3, 4 fall within window (Act 5 was 2026-09-18, so excluded!)
+assert(capResult4w.totalConcludedDeliveries === 4, '4-week window includes only 4 deliveries');
+// 4 deliveries / 4 weeks = 1.0 delivery/week
+assert(capResult4w.teamWeeklyThroughput === 1.0, '4-week window throughput is 1.0 delivery/week');
+
+// Future projections validations
+assert(capResult8w.weeklyProjections.length === 4, 'Future projections cover 4 upcoming weeks');
+const week1 = capResult8w.weeklyProjections[0];
+assert(week1.weekNumber === 1, 'Week 1 projection verified');
+// In week 1: o-act-1 (2026-10-21), o-act-3 (2026-10-22), o-act-4 (2026-10-23) -> 3 commitments!
+assert(week1.commitmentsCount === 3, 'Week 1 has 3 commitments');
+assert(week1.blockedCommitmentsCount === 1, 'Week 1 has 1 blocked commitment');
+assert(week1.projectedCapacity === 0.6, 'Week 1 projected capacity matches weekly throughput 0.6');
+assert(week1.demandVsCapacityDelta === 2.4, 'Week 1 demand vs capacity delta is +2.4 (3 - 0.6)');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {
