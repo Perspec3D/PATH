@@ -229,14 +229,14 @@ export const IntelligentPlanning: React.FC<IntelligentPlanningProps> = ({
               <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-[0.25em] flex items-center">
                 Planejamento e Previsibilidade de Entregas
                 <InfoTooltip
-                  title="Planejamento e Previsibilidade (Fase 5)"
+                  title="Planejamento e Previsibilidade"
                   content="Camada gerencial que compara os compromissos futuros cadastrados com o ritmo operacional histórico real da equipe, sem apontamento de horas. Permite simulações hipotéticas e identifica concentrações de demanda sem falsas certezas."
-                  calculation="Vazão Histórica = Conclusões / Semanas Observadas · Capacidade = Faixa Min–Média–Max · Horizonte = 4, 8 ou 12 semanas"
+                  calculation="Ritmo Histórico = Conclusões / Semanas Observadas · Capacidade = Faixa Min–Média–Max · Horizonte = 4, 8 ou 12 semanas"
                 />
               </h2>
             </div>
             <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-              Vazão comprovada · Balanço semanal de compromissos · Simulador de cenários
+              Ritmo de entregas comprovado · Balanço semanal de compromissos · Simulador de cenários
             </p>
           </div>
 
@@ -271,7 +271,7 @@ export const IntelligentPlanning: React.FC<IntelligentPlanningProps> = ({
 
             {/* Seletor de Janela Histórica */}
             <div className="flex items-center bg-slate-100 dark:bg-slate-900/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-800">
-              <span className="text-[9px] font-black uppercase text-slate-400 px-2.5">Histórico:</span>
+              <span className="text-[9px] font-black uppercase text-slate-400 px-2.5">Últimas:</span>
               {([4, 8, 12] as HistoricalThroughputWindowWeeks[]).map(w => (
                 <button
                   key={w}
@@ -448,12 +448,12 @@ export const IntelligentPlanning: React.FC<IntelligentPlanningProps> = ({
 
         {/* 3. RESUMO EXECUTIVO (4 CARDS PRINCIPAIS) */}
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Vazão Histórica Média */}
+          {/* Card 1: Ritmo Histórico de Entregas */}
           <div className="p-6 rounded-3xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                  Vazão Histórica ({historicalThroughput.windowWeeks} sem)
+                  Ritmo Histórico ({historicalThroughput.windowWeeks} sem)
                 </span>
                 <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider border ${confidenceBadge.bg}`}>
                   {confidenceBadge.label}
@@ -469,7 +469,7 @@ export const IntelligentPlanning: React.FC<IntelligentPlanningProps> = ({
                   </>
                 ) : (
                   <span className="text-sm font-black text-slate-400 dark:text-slate-500 italic">
-                    Histórico insuficiente
+                    Histórico em formação
                   </span>
                 )}
               </div>
@@ -515,12 +515,12 @@ export const IntelligentPlanning: React.FC<IntelligentPlanningProps> = ({
             </div>
           </div>
 
-          {/* Card 3: Lead Time Histórico Médio */}
+          {/* Card 3: Tempo Médio de Conclusão */}
           <div className="p-6 rounded-3xl bg-slate-50/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800/80 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                  Lead Time Realizado
+                  Tempo Médio de Conclusão
                 </span>
                 <Clock size={14} className="text-sky-500" />
               </div>
@@ -547,7 +547,7 @@ export const IntelligentPlanning: React.FC<IntelligentPlanningProps> = ({
             </div>
           </div>
 
-          {/* Card 4: Compromissos Vencidos (Isolados) */}
+          {/* Card 4: Entregas Vencidas Pendentes (Isoladas) */}
           <div
             onClick={() => setActiveTab('overdue')}
             className={`p-6 rounded-3xl border flex flex-col justify-between cursor-pointer transition-all ${
@@ -559,7 +559,7 @@ export const IntelligentPlanning: React.FC<IntelligentPlanningProps> = ({
             <div>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                  Compromissos Vencidos
+                  Entregas Vencidas
                 </span>
                 <AlertTriangle size={14} className={overdueBucket.count > 0 ? 'text-rose-500' : 'text-slate-400'} />
               </div>
@@ -571,7 +571,7 @@ export const IntelligentPlanning: React.FC<IntelligentPlanningProps> = ({
               </div>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/5 flex items-center justify-between text-[9px] font-bold text-slate-500">
-              <span className="text-rose-600 dark:text-rose-400">Isolados das semanas</span>
+              <span className="text-rose-600 dark:text-rose-400">Separadas das semanas futuras</span>
               <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1">
                 Ver detalhes <ArrowRight size={10} />
               </span>

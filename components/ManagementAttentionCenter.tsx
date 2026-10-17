@@ -205,8 +205,8 @@ export const ManagementAttentionCenter: React.FC<ManagementAttentionCenterProps>
               Central de Atenção Gerencial
               <InfoTooltip
                 title="Central de Atenção Gerencial"
-                content="Camada determinística de inteligência operacional que consolida desvios de prazo, bloqueios ativos, entregas iminentes e sobrecarga de WIP para ação imediata."
-                calculation="Severidade: CRÍTICA (Prazos de Projeto Vencidos) · ATENÇÃO (Atividades Atrasadas, Bloqueadas, Entregas em 3d úteis e WIP Excedido) · INFORMATIVA (Dados Incompletos)"
+                content="Camada de inteligência operacional que consolida desvios de prazo, bloqueios ativos, entregas iminentes e sobrecarga de atividades para ação imediata."
+                calculation="Severidade: CRÍTICA (Prazos de Projeto Vencidos) · ATENÇÃO (Atividades Atrasadas, Bloqueadas, Entregas em 3d úteis e Carga Elevada) · INFORMATIVA (Dados Incompletos)"
               />
             </h3>
             {summary.totalAlertsCount > 0 && (
@@ -216,7 +216,7 @@ export const ManagementAttentionCenter: React.FC<ManagementAttentionCenterProps>
             )}
           </div>
           <p className="mt-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-            Identifique onde agir, a causa raiz dos impedimentos e acesse diretamente os registros
+            Identifique onde agir, a causa raiz dos bloqueios e acesse diretamente os registros
           </p>
         </div>
 
@@ -345,7 +345,7 @@ export const ManagementAttentionCenter: React.FC<ManagementAttentionCenterProps>
               {summary.blockedActivitiesCount}
             </span>
             <span className="text-[10px] font-bold text-slate-400 uppercase">
-              {summary.blockedActivitiesCount === 1 ? 'impedimento' : 'impedimentos'}
+              {summary.blockedActivitiesCount === 1 ? 'bloqueio ativo' : 'bloqueios ativos'}
             </span>
           </div>
           <p className="mt-2 text-[9px] font-semibold text-slate-400 dark:text-slate-500">
@@ -393,7 +393,7 @@ export const ManagementAttentionCenter: React.FC<ManagementAttentionCenterProps>
           </p>
         </button>
 
-        {/* Card 4: Profissionais Acima do WIP Orientativo */}
+        {/* Card 4: Profissionais Acima do Limite de Atividades */}
         <button
           type="button"
           onClick={() => {
@@ -408,7 +408,7 @@ export const ManagementAttentionCenter: React.FC<ManagementAttentionCenterProps>
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-              Limite de WIP Excedido
+              Carga Elevada na Equipe
             </span>
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
               summary.wipExceededUsersCount > 0
@@ -429,7 +429,7 @@ export const ManagementAttentionCenter: React.FC<ManagementAttentionCenterProps>
             </span>
           </div>
           <p className="mt-2 text-[9px] font-semibold text-slate-400 dark:text-slate-500">
-            WIP acima do limite orientativo
+            Atividades em andamento acima do limite
           </p>
         </button>
       </div>

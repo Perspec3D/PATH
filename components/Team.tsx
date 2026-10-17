@@ -214,14 +214,14 @@ export const Team: React.FC<TeamProps> = ({
       <section className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
         <div className="p-4 rounded-2xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">WIP Geral</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Em Andamento</span>
             <Activity className="w-4 h-4 text-sky-500" />
           </div>
           <div className="mt-3">
             <div className="text-2xl font-black text-sky-600 dark:text-sky-400">
               {teamKPIs.canonicalWipCount}
             </div>
-            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Em andamento na equipe</p>
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Atividades em execução</p>
           </div>
         </div>
 
@@ -235,7 +235,7 @@ export const Team: React.FC<TeamProps> = ({
               {teamKPIs.activeBlocksCount}
             </div>
             <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-              {teamKPIs.totalBlockedDays > 0 ? `${teamKPIs.totalBlockedDays}d acumulados` : 'Impedimentos ativos'}
+              {teamKPIs.totalBlockedDays > 0 ? `${teamKPIs.totalBlockedDays}d acumulados` : 'Aguardando liberação'}
             </p>
           </div>
         </div>
@@ -249,7 +249,7 @@ export const Team: React.FC<TeamProps> = ({
             <div className="text-2xl font-black text-rose-600 dark:text-rose-400">
               {teamKPIs.openOverdueCount}
             </div>
-            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Abertas fora do prazo</p>
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Prazos expirados</p>
           </div>
         </div>
 
@@ -272,7 +272,7 @@ export const Team: React.FC<TeamProps> = ({
 
         <div className="col-span-2 lg:col-span-1 p-4 rounded-2xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Lead Time Médio</span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tempo Médio</span>
             <Clock className="w-4 h-4 text-indigo-500" />
           </div>
           <div className="mt-3">
@@ -397,7 +397,7 @@ export const Team: React.FC<TeamProps> = ({
                       {/* Métricas Principais (6 Indicadores) */}
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
                         <div className="p-2.5 rounded-xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800/80">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Em Andamento (WIP)</p>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Em Andamento</p>
                           <p className="mt-1 text-base font-black text-sky-600 dark:text-sky-400">
                             {metric.inProgressCount}
                           </p>
@@ -436,7 +436,7 @@ export const Team: React.FC<TeamProps> = ({
                         </div>
 
                         <div className="p-2.5 rounded-xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800/80">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Lead Time Médio</p>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tempo Médio</p>
                           <p className="mt-1 text-sm font-black text-indigo-500 dark:text-indigo-400">
                             {formatKpiLeadTimeDays(metric.averageLeadTimeDays)}
                           </p>

@@ -196,7 +196,7 @@ export const Reports: React.FC<ReportsProps> = ({ db }) => {
                 icon={<CheckCircle2 className="w-5 h-5 text-sky-500" />}
               />
               <SummaryCard
-                label="Lead Time Médio"
+                label="Tempo Médio"
                 value={formatKpiLeadTimeDays(unifiedKPIs.averageLeadTimeDaysCompleted)}
                 subtitle="início real à conclusão"
                 icon={<Clock className="w-5 h-5 text-purple-500" />}
@@ -208,7 +208,7 @@ export const Reports: React.FC<ReportsProps> = ({ db }) => {
                 icon={<AlertTriangle className="w-5 h-5 text-rose-500" />}
               />
               <SummaryCard
-                label="Reprogramações"
+                label="Alterações de Prazo"
                 value={`${unifiedKPIs.rescheduledActivitiesCount} ativ.`}
                 subtitle={unifiedKPIs.averageOriginalDeviationDays ? `Desvio médio: ${unifiedKPIs.averageOriginalDeviationDays}d` : 'Planejamento aderente'}
                 icon={<RotateCcw className="w-5 h-5 text-amber-500" />}
@@ -237,8 +237,8 @@ export const Reports: React.FC<ReportsProps> = ({ db }) => {
                       <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Profissional</th>
                       <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Entregas no Período</th>
                       <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">No Prazo (%)</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Lead Time Médio</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">WIP (Em Andamento)</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Tempo Médio</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Em Andamento</th>
                       <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Bloqueadas</th>
                       <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Atrasadas</th>
                     </tr>
