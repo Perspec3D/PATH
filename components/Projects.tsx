@@ -20,7 +20,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry, ActivityCanonicalStatus, ActivityDeadlineStatus, ProjectActivityEvent } from '../types';
-import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, logActionsBatch, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision, fetchProjectActivityEvents, fetchProjectActivitiesEventsBatch, logProjectActivityEvent } from '../storage';
+import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, logActionsBatch, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision, fetchProjectActivityEvents, fetchProjectActivitiesEventsBatch, logProjectActivityEvent, transitionProjectActivityWithEvent } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
 import { calculateProjectDeliveryPredictability, ProjectDeliveryPredictability, ProjectDeliveryPredictabilityStatus, getDeliveryPredictabilityBadge } from '../utils/deliveryForecast';
@@ -436,22 +436,20 @@ export const Projects: React.FC<ProjectsProps> = ({
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'STARTED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
-            details: `${currentUser.username} iniciou a atividade em ${formatDisplayDate(newActualStartDate)}`,
-            metadata: { actualStartDate: newActualStartDate }
-          }
-        )
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'STARTED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+          details: `${currentUser.username} iniciou a atividade em ${formatDisplayDate(newActualStartDate)}`,
+          metadata: { actualStartDate: newActualStartDate }
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -505,22 +503,20 @@ export const Projects: React.FC<ProjectsProps> = ({
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'BLOCKED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.BLOCKED,
-            details: `Atividade bloqueada: ${reason}`,
-            metadata: { blockedReason: reason }
-          }
-        )
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'BLOCKED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.BLOCKED,
+          details: `Atividade bloqueada: ${reason}`,
+          metadata: { blockedReason: reason }
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -565,22 +561,20 @@ export const Projects: React.FC<ProjectsProps> = ({
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'RESUMED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
-            details: `${currentUser.username} retomou a atividade.${prevReason ? ` (Bloqueio anterior: ${prevReason})` : ''}`,
-            metadata: { previousBlockedReason: prevReason }
-          }
-        )
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'RESUMED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+          details: `${currentUser.username} retomou a atividade.${prevReason ? ` (Bloqueio anterior: ${prevReason})` : ''}`,
+          metadata: { previousBlockedReason: prevReason }
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -639,31 +633,29 @@ export const Projects: React.FC<ProjectsProps> = ({
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
       const leadDays = calculateCalendarDurationDays(actualStart, actualEnd);
       const deviation = calculateDaysDifference(actualEnd, activity.deliveryDate);
       const deviationLabel = deviation === 0 ? 'no prazo' : deviation !== null && deviation > 0 ? `${deviation}d de atraso` : `${Math.abs(deviation || 0)}d adiantada`;
 
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'COMPLETED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.COMPLETED,
-            details: `Concluída em ${formatDisplayDate(actualEnd)} (${deviationLabel}, Lead Time: ${leadDays}d)`,
-            metadata: {
-              actualStartDate: actualStart,
-              actualEndDate: actualEnd,
-              leadTimeDays: leadDays,
-              deviationDays: deviation
-            }
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'COMPLETED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.COMPLETED,
+          details: `Concluída em ${formatDisplayDate(actualEnd)} (${deviationLabel}, Lead Time: ${leadDays}d)`,
+          metadata: {
+            actualStartDate: actualStart,
+            actualEndDate: actualEnd,
+            leadTimeDays: leadDays,
+            deviationDays: deviation
           }
-        )
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -716,22 +708,20 @@ export const Projects: React.FC<ProjectsProps> = ({
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'REOPENED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
-            details: `Atividade reaberta por ${currentUser.username}.${reason ? ` Motivo: ${reason}` : ''} (Conclusão anterior: ${formatDisplayDate(prevEndDate)})`,
-            metadata: { previousEndDate: prevEndDate, reopenReason: reason }
-          }
-        )
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'REOPENED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+          details: `Atividade reaberta por ${currentUser.username}.${reason ? ` Motivo: ${reason}` : ''} (Conclusão anterior: ${formatDisplayDate(prevEndDate)})`,
+          metadata: { previousEndDate: prevEndDate, reopenReason: reason }
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,

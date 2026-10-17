@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, TeamTask, TaskType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActivityOvertimeEntry, WorkSession, ActiveWorkSessionContext, ActivityType, LogModule, LogAction, ActivityCanonicalStatus } from '../types';
-import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivities, syncProjectActivity, logProjectActivityEvent, fetchActivityExecutions, fetchActivityOvertimeEntries, fetchWorkSessions, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, logAction, fetchActivityTypes } from '../storage';
+import { syncProject, AppDB, syncTeamTask, deleteTeamTask, fetchProjectActivities, syncProjectActivity, logProjectActivityEvent, transitionProjectActivityWithEvent, fetchActivityExecutions, fetchActivityOvertimeEntries, fetchWorkSessions, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, logAction, fetchActivityTypes } from '../storage';
 import { isProjectActivityClosed } from '../utils/projectActivityStatus';
 import { HoverTooltipPortal } from './InfoTooltip';
 import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, isValidDateRange } from '../utils/projectDateIntegrity';
@@ -48,7 +48,7 @@ export const Gantt: React.FC<GanttProps> = ({
 
   useEffect(() => {
     loadProjectActivitiesConsolidated();
-  }, [currentUser.workspaceId, viewMode]);
+  }, [currentUser.workspaceId]);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [viewingUserCarga, setViewingUserCarga] = useState<any | null>(null);
@@ -316,35 +316,32 @@ export const Gantt: React.FC<GanttProps> = ({
         setSelectedQuickViewActivity((prev: any) => prev ? { ...prev, ...updatedActivity } : null);
       }
 
-      // 2. Persistência idempotente no banco de dados
-      await syncProjectActivity(updatedActivity);
-
-      // 3. Registro do evento de auditoria no histórico oficial
+      // 2. Persistência e registro de auditoria atômicos
       const modeLabel = mode === 'move' ? 'deslocamento de período' : mode === 'resize-start' ? 'ajuste de data de início' : 'ajuste de prazo de entrega';
       const durationDays = calculateCalendarDurationDays(newStartDate, newDeliveryDate);
 
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          updatedActivity.id,
-          'RESCHEDULED',
-          currentUser,
-          {
-            fromStatus: updatedActivity.status,
-            toStatus: updatedActivity.status,
-            details: `Reprogramação (${modeLabel}): Início ${formatDisplayDate(previousStartDate)} → ${formatDisplayDate(newStartDate)}, Término ${formatDisplayDate(previousDeliveryDate)} → ${formatDisplayDate(newDeliveryDate)} (${durationDays} dias corridos)`,
-            metadata: {
-              mode,
-              previousStartDate,
-              previousDeliveryDate,
-              newStartDate,
-              newDeliveryDate,
-              durationDays,
-              source: 'GANTT_INTERACTIVE_DRAG'
-            }
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        updatedActivity.id,
+        'RESCHEDULED',
+        currentUser,
+        {
+          fromStatus: updatedActivity.status,
+          toStatus: updatedActivity.status,
+          details: `Reprogramação (${modeLabel}): Início ${formatDisplayDate(previousStartDate)} → ${formatDisplayDate(newStartDate)}, Término ${formatDisplayDate(previousDeliveryDate)} → ${formatDisplayDate(newDeliveryDate)} (${durationDays} dias corridos)`,
+          metadata: {
+            mode,
+            previousStartDate,
+            previousDeliveryDate,
+            newStartDate,
+            newDeliveryDate,
+            durationDays,
+            source: 'GANTT_INTERACTIVE_DRAG'
           }
-        )
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       // 4. Log geral do sistema
       await logAction(
@@ -547,22 +544,20 @@ export const Gantt: React.FC<GanttProps> = ({
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'STARTED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
-            details: `${currentUser.username} iniciou a atividade em ${formatDisplayDate(newActualStartDate)}`,
-            metadata: { actualStartDate: newActualStartDate }
-          }
-        )
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'STARTED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+          details: `${currentUser.username} iniciou a atividade em ${formatDisplayDate(newActualStartDate)}`,
+          metadata: { actualStartDate: newActualStartDate }
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -605,22 +600,20 @@ export const Gantt: React.FC<GanttProps> = ({
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'BLOCKED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.BLOCKED,
-            details: `Atividade bloqueada: ${reason}`,
-            metadata: { blockedReason: reason }
-          }
-        )
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'BLOCKED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.BLOCKED,
+          details: `Atividade bloqueada: ${reason}`,
+          metadata: { blockedReason: reason }
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -663,22 +656,20 @@ export const Gantt: React.FC<GanttProps> = ({
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'RESUMED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
-            details: `${currentUser.username} retomou a atividade.${prevReason ? ` (Bloqueio anterior: ${prevReason})` : ''}`,
-            metadata: { previousBlockedReason: prevReason }
-          }
-        )
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'RESUMED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+          details: `${currentUser.username} retomou a atividade.${prevReason ? ` (Bloqueio anterior: ${prevReason})` : ''}`,
+          metadata: { previousBlockedReason: prevReason }
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -728,31 +719,29 @@ export const Gantt: React.FC<GanttProps> = ({
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
       const leadDays = calculateCalendarDurationDays(actualStart, actualEnd);
       const deviation = calculateDaysDifference(actualEnd, activity.deliveryDate);
       const deviationLabel = deviation === 0 ? 'no prazo' : deviation !== null && deviation > 0 ? `${deviation}d de atraso` : `${Math.abs(deviation || 0)}d adiantada`;
 
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'COMPLETED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.COMPLETED,
-            details: `Concluída em ${formatDisplayDate(actualEnd)} (${deviationLabel}, Lead Time: ${leadDays}d)`,
-            metadata: {
-              actualStartDate: actualStart,
-              actualEndDate: actualEnd,
-              leadTimeDays: leadDays,
-              deviationDays: deviation
-            }
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'COMPLETED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.COMPLETED,
+          details: `Concluída em ${formatDisplayDate(actualEnd)} (${deviationLabel}, Lead Time: ${leadDays}d)`,
+          metadata: {
+            actualStartDate: actualStart,
+            actualEndDate: actualEnd,
+            leadTimeDays: leadDays,
+            deviationDays: deviation
           }
-        )
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -796,22 +785,20 @@ export const Gantt: React.FC<GanttProps> = ({
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'REOPENED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
-            details: `Atividade reaberta por ${currentUser.username} (Conclusão anterior: ${formatDisplayDate(prevEndDate)})`,
-            metadata: { previousEndDate: prevEndDate }
-          }
-        )
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'REOPENED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+          details: `Atividade reaberta por ${currentUser.username} (Conclusão anterior: ${formatDisplayDate(prevEndDate)})`,
+          metadata: { previousEndDate: prevEndDate }
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,

@@ -20,7 +20,8 @@ import {
   fetchProjectActivities,
   fetchActivityTypes,
   syncProjectActivity,
-  logProjectActivityEvent
+  logProjectActivityEvent,
+  transitionProjectActivityWithEvent
 } from '../storage';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import {
@@ -77,6 +78,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
   const [kanbanSelectedProject, setKanbanSelectedProject] = useState('all');
   const [kanbanSelectedAssignee, setKanbanSelectedAssignee] = useState('all');
   const [kanbanSelectedDeadline, setKanbanSelectedDeadline] = useState<'all' | 'overdue' | 'upcoming'>('all');
+  const [kanbanCompletedPeriod, setKanbanCompletedPeriod] = useState<'all' | '7days' | '30days' | 'this_month'>('all');
 
   // Drag & drop state
   const [draggedActivityId, setDraggedActivityId] = useState<string | null>(null);
@@ -142,6 +144,14 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
     return map;
   }, [db.projects]);
 
+  const userMap = useMemo(() => {
+    const map = new Map<string, InternalUser>();
+    for (const u of db.users) {
+      map.set(u.id, u);
+    }
+    return map;
+  }, [db.users]);
+
   const todayStr = useMemo(() => getTodayDateString(), []);
 
   // Filtered Kanban activities (strictly active revisions)
@@ -166,7 +176,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
       if (kanbanSearchText.trim()) {
         const text = kanbanSearchText.toLowerCase();
         const proj = projectMap.get(act.projectId);
-        const assignee = db.users.find(u => u.id === act.assigneeId);
+        const assignee = userMap.get(act.assigneeId);
         const matchName = act.name.toLowerCase().includes(text);
         const matchProject = proj ? (proj.code.toLowerCase().includes(text) || proj.name.toLowerCase().includes(text)) : false;
         const matchAssignee = assignee ? assignee.username.toLowerCase().includes(text) : false;
@@ -186,6 +196,20 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
         }
       }
 
+      // 6. Completed period filter
+      if (kanbanCompletedPeriod !== 'all' && normalizeActivityStatus(act.status) === ActivityCanonicalStatus.COMPLETED) {
+        const endDate = act.actualEndDate || act.deliveryDate;
+        if (!endDate) return false;
+        if (kanbanCompletedPeriod === 'this_month') {
+          if (endDate.slice(0, 7) !== todayStr.slice(0, 7)) return false;
+        } else {
+          const diff = calculateDaysDifference(todayStr, endDate);
+          if (diff === null) return false;
+          if (kanbanCompletedPeriod === '7days' && (diff < 0 || diff > 7)) return false;
+          if (kanbanCompletedPeriod === '30days' && (diff < 0 || diff > 30)) return false;
+        }
+      }
+
       return true;
     });
   }, [
@@ -195,8 +219,9 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
     kanbanSelectedAssignee,
     kanbanSearchText,
     kanbanSelectedDeadline,
+    kanbanCompletedPeriod,
     projectMap,
-    db.users,
+    userMap,
     todayStr
   ]);
 
@@ -284,25 +309,23 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
           blockedReason: undefined
         };
 
-        await syncProjectActivity(updatedActivity);
-
         const isResuming = normalizeActivityStatus(prevStatus) === ActivityCanonicalStatus.BLOCKED;
-        await logProjectActivityEvent(
-          createActivityEventPayload(
-            currentUser.workspaceId,
-            activity.id,
-            isResuming ? 'RESUMED' : 'STARTED',
-            currentUser,
-            {
-              fromStatus: prevStatus,
-              toStatus: ActivityCanonicalStatus.IN_PROGRESS,
-              details: isResuming
-                ? `${currentUser.username} retomou a atividade.${activity.blockedReason ? ` (Bloqueio anterior: ${activity.blockedReason})` : ''}`
-                : `${currentUser.username} iniciou a atividade em ${formatDisplayDate(actualStart)}`,
-              metadata: { actualStartDate: actualStart, previousBlockedReason: activity.blockedReason }
-            }
-          )
+        const eventPayload = createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          isResuming ? 'RESUMED' : 'STARTED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.IN_PROGRESS,
+            details: isResuming
+              ? `${currentUser.username} retomou a atividade.${activity.blockedReason ? ` (Bloqueio anterior: ${activity.blockedReason})` : ''}`
+              : `${currentUser.username} iniciou a atividade em ${formatDisplayDate(actualStart)}`,
+            metadata: { actualStartDate: actualStart, previousBlockedReason: activity.blockedReason }
+          }
         );
+
+        await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
         await logAction(
           currentUser.workspaceId,
@@ -318,22 +341,20 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
           blockedReason: undefined
         };
 
-        await syncProjectActivity(updatedActivity);
-
-        await logProjectActivityEvent(
-          createActivityEventPayload(
-            currentUser.workspaceId,
-            activity.id,
-            'UPDATED',
-            currentUser,
-            {
-              fromStatus: prevStatus,
-              toStatus: ActivityCanonicalStatus.TO_DO,
-              details: `${currentUser.username} moveu a atividade para A FAZER`,
-              metadata: {}
-            }
-          )
+        const eventPayload = createActivityEventPayload(
+          currentUser.workspaceId,
+          activity.id,
+          'UPDATED',
+          currentUser,
+          {
+            fromStatus: prevStatus,
+            toStatus: ActivityCanonicalStatus.TO_DO,
+            details: `${currentUser.username} moveu a atividade para A FAZER`,
+            metadata: {}
+          }
         );
+
+        await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
         await logAction(
           currentUser.workspaceId,
@@ -376,22 +397,20 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'BLOCKED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.BLOCKED,
-            details: `Atividade bloqueada: ${reason}`,
-            metadata: { blockedReason: reason }
-          }
-        )
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'BLOCKED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.BLOCKED,
+          details: `Atividade bloqueada: ${reason}`,
+          metadata: { blockedReason: reason }
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -440,31 +459,29 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
       const leadDays = calculateCalendarDurationDays(actualStart, actualEnd);
       const deviation = calculateDaysDifference(actualEnd, activity.deliveryDate);
       const deviationLabel = deviation === 0 ? 'no prazo' : deviation !== null && deviation > 0 ? `${deviation}d de atraso` : `${Math.abs(deviation || 0)}d adiantada`;
 
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'COMPLETED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: ActivityCanonicalStatus.COMPLETED,
-            details: `Concluída em ${formatDisplayDate(actualEnd)} (${deviationLabel}, Lead Time: ${leadDays}d)`,
-            metadata: {
-              actualStartDate: actualStart,
-              actualEndDate: actualEnd,
-              leadTimeDays: leadDays,
-              deviationDays: deviation
-            }
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'COMPLETED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: ActivityCanonicalStatus.COMPLETED,
+          details: `Concluída em ${formatDisplayDate(actualEnd)} (${deviationLabel}, Lead Time: ${leadDays}d)`,
+          metadata: {
+            actualStartDate: actualStart,
+            actualEndDate: actualEnd,
+            leadTimeDays: leadDays,
+            deviationDays: deviation
           }
-        )
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -505,22 +522,20 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
         updatedAt: Date.now()
       };
 
-      await syncProjectActivity(updatedActivity);
-
-      await logProjectActivityEvent(
-        createActivityEventPayload(
-          currentUser.workspaceId,
-          activity.id,
-          'REOPENED',
-          currentUser,
-          {
-            fromStatus: prevStatus,
-            toStatus: reopenTargetStatus,
-            details: `Atividade reaberta por ${currentUser.username}.${reason ? ` Motivo: ${reason}` : ''} (Conclusão anterior: ${formatDisplayDate(prevEndDate)})`,
-            metadata: { previousEndDate: prevEndDate, reopenReason: reason }
-          }
-        )
+      const eventPayload = createActivityEventPayload(
+        currentUser.workspaceId,
+        activity.id,
+        'REOPENED',
+        currentUser,
+        {
+          fromStatus: prevStatus,
+          toStatus: reopenTargetStatus,
+          details: `Atividade reaberta por ${currentUser.username}.${reason ? ` Motivo: ${reason}` : ''} (Conclusão anterior: ${formatDisplayDate(prevEndDate)})`,
+          metadata: { previousEndDate: prevEndDate, reopenReason: reason }
+        }
       );
+
+      await transitionProjectActivityWithEvent(updatedActivity, eventPayload);
 
       await logAction(
         currentUser.workspaceId,
@@ -874,7 +889,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
         <div className="space-y-5 animate-in fade-in duration-200">
           {/* Painel de Filtros do Kanban */}
           <div className="p-4 rounded-2xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               {/* Busca por texto */}
               <div className="relative">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
@@ -927,15 +942,31 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
                   <option value="upcoming">Vencimento Próximo</option>
                 </select>
               </div>
+
+              {/* Filtro por Conclusão */}
+              <div>
+                <select
+                  value={kanbanCompletedPeriod}
+                  onChange={e => setKanbanCompletedPeriod(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500"
+                  title="Filtro de período para atividades concluídas"
+                >
+                  <option value="all">Concluídas: Todas</option>
+                  <option value="7days">Concluídas: Últimos 7 dias</option>
+                  <option value="30days">Concluídas: Últimos 30 dias</option>
+                  <option value="this_month">Concluídas: Este mês</option>
+                </select>
+              </div>
             </div>
 
-            {(kanbanSearchText || kanbanSelectedProject !== 'all' || kanbanSelectedAssignee !== 'all' || kanbanSelectedDeadline !== 'all') && (
+            {(kanbanSearchText || kanbanSelectedProject !== 'all' || kanbanSelectedAssignee !== 'all' || kanbanSelectedDeadline !== 'all' || kanbanCompletedPeriod !== 'all') && (
               <button
                 onClick={() => {
                   setKanbanSearchText('');
                   setKanbanSelectedProject('all');
                   setKanbanSelectedAssignee('all');
                   setKanbanSelectedDeadline('all');
+                  setKanbanCompletedPeriod('all');
                 }}
                 className="px-3.5 py-2 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 transition-all shrink-0"
               >
@@ -966,7 +997,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
                 headerText="text-slate-700 dark:text-slate-300"
                 isDragOver={dragOverColumn === ActivityCanonicalStatus.TO_DO}
                 projectMap={projectMap}
-                users={db.users}
+                userMap={userMap}
                 todayStr={todayStr}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -990,7 +1021,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
                 badgeText="WIP"
                 isDragOver={dragOverColumn === ActivityCanonicalStatus.IN_PROGRESS}
                 projectMap={projectMap}
-                users={db.users}
+                userMap={userMap}
                 todayStr={todayStr}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -1014,7 +1045,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
                 badgeText="Impedimento"
                 isDragOver={dragOverColumn === ActivityCanonicalStatus.BLOCKED}
                 projectMap={projectMap}
-                users={db.users}
+                userMap={userMap}
                 todayStr={todayStr}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -1037,7 +1068,7 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
                 headerText="text-emerald-700 dark:text-emerald-300"
                 isDragOver={dragOverColumn === ActivityCanonicalStatus.COMPLETED}
                 projectMap={projectMap}
-                users={db.users}
+                userMap={userMap}
                 todayStr={todayStr}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -1641,6 +1672,205 @@ export const Tasks: React.FC<TasksProps> = ({ db, setDb, currentUser, theme, onO
 // ============================================================================
 // COMPONENTE AUXILIAR: COLUNA DO KANBAN
 // ============================================================================
+// ============================================================================
+// COMPONENTE AUXILIAR: CARTÃO DO KANBAN (MEMOIZADO)
+// ============================================================================
+interface KanbanCardProps {
+  act: ProjectActivity;
+  canonical: ActivityCanonicalStatus;
+  project?: { code: string; name: string };
+  assignee?: InternalUser;
+  todayStr: string;
+  isMenuOpen: boolean;
+  onDragStart: (e: React.DragEvent, activityId: string) => void;
+  onTransition: (activity: ProjectActivity, targetStatus: ActivityCanonicalStatus) => void;
+  onOpenDetails: (activity: ProjectActivity) => void;
+  onToggleMenu: (id: string | null) => void;
+}
+
+const KanbanCard: React.FC<KanbanCardProps> = React.memo(({
+  act,
+  canonical,
+  project,
+  assignee,
+  todayStr,
+  isMenuOpen,
+  onDragStart,
+  onTransition,
+  onOpenDetails,
+  onToggleMenu
+}) => {
+  const deadlineEval = evaluateDeadlineStatus(act, todayStr);
+  const isOverdue = deadlineEval.status === ActivityDeadlineStatus.OVERDUE && canonical !== ActivityCanonicalStatus.COMPLETED;
+  const isUpcoming = deadlineEval.status === ActivityDeadlineStatus.UPCOMING && canonical !== ActivityCanonicalStatus.COMPLETED;
+  const isBlocked = canonical === ActivityCanonicalStatus.BLOCKED;
+
+  return (
+    <div
+      draggable
+      onDragStart={e => onDragStart(e, act.id)}
+      className="p-3.5 rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800/90 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative select-none"
+    >
+      {/* Topo do Card: Projeto & Menu Acessível */}
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        {project ? (
+          <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 truncate max-w-[170px]" title={`${project.code} - ${project.name}`}>
+            {project.code}
+          </span>
+        ) : (
+          <span className="text-[9px] text-slate-400 font-bold uppercase">Projeto</span>
+        )}
+
+        {/* Botão de Menu Acessível */}
+        <div className="relative">
+          <button
+            onClick={e => {
+              e.stopPropagation();
+              onToggleMenu(isMenuOpen ? null : act.id);
+            }}
+            onMouseDown={e => e.stopPropagation()}
+            onDragStart={e => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            title="Ações da atividade..."
+            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+          >
+            <MoreVertical className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Dropdown Acessível */}
+          {isMenuOpen && (
+            <div
+              className="absolute right-0 top-6 z-30 w-48 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-1.5 space-y-1 text-xs animate-in fade-in duration-150"
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+            >
+              {/* Ação: Ver detalhes */}
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  onToggleMenu(null);
+                  onOpenDetails(act);
+                }}
+                className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-2"
+              >
+                <Eye className="w-3.5 h-3.5 shrink-0" />
+                <span>Ver detalhes</span>
+              </button>
+
+              <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
+
+              <div className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                Mover para:
+              </div>
+              {canonical !== ActivityCanonicalStatus.TO_DO && (
+                <button
+                  onClick={() => onTransition(act, ActivityCanonicalStatus.TO_DO)}
+                  className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold flex items-center gap-1.5"
+                >
+                  <span className="w-2 h-2 rounded-full bg-slate-400" />
+                  <span>A FAZER</span>
+                </button>
+              )}
+              {canonical !== ActivityCanonicalStatus.IN_PROGRESS && (
+                <button
+                  onClick={() => onTransition(act, ActivityCanonicalStatus.IN_PROGRESS)}
+                  className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-sky-600 dark:text-sky-400 font-bold flex items-center gap-1.5"
+                >
+                  <span className="w-2 h-2 rounded-full bg-sky-500" />
+                  <span>EM ANDAMENTO</span>
+                </button>
+              )}
+              {canonical !== ActivityCanonicalStatus.BLOCKED && (
+                <button
+                  onClick={() => onTransition(act, ActivityCanonicalStatus.BLOCKED)}
+                  className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-amber-500/10 text-amber-600 dark:text-[#FDE68A] font-bold flex items-center gap-1.5"
+                >
+                  <span className="w-2 h-2 rounded-full bg-[#FBBF24]" />
+                  <span>BLOQUEADA</span>
+                </button>
+              )}
+              {canonical !== ActivityCanonicalStatus.COMPLETED && (
+                <button
+                  onClick={() => onTransition(act, ActivityCanonicalStatus.COMPLETED)}
+                  className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>CONCLUÍDA</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Título da Atividade (Clicável para ver detalhes sem disparar drag) */}
+      <h4
+        onClick={e => {
+          e.stopPropagation();
+          onOpenDetails(act);
+        }}
+        onMouseDown={e => e.stopPropagation()}
+        onDragStart={e => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        title="Clique para ver detalhes"
+        className="text-xs font-bold text-slate-900 dark:text-white leading-snug mb-2.5 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+      >
+        {act.name}
+      </h4>
+
+      {/* Badge discreto de Bloqueio se aplicável */}
+      {isBlocked && act.blockedReason && (
+        <div className="mb-2 px-2 py-1 rounded-lg bg-[#78350F]/15 border border-[#FBBF24]/40 text-[#FDE68A] text-[10px] font-medium leading-tight flex items-start gap-1">
+          <Ban className="w-3 h-3 text-[#FBBF24] shrink-0 mt-0.5" />
+          <span className="line-clamp-2" title={act.blockedReason}>{act.blockedReason}</span>
+        </div>
+      )}
+
+      {/* Rodapé do Card: Responsável e Prazo */}
+      <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/60">
+        {/* Responsável */}
+        <div className="flex items-center space-x-1.5 min-w-0">
+          <div className="w-5 h-5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-black text-[9px] flex items-center justify-center uppercase shrink-0">
+            {(assignee?.username || '?').charAt(0)}
+          </div>
+          <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 truncate">
+            {assignee?.username || 'Não atribuído'}
+          </span>
+        </div>
+
+        {/* Prazo e Indicador Discreto */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {act.deliveryDate && (
+            <span className="text-[10px] font-semibold text-slate-400">
+              {new Date(act.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+            </span>
+          )}
+
+          {isOverdue && (
+            <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+              Atrasada
+            </span>
+          )}
+
+          {isUpcoming && (
+            <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+              Breve
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ============================================================================
+// COMPONENTE AUXILIAR: COLUNA DO KANBAN (COM CARREGAMENTO PROGRESSIVO)
+// ============================================================================
 interface KanbanColumnProps {
   title: string;
   canonical: ActivityCanonicalStatus;
@@ -1652,7 +1882,7 @@ interface KanbanColumnProps {
   badgeText?: string;
   isDragOver: boolean;
   projectMap: Map<string, { code: string; name: string }>;
-  users: InternalUser[];
+  userMap: Map<string, InternalUser>;
   todayStr: string;
   onDragOver: (e: React.DragEvent, status: ActivityCanonicalStatus) => void;
   onDragLeave: () => void;
@@ -1663,6 +1893,8 @@ interface KanbanColumnProps {
   menuOpenId: string | null;
   setMenuOpenId: (id: string | null) => void;
 }
+
+const INITIAL_KANBAN_PAGE_SIZE = 30;
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({
   title,
@@ -1675,7 +1907,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   badgeText,
   isDragOver,
   projectMap,
-  users,
+  userMap,
   todayStr,
   onDragOver,
   onDragLeave,
@@ -1686,6 +1918,22 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   menuOpenId,
   setMenuOpenId
 }) => {
+  const [visibleLimit, setVisibleLimit] = useState(INITIAL_KANBAN_PAGE_SIZE);
+
+  // Reset or adjust visibleLimit if activity count drops
+  useEffect(() => {
+    if (activities.length <= INITIAL_KANBAN_PAGE_SIZE) {
+      setVisibleLimit(INITIAL_KANBAN_PAGE_SIZE);
+    }
+  }, [activities.length]);
+
+  const visibleActivities = useMemo(() => {
+    return activities.slice(0, visibleLimit);
+  }, [activities, visibleLimit]);
+
+  const hasMore = activities.length > visibleLimit;
+  const remainingCount = activities.length - visibleLimit;
+
   return (
     <div
       onDragOver={e => onDragOver(e, canonical)}
@@ -1697,7 +1945,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
           : 'border-slate-200/80 dark:border-slate-800'
       }`}
     >
-      {/* Cabeçalho da Coluna */}
+      {/* Cabeçalho da Coluna: count sempre reflete o total de atividades */}
       <div className={`p-3.5 rounded-2xl border ${headerBg} ${headerBorder} flex items-center justify-between mb-3 shadow-sm`}>
         <div className="flex items-center space-x-2">
           <span className={`text-xs font-black uppercase tracking-wider ${headerText}`}>
@@ -1716,183 +1964,44 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
 
       {/* Cartões da Coluna */}
       <div className="space-y-2.5 flex-1 overflow-y-auto max-h-[calc(100vh-280px)] custom-scrollbar pr-0.5">
-        {activities.map(act => {
-          const proj = projectMap.get(act.projectId);
-          const assignee = users.find(u => u.id === act.assigneeId);
-          const deadlineEval = evaluateDeadlineStatus(act, todayStr);
-          const isMenuOpen = menuOpenId === act.id;
-
-          const isOverdue = deadlineEval.status === ActivityDeadlineStatus.OVERDUE && canonical !== ActivityCanonicalStatus.COMPLETED;
-          const isUpcoming = deadlineEval.status === ActivityDeadlineStatus.UPCOMING && canonical !== ActivityCanonicalStatus.COMPLETED;
-          const isBlocked = canonical === ActivityCanonicalStatus.BLOCKED;
-
-          return (
-            <div
-              key={act.id}
-              draggable
-              onDragStart={e => onDragStart(e, act.id)}
-              className="p-3.5 rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800/90 shadow-sm hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative select-none"
-            >
-              {/* Topo do Card: Projeto & Menu Acessível */}
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                {proj ? (
-                  <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 truncate max-w-[170px]" title={`${proj.code} - ${proj.name}`}>
-                    {proj.code}
-                  </span>
-                ) : (
-                  <span className="text-[9px] text-slate-400 font-bold uppercase">Projeto</span>
-                )}
-
-                {/* Botão de Menu Acessível */}
-                <div className="relative">
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      setMenuOpenId(isMenuOpen ? null : act.id);
-                    }}
-                    onMouseDown={e => e.stopPropagation()}
-                    onDragStart={e => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                    title="Ações da atividade..."
-                    className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                  >
-                    <MoreVertical className="w-3.5 h-3.5" />
-                  </button>
-
-                  {/* Dropdown Acessível */}
-                  {isMenuOpen && (
-                    <div
-                      className="absolute right-0 top-6 z-30 w-48 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-1.5 space-y-1 text-xs animate-in fade-in duration-150"
-                      onClick={e => e.stopPropagation()}
-                      onMouseDown={e => e.stopPropagation()}
-                    >
-                      {/* Ação: Ver detalhes */}
-                      <button
-                        type="button"
-                        onClick={e => {
-                          e.stopPropagation();
-                          setMenuOpenId(null);
-                          onOpenDetails(act);
-                        }}
-                        className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-2"
-                      >
-                        <Eye className="w-3.5 h-3.5 shrink-0" />
-                        <span>Ver detalhes</span>
-                      </button>
-
-                      <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
-
-                      <div className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400">
-                        Mover para:
-                      </div>
-                      {canonical !== ActivityCanonicalStatus.TO_DO && (
-                        <button
-                          onClick={() => onTransition(act, ActivityCanonicalStatus.TO_DO)}
-                          className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold flex items-center gap-1.5"
-                        >
-                          <span className="w-2 h-2 rounded-full bg-slate-400" />
-                          <span>A FAZER</span>
-                        </button>
-                      )}
-                      {canonical !== ActivityCanonicalStatus.IN_PROGRESS && (
-                        <button
-                          onClick={() => onTransition(act, ActivityCanonicalStatus.IN_PROGRESS)}
-                          className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-sky-600 dark:text-sky-400 font-bold flex items-center gap-1.5"
-                        >
-                          <span className="w-2 h-2 rounded-full bg-sky-500" />
-                          <span>EM ANDAMENTO</span>
-                        </button>
-                      )}
-                      {canonical !== ActivityCanonicalStatus.BLOCKED && (
-                        <button
-                          onClick={() => onTransition(act, ActivityCanonicalStatus.BLOCKED)}
-                          className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-amber-500/10 text-amber-600 dark:text-[#FDE68A] font-bold flex items-center gap-1.5"
-                        >
-                          <span className="w-2 h-2 rounded-full bg-[#FBBF24]" />
-                          <span>BLOQUEADA</span>
-                        </button>
-                      )}
-                      {canonical !== ActivityCanonicalStatus.COMPLETED && (
-                        <button
-                          onClick={() => onTransition(act, ActivityCanonicalStatus.COMPLETED)}
-                          className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5"
-                        >
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                          <span>CONCLUÍDA</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Título da Atividade (Clicável para ver detalhes sem disparar drag) */}
-              <h4
-                onClick={e => {
-                  e.stopPropagation();
-                  onOpenDetails(act);
-                }}
-                onMouseDown={e => e.stopPropagation()}
-                onDragStart={e => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-                title="Clique para ver detalhes"
-                className="text-xs font-bold text-slate-900 dark:text-white leading-snug mb-2.5 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
-              >
-                {act.name}
-              </h4>
-
-              {/* Badge discreto de Bloqueio se aplicável */}
-              {isBlocked && act.blockedReason && (
-                <div className="mb-2 px-2 py-1 rounded-lg bg-[#78350F]/15 border border-[#FBBF24]/40 text-[#FDE68A] text-[10px] font-medium leading-tight flex items-start gap-1">
-                  <Ban className="w-3 h-3 text-[#FBBF24] shrink-0 mt-0.5" />
-                  <span className="line-clamp-2" title={act.blockedReason}>{act.blockedReason}</span>
-                </div>
-              )}
-
-              {/* Rodapé do Card: Responsável e Prazo */}
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/60">
-                {/* Responsável */}
-                <div className="flex items-center space-x-1.5 min-w-0">
-                  <div className="w-5 h-5 rounded-full bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 font-black text-[9px] flex items-center justify-center uppercase shrink-0">
-                    {(assignee?.username || '?').charAt(0)}
-                  </div>
-                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 truncate">
-                    {assignee?.username || 'Não atribuído'}
-                  </span>
-                </div>
-
-                {/* Prazo e Indicador Discreto */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {act.deliveryDate && (
-                    <span className="text-[10px] font-semibold text-slate-400">
-                      {new Date(act.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                    </span>
-                  )}
-
-                  {isOverdue && (
-                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
-                      Atrasada
-                    </span>
-                  )}
-
-                  {isUpcoming && (
-                    <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                      Breve
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {visibleActivities.map(act => (
+          <KanbanCard
+            key={act.id}
+            act={act}
+            canonical={canonical}
+            project={projectMap.get(act.projectId)}
+            assignee={userMap.get(act.assigneeId)}
+            todayStr={todayStr}
+            isMenuOpen={menuOpenId === act.id}
+            onDragStart={onDragStart}
+            onTransition={onTransition}
+            onOpenDetails={onOpenDetails}
+            onToggleMenu={setMenuOpenId}
+          />
+        ))}
 
         {activities.length === 0 && (
           <div className="py-10 text-center text-xs text-slate-400 italic">
             Nenhuma atividade nesta coluna.
+          </div>
+        )}
+
+        {hasMore && (
+          <div className="pt-2 pb-1 flex flex-col gap-1.5 items-center">
+            <button
+              type="button"
+              onClick={() => setVisibleLimit(prev => Math.min(activities.length, prev + INITIAL_KANBAN_PAGE_SIZE))}
+              className="w-full py-2 px-3 rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/60 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all flex items-center justify-center gap-1.5"
+            >
+              <span>Carregar mais (+{Math.min(INITIAL_KANBAN_PAGE_SIZE, remainingCount)} de {remainingCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setVisibleLimit(activities.length)}
+              className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors py-0.5"
+            >
+              Mostrar todas ({activities.length})
+            </button>
           </div>
         )}
       </div>

@@ -735,6 +735,50 @@ export const logProjectActivityEvent = async (
   };
 };
 
+export const transitionProjectActivityWithEvent = async (
+  activity: ProjectActivity,
+  event: Omit<ProjectActivityEvent, 'id' | 'createdAt'>
+): Promise<{ success: boolean; eventId?: string }> => {
+  // 1. Attempt atomic database transition via transition_project_activity RPC
+  try {
+    const { data, error } = await supabase.rpc('transition_project_activity', {
+      p_activity_id: activity.id,
+      p_workspace_id: activity.workspaceId,
+      p_status: activity.status,
+      p_actual_start_date: activity.actualStartDate || null,
+      p_actual_end_date: activity.actualEndDate || null,
+      p_blocked_reason: activity.blockedReason || null,
+      p_conclusion_responsible_id: activity.conclusionResponsibleId || null,
+      p_deadline_at_conclusion: activity.deadlineAtConclusion || null,
+      p_delivery_date: activity.deliveryDate || null,
+      p_start_date: activity.startDate || null,
+      p_order_index: activity.orderIndex,
+      p_deadline_changes_count: activity.deadlineChangesCount || 0,
+      p_event_type: event.eventType,
+      p_from_status: event.fromStatus || null,
+      p_to_status: event.toStatus || null,
+      p_details: event.details || null,
+      p_metadata: event.metadata || {},
+      p_actor_id: event.actorId || null,
+      p_actor_name: event.actorName || null
+    });
+
+    if (!error && data) {
+      return { success: true, eventId: data.event_id };
+    }
+    if (error) {
+      console.warn('RPC transition_project_activity failed, falling back to separate calls:', error.message);
+    }
+  } catch (rpcErr) {
+    console.warn('RPC transition_project_activity invocation exception, falling back:', rpcErr);
+  }
+
+  // 2. Resilient fallback: separate calls
+  await syncProjectActivity(activity);
+  const logged = await logProjectActivityEvent(event);
+  return { success: true, eventId: logged?.id };
+};
+
 export const deleteProjectActivity = async (activityId: string) => {
   const { error } = await supabase.from('project_activities')
     .delete()

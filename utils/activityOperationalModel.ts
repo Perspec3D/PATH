@@ -1211,7 +1211,9 @@ export const calculateProfessionalDeliveryMetrics = (
         if (act.assigneeId === user.id) {
           inProgressCount++;
         }
-        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE) overdueCount++;
+        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE && act.assigneeId === user.id) {
+          overdueCount++;
+        }
         if (act.deliveryDate && act.assigneeId === user.id) {
           openActivitiesForUpcoming.push({
             id: act.id,
@@ -1229,7 +1231,9 @@ export const calculateProfessionalDeliveryMetrics = (
         if (act.assigneeId === user.id) {
           blockedCount++;
         }
-        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE) overdueCount++;
+        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE && act.assigneeId === user.id) {
+          overdueCount++;
+        }
         if (act.deliveryDate && act.assigneeId === user.id) {
           openActivitiesForUpcoming.push({
             id: act.id,
@@ -1244,7 +1248,9 @@ export const calculateProfessionalDeliveryMetrics = (
           });
         }
       } else if (canonical === ActivityCanonicalStatus.TO_DO) {
-        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE) overdueCount++;
+        if (deadlineEval.status === ActivityDeadlineStatus.OVERDUE && act.assigneeId === user.id) {
+          overdueCount++;
+        }
         if (act.deliveryDate && act.assigneeId === user.id) {
           openActivitiesForUpcoming.push({
             id: act.id,
@@ -1296,7 +1302,7 @@ export const calculateProfessionalDeliveryMetrics = (
     const wipLimit = userWipLimits[user.id];
     const isWipLimitExceeded = Boolean(wipLimit && wipLimit > 0 && inProgressCount > wipLimit);
 
-    const openCount = userActivities.filter(act => !isActivityClosed(act.status)).length;
+    const openCount = userActivities.filter(act => act.assigneeId === user.id && !isActivityClosed(act.status)).length;
     const resolvedName = user.username || 'Profissional';
 
     return {

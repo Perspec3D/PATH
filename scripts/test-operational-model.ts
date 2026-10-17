@@ -1196,8 +1196,67 @@ assert(week1.blockedCommitmentsCount === 1, 'Week 1 has 1 blocked commitment');
 assert(week1.projectedCapacity === 0.6, 'Week 1 projected capacity matches weekly throughput 0.6');
 assert(week1.demandVsCapacityDelta === 2.4, 'Week 1 demand vs capacity delta is +2.4 (3 - 0.6)');
 
+// ============================================================================
+// 12. FASE 3: CONSOLIDAÇÃO, INTEGRIDADE E PERFORMANCE
+// ============================================================================
+console.log('\n12. Integrity & Performance Consolidation (Fase 3)');
+
+// Test 12.1: calculateProfessionalDeliveryMetrics strict open/overdue attribution
+const testUserA = { id: 'usr-1', username: 'Operador 1' };
+const testUserB = { id: 'usr-2', username: 'Operador 2' };
+
+const activityWithStaleConclusionResp: ProjectActivity = {
+  id: 'act-reopened',
+  projectId: 'proj-1',
+  workspaceId: 'ws-1',
+  name: 'Atividade Reaberta e Reatribuída',
+  status: ActivityCanonicalStatus.IN_PROGRESS,
+  assigneeId: 'usr-2', // Currently assigned to User B!
+  conclusionResponsibleId: 'usr-1', // Stale or historical field pointing to User A
+  startDate: '2026-10-01',
+  deliveryDate: '2026-10-10', // Overdue since testToday is 2026-10-17
+  orderIndex: 0,
+  deadlineChangesCount: 0,
+  createdAt: 1,
+  updatedAt: 1
+};
+
+const profMetricsFase3 = calculateProfessionalDeliveryMetrics(
+  [activityWithStaleConclusionResp],
+  [testUserA, testUserB],
+  undefined,
+  testToday
+);
+const metricsUserA = profMetricsFase3.find(p => p.userId === 'usr-1')!;
+const metricsUserB = profMetricsFase3.find(p => p.userId === 'usr-2')!;
+
+assert(metricsUserA.openActivitiesCount === 0, 'User A has 0 open activities (not current assignee)');
+assert(metricsUserA.overdueCount === 0, 'User A has 0 overdue activities (not current assignee)');
+assert(metricsUserB.openActivitiesCount === 1, 'User B has 1 open activity (is current assignee)');
+assert(metricsUserB.overdueCount === 1, 'User B has 1 overdue activity (is current assignee)');
+
+// Test 12.2: Delivery predictability index lookup performance and accuracy
+const batchProjects: Project[] = [
+  { id: 'proj-fam-rev0', workspaceId: 'ws-1', clientId: 'client-1', code: 'PRJ-100', name: 'Projeto 100 Rev 00', startDate: '2026-10-01', deliveryDate: '2026-10-20', status: ProjectStatus.DONE, createdAt: 1, updatedAt: 1, revision: 'Rev.00', revisionNumber: 0, isCurrentRevision: false, familyId: 'fam-100' },
+  { id: 'proj-fam-rev1', workspaceId: 'ws-1', clientId: 'client-1', code: 'PRJ-100', name: 'Projeto 100 Rev 01', startDate: '2026-10-01', deliveryDate: '2026-10-25', status: ProjectStatus.IN_PROGRESS, createdAt: 2, updatedAt: 2, revision: 'Rev.01', revisionNumber: 1, isCurrentRevision: true, familyId: 'fam-100' }
+];
+
+const batchActivities: ProjectActivity[] = [
+  { id: 'act-fam-1', projectId: 'proj-fam-rev1', workspaceId: 'ws-1', name: 'Atividade Rev 1', status: ActivityCanonicalStatus.IN_PROGRESS, deliveryDate: '2026-10-24', orderIndex: 0, deadlineChangesCount: 0, createdAt: 1, updatedAt: 1 }
+];
+
+const predictabilityResult = calculateProjectDeliveryPredictability({
+  projects: batchProjects,
+  activities: batchActivities,
+  todayStr: testToday
+});
+assert(predictabilityResult.length === 1, 'Predictability returned exactly 1 family (current revision)');
+assert(predictabilityResult[0].projectId === 'proj-fam-rev1', 'Evaluated current revision Rev 01');
+assert(predictabilityResult[0].totalActivitiesCount === 1, 'Correctly matched 1 activity via Map index');
+
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {
   process.exit(1);
 }
+
 

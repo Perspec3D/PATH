@@ -85,12 +85,34 @@ export const calculateProjectDeliveryPredictability = ({
     && [ProjectStatus.QUEUE, ProjectStatus.IN_PROGRESS, ProjectStatus.PAUSED].includes(project.status)
   ));
 
+  // Pre-index activities by projectId (O(A) one-pass) to avoid repeated O(P*A) scans
+  const activitiesByProjectId = new Map<string, ProjectActivity[]>();
+  for (const act of activities) {
+    let list = activitiesByProjectId.get(act.projectId);
+    if (!list) {
+      list = [];
+      activitiesByProjectId.set(act.projectId, list);
+    }
+    list.push(act);
+  }
+
+  // Pre-index family revisions (O(P) one-pass)
+  const familyRevisionsMap = new Map<string, Project[]>();
+  for (const p of projects) {
+    const famId = getProjectFamilyId(p);
+    const key = famId || p.code;
+    let list = familyRevisionsMap.get(key);
+    if (!list) {
+      list = [];
+      familyRevisionsMap.set(key, list);
+    }
+    list.push(p);
+  }
+
   return activeProjects.map(project => {
     // Locate family revisions to track reprogrammings and original delivery date
     const familyId = getProjectFamilyId(project);
-    const familyRevisions = projects.filter(p => (
-      p.code === project.code || getProjectFamilyId(p) === familyId
-    ));
+    const familyRevisions = familyRevisionsMap.get(familyId || project.code) || [project];
     const sortedRevisions = [...familyRevisions].sort((a, b) => (
       getProjectRevisionNumber(a) - getProjectRevisionNumber(b)
     ));
@@ -98,8 +120,8 @@ export const calculateProjectDeliveryPredictability = ({
     const originalDeliveryDate = originalRevision.deliveryDate || project.deliveryDate;
     const reprogrammingCount = Math.max(0, sortedRevisions.length - 1);
 
-    // Filter activities belonging to this project
-    const projectActivities = activities.filter(activity => activity.projectId === project.id);
+    // Get activities belonging to this project in O(1)
+    const projectActivities = activitiesByProjectId.get(project.id) || [];
     const openActivities = projectActivities.filter(activity => !isActivityClosed(activity.status));
     const inProgressActivities = openActivities.filter(activity => isActivityInProgress(activity.status));
     const blockedActivities = openActivities.filter(activity => isActivityBlocked(activity.status));
