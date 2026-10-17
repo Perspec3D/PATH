@@ -282,9 +282,104 @@ export const formatLocalDate = (date: Date): string => {
 };
 
 /**
+ * Adds or subtracts calendar days from a YYYY-MM-DD date string safely.
+ * Returns null if input date is invalid.
+ */
+export const addCalendarDays = (dateStr?: string | null, days: number = 0): string | null => {
+  const d = parseLocalDate(dateStr);
+  if (!d) return null;
+  d.setDate(d.getDate() + days);
+  return formatLocalDate(d);
+};
+
+/**
  * Returns today's date formatted as YYYY-MM-DD in local time.
  */
 export const getTodayDateString = (): string => formatLocalDate(new Date());
+
+export type DragRescheduleMode = 'move' | 'resize-start' | 'resize-end';
+
+export interface RescheduleDatesResult {
+  newStartDate: string;
+  newDeliveryDate: string;
+  isClamped: boolean;
+}
+
+/**
+ * Calculates new planned start and delivery dates for interactive Gantt drag/resize.
+ * Strictly respects:
+ * - Preservation of duration in 'move' mode
+ * - Boundaries of parent project (if defined)
+ * - Safe minimum 1-day duration (startDate <= deliveryDate)
+ * - Immune to timezone shifts
+ */
+export const calculateRescheduledDates = (
+  mode: DragRescheduleMode,
+  initialStartDate: string,
+  initialDeliveryDate: string,
+  deltaDays: number,
+  projectStartDate?: string,
+  projectDeliveryDate?: string
+): RescheduleDatesResult => {
+  const initialDuration = calculateCalendarDurationDays(initialStartDate, initialDeliveryDate) || 1;
+  let isClamped = false;
+  let newStartDate = initialStartDate;
+  let newDeliveryDate = initialDeliveryDate;
+
+  if (mode === 'move') {
+    let shiftedStart = addCalendarDays(initialStartDate, deltaDays) || initialStartDate;
+    let shiftedEnd = addCalendarDays(initialDeliveryDate, deltaDays) || initialDeliveryDate;
+
+    if (projectStartDate && shiftedStart < projectStartDate) {
+      shiftedStart = projectStartDate;
+      shiftedEnd = addCalendarDays(shiftedStart, initialDuration - 1) || shiftedEnd;
+      isClamped = true;
+    }
+    if (projectDeliveryDate && shiftedEnd > projectDeliveryDate) {
+      shiftedEnd = projectDeliveryDate;
+      shiftedStart = addCalendarDays(shiftedEnd, -(initialDuration - 1)) || shiftedStart;
+      isClamped = true;
+    }
+
+    if (shiftedStart > shiftedEnd) {
+      shiftedStart = shiftedEnd;
+      isClamped = true;
+    }
+
+    newStartDate = shiftedStart;
+    newDeliveryDate = shiftedEnd;
+  } else if (mode === 'resize-start') {
+    let candidateStart = addCalendarDays(initialStartDate, deltaDays) || initialStartDate;
+
+    if (candidateStart > initialDeliveryDate) {
+      candidateStart = initialDeliveryDate;
+      isClamped = true;
+    }
+    if (projectStartDate && candidateStart < projectStartDate) {
+      candidateStart = projectStartDate;
+      isClamped = true;
+    }
+
+    newStartDate = candidateStart;
+    newDeliveryDate = initialDeliveryDate;
+  } else if (mode === 'resize-end') {
+    let candidateEnd = addCalendarDays(initialDeliveryDate, deltaDays) || initialDeliveryDate;
+
+    if (candidateEnd < initialStartDate) {
+      candidateEnd = initialStartDate;
+      isClamped = true;
+    }
+    if (projectDeliveryDate && candidateEnd > projectDeliveryDate) {
+      candidateEnd = projectDeliveryDate;
+      isClamped = true;
+    }
+
+    newStartDate = initialStartDate;
+    newDeliveryDate = candidateEnd;
+  }
+
+  return { newStartDate, newDeliveryDate, isClamped };
+};
 
 /**
  * Returns user-facing format DD/MM/YYYY.

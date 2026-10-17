@@ -7,7 +7,7 @@ import { HoverTooltipPortal } from './InfoTooltip';
 import { findActivitiesOutsideProjectPeriod, getAffectedActivitiesLabel, isValidDateRange } from '../utils/projectDateIntegrity';
 import { isCurrentProjectRevision } from '../utils/projectRevision';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
-import { normalizeActivityStatus, getActivityStatusBadge, getActivityStatusTheme, getActivityGanttBarStyle, formatDisplayDate, getTodayDateString, evaluateDeadlineStatus, calculateCalendarDurationDays, calculateDaysDifference, createActivityEventPayload, isActivityCompleted, isActivityInProgress, isActivityBlocked, isActivityToDo } from '../utils/activityOperationalModel';
+import { normalizeActivityStatus, getActivityStatusBadge, getActivityStatusTheme, getActivityGanttBarStyle, formatDisplayDate, getTodayDateString, evaluateDeadlineStatus, calculateCalendarDurationDays, calculateDaysDifference, createActivityEventPayload, isActivityCompleted, isActivityInProgress, isActivityBlocked, isActivityToDo, addCalendarDays, calculateRescheduledDates, DragRescheduleMode } from '../utils/activityOperationalModel';
 
 interface GanttProps {
   db: AppDB;
@@ -75,6 +75,297 @@ export const Gantt: React.FC<GanttProps> = ({
   const [clockNow, setClockNow] = useState(Date.now());
   const [isLoadingQuickViewData, setIsLoadingQuickViewData] = useState(false);
   const [activeActivityTypes, setActiveActivityTypes] = useState<ActivityType[]>([]);
+
+  // --- Estados e Referências para Edição Visual no Gantt (Drag & Resize) ---
+  const ganttScrollRef = useRef<HTMLDivElement>(null);
+  const [dragState, setDragState] = useState<{
+    activityId: string;
+    activity: ProjectActivity;
+    parentProject: Project;
+    mode: DragRescheduleMode;
+    startX: number;
+    initialStartDate: string;
+    initialDeliveryDate: string;
+    initialDurationDays: number;
+    previewStartDate: string;
+    previewDeliveryDate: string;
+    previewDeltaDays: number;
+    isClamped: boolean;
+    hasMoved: boolean;
+  } | null>(null);
+
+  const [pendingReschedule, setPendingReschedule] = useState<{
+    activity: ProjectActivity;
+    parentProject: Project;
+    mode: DragRescheduleMode;
+    previousStartDate: string;
+    previousDeliveryDate: string;
+    newStartDate: string;
+    newDeliveryDate: string;
+  } | null>(null);
+
+  const [isSavingReschedule, setIsSavingReschedule] = useState(false);
+  const hasDraggedRef = useRef(false);
+  const dragStateRef = useRef<typeof dragState>(null);
+  dragStateRef.current = dragState;
+
+  // Validação de permissão e regras de negócio para reprogramação visual
+  const canEditActivityDates = (activity: ProjectActivity, parentProject?: Project): { allowed: boolean; reason?: string } => {
+    if (currentUser.role === UserRole.VIEWER) {
+      return { allowed: false, reason: 'Usuários com perfil de visualizador não têm permissão para reprogramar atividades.' };
+    }
+    if (parentProject && !isCurrentProjectRevision(parentProject)) {
+      return { allowed: false, reason: 'Esta revisão do projeto é histórica e está protegida contra alterações.' };
+    }
+    if (isActivityCompleted(activity.status)) {
+      return { allowed: false, reason: 'Atividades concluídas não podem ser reprogramadas visualmente no gráfico.' };
+    }
+    return { allowed: true };
+  };
+
+  // Início da interação (mover ou redimensionar)
+  const handleStartInteraction = (
+    e: React.PointerEvent,
+    activity: ProjectActivity,
+    parentProject: Project,
+    mode: DragRescheduleMode
+  ) => {
+    if (e.button !== 0) return;
+
+    const check = canEditActivityDates(activity, parentProject);
+    if (!check.allowed) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startDate = activity.startDate || getTodayDateString();
+    const deliveryDate = activity.deliveryDate || startDate;
+    const initialDuration = calculateCalendarDurationDays(startDate, deliveryDate) || 1;
+
+    hasDraggedRef.current = false;
+    setDragState({
+      activityId: activity.id,
+      activity,
+      parentProject,
+      mode,
+      startX: e.clientX,
+      initialStartDate: startDate,
+      initialDeliveryDate: deliveryDate,
+      initialDurationDays: initialDuration,
+      previewStartDate: startDate,
+      previewDeliveryDate: deliveryDate,
+      previewDeltaDays: 0,
+      isClamped: false,
+      hasMoved: false
+    });
+  };
+
+  // Gerenciamento global de eventos de ponteiro e teclado durante o arraste
+  useEffect(() => {
+    if (!dragState) return;
+
+    let animFrameId: number | null = null;
+    let lastClientX = dragState.startX;
+
+    const autoScrollLoop = () => {
+      if (ganttScrollRef.current) {
+        const container = ganttScrollRef.current;
+        const rect = container.getBoundingClientRect();
+        const leftThreshold = rect.left + sidebarWidth + 50;
+        const rightThreshold = rect.right - 50;
+
+        if (lastClientX > rightThreshold) {
+          const intensity = Math.min(25, Math.max(5, (lastClientX - rightThreshold) / 2));
+          container.scrollLeft += intensity;
+        } else if (lastClientX < leftThreshold && lastClientX > rect.left) {
+          const intensity = Math.min(25, Math.max(5, (leftThreshold - lastClientX) / 2));
+          container.scrollLeft -= intensity;
+        }
+      }
+      animFrameId = requestAnimationFrame(autoScrollLoop);
+    };
+
+    animFrameId = requestAnimationFrame(autoScrollLoop);
+
+    const handlePointerMove = (e: PointerEvent) => {
+      lastClientX = e.clientX;
+      const currentDrag = dragStateRef.current;
+      if (!currentDrag) return;
+
+      const deltaX = e.clientX - currentDrag.startX;
+      if (!currentDrag.hasMoved && Math.abs(deltaX) >= 4) {
+        hasDraggedRef.current = true;
+        document.body.style.cursor = currentDrag.mode === 'move' ? 'grabbing' : 'ew-resize';
+        document.body.style.userSelect = 'none';
+      }
+
+      const hasMoved = hasDraggedRef.current;
+      const deltaDays = Math.round(deltaX / dayWidth);
+
+      const { newStartDate, newDeliveryDate, isClamped } = calculateRescheduledDates(
+        currentDrag.mode,
+        currentDrag.initialStartDate,
+        currentDrag.initialDeliveryDate,
+        deltaDays,
+        currentDrag.parentProject.startDate,
+        currentDrag.parentProject.deliveryDate
+      );
+
+      setDragState(prev => prev ? {
+        ...prev,
+        hasMoved,
+        previewDeltaDays: deltaDays,
+        previewStartDate: newStartDate,
+        previewDeliveryDate: newDeliveryDate,
+        isClamped
+      } : null);
+    };
+
+    const handlePointerUp = () => {
+      if (animFrameId) cancelAnimationFrame(animFrameId);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      const currentDrag = dragStateRef.current;
+      if (!currentDrag) return;
+
+      if (!hasDraggedRef.current) {
+        setDragState(null);
+        return;
+      }
+
+      const datesChanged =
+        currentDrag.previewStartDate !== currentDrag.initialStartDate ||
+        currentDrag.previewDeliveryDate !== currentDrag.initialDeliveryDate;
+
+      if (datesChanged) {
+        setPendingReschedule({
+          activity: currentDrag.activity,
+          parentProject: currentDrag.parentProject,
+          mode: currentDrag.mode,
+          previousStartDate: currentDrag.initialStartDate,
+          previousDeliveryDate: currentDrag.initialDeliveryDate,
+          newStartDate: currentDrag.previewStartDate,
+          newDeliveryDate: currentDrag.previewDeliveryDate
+        });
+      }
+
+      setDragState(null);
+      setTimeout(() => {
+        hasDraggedRef.current = false;
+      }, 100);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        hasDraggedRef.current = false;
+        setDragState(null);
+      }
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      if (animFrameId) cancelAnimationFrame(animFrameId);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [dragState !== null]);
+
+  // Cancelamento por teclado do modal de confirmação
+  useEffect(() => {
+    if (!pendingReschedule) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPendingReschedule(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pendingReschedule]);
+
+  // Persistência confirmada pelo usuário
+  const handleConfirmReschedule = async () => {
+    if (!pendingReschedule || isSavingReschedule) return;
+    setIsSavingReschedule(true);
+
+    const { activity, parentProject, mode, previousStartDate, previousDeliveryDate, newStartDate, newDeliveryDate } = pendingReschedule;
+    const originalStateActivities = [...projectActivities];
+
+    try {
+      const updatedActivity: ProjectActivity = {
+        ...activity,
+        startDate: newStartDate,
+        deliveryDate: newDeliveryDate,
+        originalDeliveryDate: activity.originalDeliveryDate || activity.deliveryDate || previousDeliveryDate,
+        deadlineChangesCount: (activity.deadlineChangesCount || 0) + 1,
+        updatedAt: Date.now()
+      };
+
+      // 1. Atualização otimista no estado local
+      setProjectActivities(prev => prev.map(a => a.id === updatedActivity.id ? updatedActivity : a));
+      if (selectedQuickViewActivity?.id === updatedActivity.id) {
+        setSelectedQuickViewActivity((prev: any) => prev ? { ...prev, ...updatedActivity } : null);
+      }
+
+      // 2. Persistência idempotente no banco de dados
+      await syncProjectActivity(updatedActivity);
+
+      // 3. Registro do evento de auditoria no histórico oficial
+      const modeLabel = mode === 'move' ? 'deslocamento de período' : mode === 'resize-start' ? 'ajuste de data de início' : 'ajuste de prazo de entrega';
+      const durationDays = calculateCalendarDurationDays(newStartDate, newDeliveryDate);
+
+      await logProjectActivityEvent(
+        createActivityEventPayload(
+          currentUser.workspaceId,
+          updatedActivity.id,
+          'RESCHEDULED',
+          currentUser,
+          {
+            fromStatus: updatedActivity.status,
+            toStatus: updatedActivity.status,
+            details: `Reprogramação (${modeLabel}): Início ${formatDisplayDate(previousStartDate)} → ${formatDisplayDate(newStartDate)}, Término ${formatDisplayDate(previousDeliveryDate)} → ${formatDisplayDate(newDeliveryDate)} (${durationDays} dias corridos)`,
+            metadata: {
+              mode,
+              previousStartDate,
+              previousDeliveryDate,
+              newStartDate,
+              newDeliveryDate,
+              durationDays,
+              source: 'GANTT_INTERACTIVE_DRAG'
+            }
+          }
+        )
+      );
+
+      // 4. Log geral do sistema
+      await logAction(
+        currentUser.workspaceId,
+        currentUser,
+        LogModule.PROJECTS,
+        LogAction.STATUS_CHANGE,
+        `${currentUser.username} reprogramou a atividade "${updatedActivity.name}" (${parentProject.code}) para ${formatDisplayDate(newStartDate)} a ${formatDisplayDate(newDeliveryDate)}`,
+        parentProject.code
+      );
+
+      setPendingReschedule(null);
+    } catch (err: any) {
+      console.error('Erro ao persistir reprogramação da atividade:', err);
+      // Reversão do estado visual em caso de falha de rede/banco
+      setProjectActivities(originalStateActivities);
+      alert('Erro ao salvar reprogramação: ' + (err.message || 'Falha de comunicação com o servidor. A alteração foi revertida.'));
+    } finally {
+      setIsSavingReschedule(false);
+    }
+  };
 
   // Helpers for operational time
   const formatElapsedTime = (durationMs: number | null) => {
@@ -1078,7 +1369,7 @@ export const Gantt: React.FC<GanttProps> = ({
       </div>
 
       <div className="bg-white dark:bg-[#1e293b] rounded-[40px] shadow-sm dark:shadow-2xl border border-slate-200 dark:border-slate-700 p-3 overflow-hidden relative transition-colors duration-500">
-        <div className="overflow-auto max-h-[calc(100vh-240px)] rounded-[24px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700/50 scrollbar-track-transparent">
+        <div ref={ganttScrollRef} className="overflow-auto max-h-[calc(100vh-240px)] rounded-[24px] scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700/50 scrollbar-track-transparent">
           <div style={{ width: `${totalWidth}px`, minWidth: `${totalWidth}px` }} className="flex flex-col pb-64">
             {/* HEADER FIXO (TOP E LEFT) */}
             <div style={{ width: `${totalWidth}px`, minWidth: `${totalWidth}px` }} className="flex sticky top-0 z-50 bg-white dark:bg-[#1e293b] transition-colors border-b border-slate-200 dark:border-slate-700/80">
@@ -1218,8 +1509,12 @@ export const Gantt: React.FC<GanttProps> = ({
                             type: 'projectActivity',
                             parentProject: project
                           };
-                          const stStart = st.startDate ? new Date(st.startDate + 'T12:00:00') : null;
-                          const stEnd = st.deliveryDate ? new Date(st.deliveryDate + 'T12:00:00') : null;
+                          const isDraggingThis = dragState?.activityId === st.id;
+                          const effStartDate = isDraggingThis ? dragState.previewStartDate : st.startDate;
+                          const effDeliveryDate = isDraggingThis ? dragState.previewDeliveryDate : st.deliveryDate;
+
+                          const stStart = effStartDate ? new Date(effStartDate + 'T12:00:00') : null;
+                          const stEnd = effDeliveryDate ? new Date(effDeliveryDate + 'T12:00:00') : null;
                           let stOffset = 0; let stWidth = 0;
                           if (stStart && stEnd) {
                             const diffStart = Math.floor((stStart.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -1251,60 +1546,124 @@ export const Gantt: React.FC<GanttProps> = ({
 
                                 {stWidth > 0 && (() => {
                                   const stIsBlocked = isActivityBlocked(st.status);
-                                  const stDeadline = evaluateDeadlineStatus(st);
+                                  const stDeadline = evaluateDeadlineStatus({ ...st, startDate: effStartDate, deliveryDate: effDeliveryDate });
                                   const stBarStyle = getActivityGanttBarStyle(st.status, stDeadline.isOverdue);
+                                  const canEdit = canEditActivityDates(st, project).allowed;
+                                  const durationDays = calculateCalendarDurationDays(effStartDate, effDeliveryDate) || 1;
 
                                   return (
                                     <HoverTooltipPortal
                                       tooltipClassName="w-[220px] p-3.5 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl ring-1 ring-white/10"
                                       tooltip={
-                                        <>
-                                          <div className="flex items-center justify-between mb-1.5 gap-2">
-                                            <div className="flex flex-col">
-                                              <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">ATIVIDADE DO PROJETO</p>
-                                              <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">{project.code}</p>
-                                            </div>
-                                            <div className="flex items-center gap-1 shrink-0">
-                                              <span
-                                                style={stIsBlocked ? { backgroundColor: '#78350F', color: '#FDE68A', borderColor: '#FBBF24', borderWidth: 1, borderStyle: 'solid' } : undefined}
-                                                className={`px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider ${
-                                                  stIsBlocked ? '' : `${stBarStyle.theme.barBgClass} text-white`
-                                                }`}
-                                              >
-                                                {stIsBlocked && '🔒 '}{stBarStyle.theme.label}
-                                              </span>
-                                              {stDeadline.isOverdue && (
-                                                <span className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-sm">
-                                                  ATRASADA
+                                        dragState ? null : (
+                                          <>
+                                            <div className="flex items-center justify-between mb-1.5 gap-2">
+                                              <div className="flex flex-col">
+                                                <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">ATIVIDADE DO PROJETO</p>
+                                                <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">{project.code}</p>
+                                              </div>
+                                              <div className="flex items-center gap-1 shrink-0">
+                                                <span
+                                                  style={stIsBlocked ? { backgroundColor: '#78350F', color: '#FDE68A', borderColor: '#FBBF24', borderWidth: 1, borderStyle: 'solid' } : undefined}
+                                                  className={`px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider ${
+                                                    stIsBlocked ? '' : `${stBarStyle.theme.barBgClass} text-white`
+                                                  }`}
+                                                >
+                                                  {stIsBlocked && '🔒 '}{stBarStyle.theme.label}
                                                 </span>
-                                              )}
+                                                {stDeadline.isOverdue && (
+                                                  <span className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-sm">
+                                                    ATRASADA
+                                                  </span>
+                                                )}
+                                              </div>
                                             </div>
-                                          </div>
-                                          <p className="text-[11px] font-bold text-white mb-2 leading-snug">{st.name}</p>
+                                            <p className="text-[11px] font-bold text-white mb-2 leading-snug">{st.name}</p>
 
-                                          {/* Motivo do bloqueio com destaque visual quando bloqueada */}
-                                          {stIsBlocked && (
-                                            <div className="mb-2.5 p-2 rounded-lg bg-[#78350F]/50 border border-[#FBBF24]/60 text-amber-100 text-[9px] leading-snug">
-                                              <span className="font-black text-[8px] uppercase tracking-wider text-[#FDE68A] block mb-0.5 flex items-center gap-1">
-                                                <span>⚠️</span> Motivo do Bloqueio:
-                                              </span>
-                                              <p className="font-medium text-white/95 break-words">{st.blockedReason || 'Motivo de bloqueio não informado'}</p>
+                                            {/* Motivo do bloqueio com destaque visual quando bloqueada */}
+                                            {stIsBlocked && (
+                                              <div className="mb-2.5 p-2 rounded-lg bg-[#78350F]/50 border border-[#FBBF24]/60 text-amber-100 text-[9px] leading-snug">
+                                                <span className="font-black text-[8px] uppercase tracking-wider text-[#FDE68A] block mb-0.5 flex items-center gap-1">
+                                                  <span>⚠️</span> Motivo do Bloqueio:
+                                                </span>
+                                                <p className="font-medium text-white/95 break-words">{st.blockedReason || 'Motivo de bloqueio não informado'}</p>
+                                              </div>
+                                            )}
+
+                                            <div className="flex justify-between items-center text-[9px] font-medium text-slate-400 pt-1.5 border-t border-slate-800">
+                                              <span>{stStart?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                                              <svg className="w-2 h-2 mx-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                              <span>{stEnd?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
                                             </div>
-                                          )}
-
-                                          <div className="flex justify-between items-center text-[9px] font-medium text-slate-400 pt-1.5 border-t border-slate-800">
-                                            <span>{stStart?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
-                                            <svg className="w-2 h-2 mx-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                            <span>{stEnd?.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
-                                          </div>
-                                        </>
+                                          </>
+                                        )
                                       }
                                     >
                                       <div
-                                        onClick={() => setSelectedQuickViewActivity(st)}
-                                        style={{ left: `${stOffset}px`, width: `${stWidth}px`, ...stBarStyle.style }}
-                                        className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-full z-20 cursor-pointer flex items-center px-1.5 transition-all duration-300 hover:brightness-125 ${stBarStyle.className}`}
+                                        onPointerDown={(e) => {
+                                          if (canEdit) {
+                                            handleStartInteraction(e, st, project, 'move');
+                                          }
+                                        }}
+                                        onClick={(e) => {
+                                          if (hasDraggedRef.current) {
+                                            e.stopPropagation();
+                                            return;
+                                          }
+                                          setSelectedQuickViewActivity(st);
+                                        }}
+                                        style={{
+                                          left: `${stOffset}px`,
+                                          width: `${stWidth}px`,
+                                          ...stBarStyle.style,
+                                          ...(isDraggingThis ? { zIndex: 50, opacity: 0.95 } : {})
+                                        }}
+                                        className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-full z-20 flex items-center px-1.5 transition-[background-color,border-color,box-shadow] duration-200 hover:brightness-125 select-none ${
+                                          canEdit ? (isDraggingThis ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'
+                                        } ${isDraggingThis ? 'ring-2 ring-indigo-400 dark:ring-indigo-300 ring-offset-1 shadow-2xl brightness-110' : ''} ${stBarStyle.className} group/bar`}
                                       >
+                                        {/* Left Resize Handle */}
+                                        {canEdit && (
+                                          <div
+                                            onPointerDown={(e) => handleStartInteraction(e, st, project, 'resize-start')}
+                                            className="absolute left-0 top-0 bottom-0 w-2.5 z-30 cursor-ew-resize flex items-center justify-center opacity-0 group-hover/bar:opacity-100 hover:opacity-100 transition-opacity select-none touch-none"
+                                            title="Redimensionar início da atividade"
+                                          >
+                                            <div className="w-1 h-3 rounded-full bg-white/90 shadow-sm" />
+                                          </div>
+                                        )}
+
+                                        {/* Right Resize Handle */}
+                                        {canEdit && (
+                                          <div
+                                            onPointerDown={(e) => handleStartInteraction(e, st, project, 'resize-end')}
+                                            className="absolute right-0 top-0 bottom-0 w-2.5 z-30 cursor-ew-resize flex items-center justify-center opacity-0 group-hover/bar:opacity-100 hover:opacity-100 transition-opacity select-none touch-none"
+                                            title="Redimensionar término da atividade"
+                                          >
+                                            <div className="w-1 h-3 rounded-full bg-white/90 shadow-sm" />
+                                          </div>
+                                        )}
+
+                                        {/* Live Drag Floating Tooltip */}
+                                        {isDraggingThis && dragState && (
+                                          <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 rounded-xl bg-slate-900/95 backdrop-blur-md text-white border border-indigo-500/60 text-[10px] font-bold shadow-2xl flex items-center gap-2 z-50 pointer-events-none animate-in fade-in zoom-in-95">
+                                            <span className="text-indigo-400 font-black">
+                                              {dragState.mode === 'move' ? '↔ Mover' : dragState.mode === 'resize-start' ? '◀ Início' : '▶ Término'}
+                                            </span>
+                                            <span className="text-slate-200">
+                                              {formatDisplayDate(effStartDate)} → {formatDisplayDate(effDeliveryDate)}
+                                            </span>
+                                            <span className="px-1.5 py-0.5 bg-indigo-500/30 text-indigo-300 rounded text-[9px] font-black">
+                                              {durationDays}d
+                                            </span>
+                                            {dragState.isClamped && (
+                                              <span className="px-1 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[8px] font-black">
+                                                Limite do Projeto
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+
                                         <div className={`w-1.5 h-1.5 rounded-full mr-1 shrink-0 ${getProjectMarkerColor(project.id)}`} />
                                         {stIsBlocked && (
                                           <svg className="w-2.5 h-2.5 text-[#FDE68A] shrink-0 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1485,86 +1844,94 @@ export const Gantt: React.FC<GanttProps> = ({
                         </div>
 
                         {tasksWithLanes.map((task: any) => {
-                          const start = task.startDate ? new Date(task.startDate + 'T12:00:00') : null;
-                          const end = task.deliveryDate ? new Date(task.deliveryDate + 'T12:00:00') : null;
+                          const isProjectActivity = task.type === 'projectActivity';
+                          const isDraggingThis = isProjectActivity && dragState?.activityId === task.id;
+                          const effStartDate = isDraggingThis ? dragState.previewStartDate : task.startDate;
+                          const effDeliveryDate = isDraggingThis ? dragState.previewDeliveryDate : task.deliveryDate;
+
+                          const start = effStartDate ? new Date(effStartDate + 'T12:00:00') : null;
+                          const end = effDeliveryDate ? new Date(effDeliveryDate + 'T12:00:00') : null;
                           if (!start || !end) return null;
                           const diffStart = Math.floor((start.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
                           const diffDuration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
                           const offset = diffStart * dayWidth;
                           const width = diffDuration * dayWidth;
-                          const isProjectActivity = task.type === 'projectActivity';
                           const taskIsBlocked = isProjectActivity && isActivityBlocked(task.status);
-                          const taskDeadline = isProjectActivity ? evaluateDeadlineStatus(task) : null;
+                          const taskDeadline = isProjectActivity ? evaluateDeadlineStatus({ ...task, startDate: effStartDate, deliveryDate: effDeliveryDate }) : null;
                           const taskBarStyle = isProjectActivity ? getActivityGanttBarStyle(task.status, taskDeadline?.isOverdue) : null;
                           const barHeight = isProjectActivity ? 'h-5' : 'h-8';
                           const topPos = 16 + (task.laneIndex * 42) + (isProjectActivity ? 6 : 0);
+                          const canEdit = isProjectActivity && task.parentProject ? canEditActivityDates(task, task.parentProject).allowed : false;
+                          const durationDays = calculateCalendarDurationDays(effStartDate, effDeliveryDate) || 1;
 
                           return (
                             <HoverTooltipPortal
                               key={task.id}
                               tooltipClassName="w-[230px] p-4 bg-slate-900 border border-slate-700 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] ring-1 ring-white/10"
                               tooltip={
-                                <>
-                                  <div className="flex items-center justify-between mb-2 gap-2">
-                                    <div className="flex flex-col min-w-0">
-                                      <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em] truncate">
-                                        {task.type === 'project' ? 'PROJETO PAI' : task.type === 'projectActivity' ? 'ATIVIDADE DO PROJETO' : 'TAREFA / BLOQUEIO'}
-                                      </p>
-                                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-0.5 truncate">
-                                        {task.type === 'project' ? (task as any).code : task.type === 'projectActivity' ? (task as any).parentProject?.code : (task as any).activityType || task.type}
-                                      </p>
-                                    </div>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <span
-                                        style={taskIsBlocked ? { backgroundColor: '#78350F', color: '#FDE68A', borderColor: '#FBBF24', borderWidth: 1, borderStyle: 'solid' } : undefined}
-                                        className={`px-2 py-0.5 rounded text-[7.5px] font-black uppercase tracking-widest ${
-                                          taskIsBlocked ? '' : taskBarStyle ? `${taskBarStyle.theme.barBgClass} text-white` : `${getStatusColor(task.status)} text-white`
-                                        }`}
-                                      >
-                                        {taskIsBlocked && '🔒 '}{task.status === 'ACTIVITY' ? 'AVULSA' : taskBarStyle ? taskBarStyle.theme.label : task.status}
-                                      </span>
-                                      {taskDeadline?.isOverdue && (
-                                        <span className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-sm">
-                                          ATRASADA
+                                dragState ? null : (
+                                  <>
+                                    <div className="flex items-center justify-between mb-2 gap-2">
+                                      <div className="flex flex-col min-w-0">
+                                        <p className="text-[9px] font-black text-emerald-400 uppercase tracking-[0.2em] truncate">
+                                          {task.type === 'project' ? 'PROJETO PAI' : task.type === 'projectActivity' ? 'ATIVIDADE DO PROJETO' : 'TAREFA / BLOQUEIO'}
+                                        </p>
+                                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-0.5 truncate">
+                                          {task.type === 'project' ? (task as any).code : task.type === 'projectActivity' ? (task as any).parentProject?.code : (task as any).activityType || task.type}
+                                        </p>
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <span
+                                          style={taskIsBlocked ? { backgroundColor: '#78350F', color: '#FDE68A', borderColor: '#FBBF24', borderWidth: 1, borderStyle: 'solid' } : undefined}
+                                          className={`px-2 py-0.5 rounded text-[7.5px] font-black uppercase tracking-widest ${
+                                            taskIsBlocked ? '' : taskBarStyle ? `${taskBarStyle.theme.barBgClass} text-white` : `${getStatusColor(task.status)} text-white`
+                                          }`}
+                                        >
+                                          {taskIsBlocked && '🔒 '}{task.status === 'ACTIVITY' ? 'AVULSA' : taskBarStyle ? taskBarStyle.theme.label : task.status}
                                         </span>
-                                      )}
+                                        {taskDeadline?.isOverdue && (
+                                          <span className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-sm">
+                                            ATRASADA
+                                          </span>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                  <p className="text-xs font-bold text-white mb-1.5 leading-snug whitespace-normal">{task.name}</p>
-                                  {task.type === 'projectActivity' && <p className="text-[9px] text-slate-400 font-bold uppercase mb-2 truncate">Ref: {task.parentProject?.name}</p>}
+                                    <p className="text-xs font-bold text-white mb-1.5 leading-snug whitespace-normal">{task.name}</p>
+                                    {task.type === 'projectActivity' && <p className="text-[9px] text-slate-400 font-bold uppercase mb-2 truncate">Ref: {task.parentProject?.name}</p>}
 
-                                  {/* Motivo do bloqueio quando atividade bloqueada */}
-                                  {taskIsBlocked && (
-                                    <div className="mb-2.5 p-2 rounded-lg bg-[#78350F]/50 border border-[#FBBF24]/60 text-amber-100 text-[9px] leading-snug">
-                                      <span className="font-black text-[8px] uppercase tracking-wider text-[#FDE68A] block mb-0.5 flex items-center gap-1">
-                                        <span>⚠️</span> Motivo do Bloqueio:
-                                      </span>
-                                      <p className="font-medium text-white/95 break-words">{task.blockedReason || 'Motivo de bloqueio não informado'}</p>
-                                    </div>
-                                  )}
+                                    {/* Motivo do bloqueio quando atividade bloqueada */}
+                                    {taskIsBlocked && (
+                                      <div className="mb-2.5 p-2 rounded-lg bg-[#78350F]/50 border border-[#FBBF24]/60 text-amber-100 text-[9px] leading-snug">
+                                        <span className="font-black text-[8px] uppercase tracking-wider text-[#FDE68A] block mb-0.5 flex items-center gap-1">
+                                          <span>⚠️</span> Motivo do Bloqueio:
+                                        </span>
+                                        <p className="font-medium text-white/95 break-words">{task.blockedReason || 'Motivo de bloqueio não informado'}</p>
+                                      </div>
+                                    )}
 
-                                  {task.type === 'teamTask' && (
-                                    <div className="text-[10px] text-slate-400 font-medium mb-3 whitespace-normal break-words space-y-1">
-                                      {task.description && <p className="text-xs text-slate-300 mb-2 italic">"{task.description}"</p>}
-                                      <p><strong className="text-slate-500 uppercase text-[8px] tracking-wider">Responsável:</strong> {allUsers.find(u => u.id === task.assigneeId)?.username || 'Desconhecido'}</p>
-                                      {task.invitedUsers && task.invitedUsers.length > 0 && (
-                                        <p><strong className="text-slate-500 uppercase text-[8px] tracking-wider">Convidados:</strong> {allUsers.filter(u => task.invitedUsers?.includes(u.id)).map(u => u.username).join(', ')}</p>
-                                      )}
+                                    {task.type === 'teamTask' && (
+                                      <div className="text-[10px] text-slate-400 font-medium mb-3 whitespace-normal break-words space-y-1">
+                                        {task.description && <p className="text-xs text-slate-300 mb-2 italic">"{task.description}"</p>}
+                                        <p><strong className="text-slate-500 uppercase text-[8px] tracking-wider">Responsável:</strong> {allUsers.find(u => u.id === task.assigneeId)?.username || 'Desconhecido'}</p>
+                                        {task.invitedUsers && task.invitedUsers.length > 0 && (
+                                          <p><strong className="text-slate-500 uppercase text-[8px] tracking-wider">Convidados:</strong> {allUsers.filter(u => task.invitedUsers?.includes(u.id)).map(u => u.username).join(', ')}</p>
+                                        )}
+                                      </div>
+                                    )}
+                                    <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
+                                      <div>
+                                        <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p>
+                                        <p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p>
+                                        {task.type === 'teamTask' && task.startTime && <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.startTime}</p>}
+                                      </div>
+                                      <div>
+                                        <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p>
+                                        <p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p>
+                                        {task.type === 'teamTask' && task.endTime && <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.endTime}</p>}
+                                      </div>
                                     </div>
-                                  )}
-                                  <div className="grid grid-cols-2 gap-4 border-t border-slate-800 pt-3">
-                                    <div>
-                                      <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Início</p>
-                                      <p className="text-[10px] font-bold text-slate-300">{start?.toLocaleDateString('pt-BR')}</p>
-                                      {task.type === 'teamTask' && task.startTime && <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.startTime}</p>}
-                                    </div>
-                                    <div>
-                                      <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Entrega</p>
-                                      <p className="text-[10px] font-bold text-slate-300">{end?.toLocaleDateString('pt-BR')}</p>
-                                      {task.type === 'teamTask' && task.endTime && <p className="text-[10px] font-bold text-indigo-400 mt-0.5">{task.endTime}</p>}
-                                    </div>
-                                  </div>
-                                </>
+                                  </>
+                                )
                               }
                             >
                             <div
@@ -1572,17 +1939,71 @@ export const Gantt: React.FC<GanttProps> = ({
                                 left: `${offset}px`,
                                 width: `${width}px`,
                                 top: `${topPos}px`,
-                                ...(taskBarStyle?.style || {})
+                                ...(taskBarStyle?.style || {}),
+                                ...(isDraggingThis ? { zIndex: 50, opacity: 0.95 } : {})
                               }}
-                              className={`absolute ${barHeight} rounded-full shadow-lg transition-all duration-300 hover:brightness-125 z-20 hover:z-30 cursor-pointer flex items-center px-2 group/task active:scale-95 ${
+                              className={`absolute ${barHeight} rounded-full shadow-lg transition-[background-color,border-color,box-shadow] duration-200 hover:brightness-125 z-20 hover:z-30 flex items-center px-2 group/task select-none ${
+                                canEdit ? (isDraggingThis ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer active:scale-95'
+                              } ${isDraggingThis ? 'ring-2 ring-indigo-400 dark:ring-indigo-300 ring-offset-1 shadow-2xl brightness-110' : ''} ${
                                 taskBarStyle ? taskBarStyle.className : `${getStatusColor(task.status)} border-b-2 border-white/5 opacity-80 hover:opacity-100`
                               }`}
-                              onClick={() => {
+                              onPointerDown={(e) => {
+                                if (canEdit && task.parentProject) {
+                                  handleStartInteraction(e, task, task.parentProject, 'move');
+                                }
+                              }}
+                              onClick={(e) => {
+                                if (hasDraggedRef.current) {
+                                  e.stopPropagation();
+                                  return;
+                                }
                                 if (task.type === 'project') openEdit(task);
                                 else if (task.type === 'projectActivity' && task.parentProject) setSelectedQuickViewActivity(task);
                                 else if (task.type === 'teamTask') openEditTeamTask(task);
                               }}
                             >
+                              {/* Left Resize Handle */}
+                              {canEdit && task.parentProject && (
+                                <div
+                                  onPointerDown={(e) => handleStartInteraction(e, task, task.parentProject, 'resize-start')}
+                                  className="absolute left-0 top-0 bottom-0 w-2.5 z-30 cursor-ew-resize flex items-center justify-center opacity-0 group-hover/task:opacity-100 hover:opacity-100 transition-opacity select-none touch-none"
+                                  title="Redimensionar início da atividade"
+                                >
+                                  <div className="w-1 h-3 rounded-full bg-white/90 shadow-sm" />
+                                </div>
+                              )}
+
+                              {/* Right Resize Handle */}
+                              {canEdit && task.parentProject && (
+                                <div
+                                  onPointerDown={(e) => handleStartInteraction(e, task, task.parentProject, 'resize-end')}
+                                  className="absolute right-0 top-0 bottom-0 w-2.5 z-30 cursor-ew-resize flex items-center justify-center opacity-0 group-hover/task:opacity-100 hover:opacity-100 transition-opacity select-none touch-none"
+                                  title="Redimensionar término da atividade"
+                                >
+                                  <div className="w-1 h-3 rounded-full bg-white/90 shadow-sm" />
+                                </div>
+                              )}
+
+                              {/* Live Drag Floating Tooltip */}
+                              {isDraggingThis && dragState && (
+                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 rounded-xl bg-slate-900/95 backdrop-blur-md text-white border border-indigo-500/60 text-[10px] font-bold shadow-2xl flex items-center gap-2 z-50 pointer-events-none animate-in fade-in zoom-in-95">
+                                  <span className="text-indigo-400 font-black">
+                                    {dragState.mode === 'move' ? '↔ Mover' : dragState.mode === 'resize-start' ? '◀ Início' : '▶ Término'}
+                                  </span>
+                                  <span className="text-slate-200">
+                                    {formatDisplayDate(effStartDate)} → {formatDisplayDate(effDeliveryDate)}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 bg-indigo-500/30 text-indigo-300 rounded text-[9px] font-black">
+                                    {durationDays}d
+                                  </span>
+                                  {dragState.isClamped && (
+                                    <span className="px-1 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[8px] font-black">
+                                      Limite do Projeto
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
                               <div className={`w-2 h-2 rounded-full mr-1.5 shrink-0 shadow-sm ${getProjectMarkerColor(task.type === 'project' ? task.id : task.type === 'projectActivity' ? task.parentProject?.id : task.id)}`} />
                               
                               {taskIsBlocked && (
@@ -2131,6 +2552,142 @@ export const Gantt: React.FC<GanttProps> = ({
                   {activityActionId === pendingActivity.id ? 'Aguarde...' : 'Pausar atual e iniciar esta'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Reprogramação Visual (Drag & Resize) */}
+      {pendingReschedule && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[260] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="bg-white dark:bg-[#0f172a] rounded-[28px] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-white/10 p-6 space-y-5 animate-in zoom-in-95 duration-200 transition-colors"
+          >
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">
+                    {pendingReschedule.parentProject.code}
+                  </span>
+                  <span className="text-slate-300 dark:text-slate-700">•</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    {pendingReschedule.mode === 'move' ? 'Deslocamento' : pendingReschedule.mode === 'resize-start' ? 'Redimensionar Início' : 'Redimensionar Término'}
+                  </span>
+                </div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white truncate mt-0.5">
+                  Reprogramar atividade?
+                </h3>
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  {pendingReschedule.activity.name}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/60 p-4 space-y-3">
+              {/* Início */}
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider">Início</span>
+                <div className="flex items-center gap-2">
+                  <span className={`font-semibold ${pendingReschedule.previousStartDate !== pendingReschedule.newStartDate ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>
+                    {formatDisplayDate(pendingReschedule.previousStartDate)}
+                  </span>
+                  {pendingReschedule.previousStartDate !== pendingReschedule.newStartDate && (
+                    <>
+                      <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-800/50">
+                        {formatDisplayDate(pendingReschedule.newStartDate)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Término */}
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider">Término</span>
+                <div className="flex items-center gap-2">
+                  <span className={`font-semibold ${pendingReschedule.previousDeliveryDate !== pendingReschedule.newDeliveryDate ? 'text-slate-400 line-through' : 'text-slate-700 dark:text-slate-200'}`}>
+                    {formatDisplayDate(pendingReschedule.previousDeliveryDate)}
+                  </span>
+                  {pendingReschedule.previousDeliveryDate !== pendingReschedule.newDeliveryDate && (
+                    <>
+                      <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                      <span className="font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-lg border border-indigo-200 dark:border-indigo-800/50">
+                        {formatDisplayDate(pendingReschedule.newDeliveryDate)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Duração */}
+              <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/60 dark:border-slate-700/50">
+                <span className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[10px] tracking-wider">Duração</span>
+                <div className="flex items-center gap-2">
+                  {calculateCalendarDurationDays(pendingReschedule.previousStartDate, pendingReschedule.previousDeliveryDate) === calculateCalendarDurationDays(pendingReschedule.newStartDate, pendingReschedule.newDeliveryDate) ? (
+                    <span className="font-bold text-slate-700 dark:text-slate-300">
+                      {calculateCalendarDurationDays(pendingReschedule.newStartDate, pendingReschedule.newDeliveryDate)} dias corridos (mantida)
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400 line-through text-[11px]">
+                        {calculateCalendarDurationDays(pendingReschedule.previousStartDate, pendingReschedule.previousDeliveryDate)}d
+                      </span>
+                      <svg className="w-3 h-3 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                      <span className="font-black text-indigo-600 dark:text-indigo-400">
+                        {calculateCalendarDurationDays(pendingReschedule.newStartDate, pendingReschedule.newDeliveryDate)} dias corridos
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Aviso quando atividade bloqueada */}
+            {isActivityBlocked(pendingReschedule.activity.status) && (
+              <div className="p-3 rounded-2xl bg-[#78350F]/20 border border-[#FBBF24]/40 flex items-start gap-2 text-xs text-amber-200">
+                <span className="text-base shrink-0">🔒</span>
+                <div>
+                  <span className="font-bold text-amber-300 uppercase text-[10px] block">Atividade Bloqueada</span>
+                  <p className="text-[11px] text-amber-100/90 leading-snug mt-0.5">
+                    O status BLOQUEADA e o motivo atual serão preservados após a reprogramação.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Botões de Ação */}
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isSavingReschedule}
+                onClick={() => setPendingReschedule(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isSavingReschedule}
+                onClick={handleConfirmReschedule}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50 flex items-center gap-2"
+              >
+                {isSavingReschedule ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <span>Confirmar Reprogramação</span>
+                )}
+              </button>
             </div>
           </div>
         </div>

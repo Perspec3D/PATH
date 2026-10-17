@@ -15,7 +15,9 @@ import {
   createActivityEventPayload,
   getActivityStatusBadge,
   getActivityStatusTheme,
-  getActivityGanttBarStyle
+  getActivityGanttBarStyle,
+  addCalendarDays,
+  calculateRescheduledDates
 } from '../utils/activityOperationalModel';
 import {
   ActivityCanonicalStatus,
@@ -271,6 +273,69 @@ assert(blockedAndOverdue.isBlocked === true, 'Detects both blocked and overdue: 
 assert(blockedAndOverdue.isOverdue === true, 'Detects both blocked and overdue: isOverdue true');
 assert(blockedAndOverdue.style.backgroundColor === '#78350F', 'Preserves #78350F background when overdue');
 assert(String(blockedAndOverdue.style.boxShadow).includes('#F43F5E'), 'Adds overdue warning shadow to blocked bar');
+
+// Calendar Days Arithmetic Tests
+assert(addCalendarDays('2026-10-15', 0) === '2026-10-15', 'addCalendarDays 0 days returns same date');
+assert(addCalendarDays('2026-10-15', 5) === '2026-10-20', 'addCalendarDays forward 5 days');
+assert(addCalendarDays('2026-10-15', -5) === '2026-10-10', 'addCalendarDays backward 5 days');
+assert(addCalendarDays('2026-10-31', 1) === '2026-11-01', 'addCalendarDays crossing month boundary forward');
+assert(addCalendarDays('2026-11-01', -1) === '2026-10-31', 'addCalendarDays crossing month boundary backward');
+assert(addCalendarDays('2026-12-31', 1) === '2027-01-01', 'addCalendarDays crossing year boundary');
+assert(addCalendarDays(null, 5) === null, 'addCalendarDays null input returns null');
+assert(addCalendarDays('invalid-date', 3) === null, 'addCalendarDays invalid input returns null');
+
+// Moving a 5-day activity preserves 5-day calendar duration across weekend
+const initStart = '2026-10-14'; // Wednesday
+const initEnd = '2026-10-18'; // Sunday (5 calendar days: 14, 15, 16, 17, 18)
+assert(calculateCalendarDurationDays(initStart, initEnd) === 5, 'Initial duration is 5 calendar days');
+const shiftedStart = addCalendarDays(initStart, 4); // Sunday 18
+const shiftedEnd = addCalendarDays(initEnd, 4); // Thursday 22
+assert(calculateCalendarDurationDays(shiftedStart, shiftedEnd) === 5, 'Shifted duration strictly preserves 5 calendar days');
+
+// Reschedule Dates Logic Tests
+// 1. Move mode
+const moveRes = calculateRescheduledDates('move', '2026-10-10', '2026-10-14', 3);
+assert(moveRes.newStartDate === '2026-10-13', 'Move mode updates start date');
+assert(moveRes.newDeliveryDate === '2026-10-17', 'Move mode updates delivery date');
+assert(calculateCalendarDurationDays(moveRes.newStartDate, moveRes.newDeliveryDate) === 5, 'Move mode strictly preserves duration');
+
+// 2. Move clamped by project delivery boundary
+const moveClampedEnd = calculateRescheduledDates('move', '2026-10-10', '2026-10-14', 10, '2026-10-01', '2026-10-20');
+assert(moveClampedEnd.newDeliveryDate === '2026-10-20', 'Clamped to project delivery date');
+assert(moveClampedEnd.newStartDate === '2026-10-16', 'Clamped move preserves 5 calendar days duration');
+assert(moveClampedEnd.isClamped === true, 'Flagged as clamped');
+
+// 3. Move clamped by project start boundary
+const moveClampedStart = calculateRescheduledDates('move', '2026-10-10', '2026-10-14', -15, '2026-10-05', '2026-10-20');
+assert(moveClampedStart.newStartDate === '2026-10-05', 'Clamped to project start date');
+assert(moveClampedStart.newDeliveryDate === '2026-10-09', 'Clamped start preserves 5 calendar days duration');
+assert(moveClampedStart.isClamped === true, 'Flagged as clamped');
+
+// 4. Resize left (start date)
+const resizeStartRes = calculateRescheduledDates('resize-start', '2026-10-10', '2026-10-14', -2);
+assert(resizeStartRes.newStartDate === '2026-10-08', 'Resize left extends start date earlier');
+assert(resizeStartRes.newDeliveryDate === '2026-10-14', 'Resize left preserves delivery date');
+
+// 5. Resize left cannot invert past delivery date
+const resizeStartInvert = calculateRescheduledDates('resize-start', '2026-10-10', '2026-10-14', 10);
+assert(resizeStartInvert.newStartDate === '2026-10-14', 'Resize left cannot pass delivery date (clamped to 1 day minimum)');
+assert(resizeStartInvert.newDeliveryDate === '2026-10-14', 'Delivery date intact');
+
+// 6. Resize right (delivery date)
+const resizeEndRes = calculateRescheduledDates('resize-end', '2026-10-10', '2026-10-14', 4);
+assert(resizeEndRes.newStartDate === '2026-10-10', 'Resize right preserves start date');
+assert(resizeEndRes.newDeliveryDate === '2026-10-18', 'Resize right extends delivery date');
+
+// 7. Resize right cannot invert before start date
+const resizeEndInvert = calculateRescheduledDates('resize-end', '2026-10-10', '2026-10-14', -10);
+assert(resizeEndInvert.newStartDate === '2026-10-10', 'Start date intact');
+assert(resizeEndInvert.newDeliveryDate === '2026-10-10', 'Resize right cannot precede start date (clamped to 1 day minimum)');
+
+// 8. 1-day bar move
+const oneDayMove = calculateRescheduledDates('move', '2026-10-15', '2026-10-15', 2);
+assert(oneDayMove.newStartDate === '2026-10-17', '1-day bar moved start');
+assert(oneDayMove.newDeliveryDate === '2026-10-17', '1-day bar moved end');
+assert(calculateCalendarDurationDays(oneDayMove.newStartDate, oneDayMove.newDeliveryDate) === 1, '1-day duration preserved');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {
