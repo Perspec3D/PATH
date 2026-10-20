@@ -1849,6 +1849,7 @@ export const Projects: React.FC<ProjectsProps> = ({
     setShowDeleteConfirmModal(false);
     setShowModal(false);
     resetForm();
+    alert('Projeto excluído permanentemente.');
   };
 
   const getDeliveryDateStyle = (dateStr: string, currentStatus: ProjectStatus) => {

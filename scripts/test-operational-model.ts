@@ -1659,7 +1659,8 @@ import {
   applyProjectDeletionToState,
   applyClientDeletionToState,
   formatAuditLogDetailsForProjectDeletion,
-  formatAuditLogDetailsForClientDeletion
+  formatAuditLogDetailsForClientDeletion,
+  sanitizeAdministrativeErrorMessage
 } from '../utils/administrativeDeletion';
 import { deleteProject, deleteProjectPermanently, deleteClientPermanently, AppDB } from '../storage';
 
@@ -2003,6 +2004,23 @@ try {
 }
 assert(rpcErrorSimulated === true, 'RPC failure was captured');
 assert(simulatedDb.projects.length === 3, 'State remains completely intact (3 projects) when RPC fails or is unavailable');
+
+// 15.9 Technical PostgreSQL/PostgREST Error Sanitization Tests
+const schemaCacheError = new Error('Could not find the function public.delete_project_family_administrative(p_actor_user_id, p_family_id, p_workspace_id) in the schema cache');
+const sanitizedCacheMsg = sanitizeAdministrativeErrorMessage(schemaCacheError);
+assert(sanitizedCacheMsg === 'A função de exclusão administrativa não está habilitada no banco de dados. A operação foi cancelada com segurança.', 'Schema cache error is normalized to clear Portuguese message');
+
+const adminPermError = new Error('ADMIN_AUTHORIZATION_REQUIRED: Operação restrita a administradores ativos do workspace');
+const sanitizedPermMsg = sanitizeAdministrativeErrorMessage(adminPermError);
+assert(sanitizedPermMsg === 'Operação restrita a administradores ativos do workspace.', 'Admin permission error is normalized');
+
+const depError = new Error('CLIENT_HAS_DEPENDENCIES: Este cliente possui 2 projeto(s) vinculado(s)');
+const sanitizedDepMsg = sanitizeAdministrativeErrorMessage(depError);
+assert(sanitizedDepMsg === 'Este cliente possui projetos vinculados e não pode ser excluído permanentemente.', 'Dependency error is normalized');
+
+const genericError = new Error('Conexão perdida com o servidor');
+const sanitizedGenericMsg = sanitizeAdministrativeErrorMessage(genericError);
+assert(sanitizedGenericMsg === 'Conexão perdida com o servidor', 'General error preserved without technical jargon');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {

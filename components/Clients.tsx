@@ -164,6 +164,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
     setShowDeleteConfirmModal(false);
     setShowModal(false);
     resetForm();
+    alert('Cliente excluído permanentemente.');
   };
 
   const handleSave = async (e: React.FormEvent) => {

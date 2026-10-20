@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Trash2, Loader2, Layers, CheckCircle2, Ban, FileText, Image } from 'lucide-react';
 import { Project } from '../types';
-import { isProjectConfirmationCodeValid, isClientConfirmationValid, ProjectDeletionImpact } from '../utils/administrativeDeletion';
+import {
+  isProjectConfirmationCodeValid,
+  isClientConfirmationValid,
+  ProjectDeletionImpact,
+  sanitizeAdministrativeErrorMessage
+} from '../utils/administrativeDeletion';
 
 export interface AdministrativeDeleteModalProps {
   isOpen: boolean;
@@ -54,9 +59,7 @@ export const AdministrativeDeleteModal: React.FC<AdministrativeDeleteModalProps>
       onClose();
     } catch (err: any) {
       console.error('Erro na exclusão administrativa:', err);
-      setErrorMessage(
-        err?.message || 'Ocorreu um erro ao executar a exclusão. A operação foi cancelada com segurança.'
-      );
+      setErrorMessage(sanitizeAdministrativeErrorMessage(err));
     } finally {
       setIsDeleting(false);
     }

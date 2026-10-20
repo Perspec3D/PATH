@@ -265,3 +265,46 @@ export const formatAuditLogDetailsForClientDeletion = (params: {
 }): string => {
   return `Exclusão permanente do cliente ${params.code} (${params.name}).`;
 };
+
+/**
+ * Sanitizes technical Supabase / PostgreSQL error messages into clear,
+ * human-readable Portuguese messages for the end user.
+ */
+export const sanitizeAdministrativeErrorMessage = (err: any): string => {
+  const raw = String(err?.message || err?.details || err || '');
+
+  if (
+    raw.includes('schema cache') ||
+    raw.includes('Could not find the function') ||
+    raw.includes('PGRST202')
+  ) {
+    return 'A função de exclusão administrativa não está habilitada no banco de dados. A operação foi cancelada com segurança.';
+  }
+
+  if (raw.includes('ADMIN_AUTHORIZATION_REQUIRED') || raw.includes('42501')) {
+    return 'Operação restrita a administradores ativos do workspace.';
+  }
+
+  if (raw.includes('WORKSPACE_ACCESS_DENIED')) {
+    return 'Acesso negado: operação restrita ao workspace autenticado.';
+  }
+
+  if (raw.includes('CLIENT_HAS_DEPENDENCIES') || raw.includes('23503')) {
+    return 'Este cliente possui projetos vinculados e não pode ser excluído permanentemente.';
+  }
+
+  if (raw.includes('PROJECT_FAMILY_NOT_FOUND')) {
+    return 'Projeto ou família não encontrada no workspace atual.';
+  }
+
+  if (raw.includes('CLIENT_NOT_FOUND')) {
+    return 'Cliente não encontrado no workspace atual.';
+  }
+
+  if (raw.includes('EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC')) {
+    return 'A exclusão permanente exige autorização administrativa e execução via procedimento transacional seguro.';
+  }
+
+  return raw || 'Ocorreu um erro ao executar a exclusão. A operação foi cancelada com segurança.';
+};
+
