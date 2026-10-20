@@ -1,8 +1,11 @@
 
 import React, { useState, useMemo, useRef } from 'react';
+import { Trash2, Loader2 } from 'lucide-react';
 import { Client, InternalUser, Project, UserRole, LogModule, LogAction } from '../types';
-import { getNextClientCode, syncClient, AppDB, logAction } from '../storage';
+import { getNextClientCode, syncClient, AppDB, logAction, checkClientDeletionEligibility, deleteClientPermanently } from '../storage';
 import { generateDiffLogs } from '../utils/logDiff';
+import { AdministrativeDeleteModal, ClientDeletionBlockedModal } from './AdministrativeDeleteModal';
+import { canUserDeletePermanently, evaluateClientDeletionEligibility, applyClientDeletionToState } from '../utils/administrativeDeletion';
 
 interface ClientsProps {
   db: AppDB;
@@ -36,6 +39,13 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
   const [state, setState] = useState('');
   const [complement, setComplement] = useState('');
   const [contacts, setContacts] = useState<import('../types').ClientContact[]>([]);
+
+  // Administrative Deletion States
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [showBlockedModal, setShowBlockedModal] = useState(false);
+  const [blockedDependenciesCount, setBlockedDependenciesCount] = useState(0);
+  const [blockedProjects, setBlockedProjects] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
 
   const resetForm = () => {
     setName('');
@@ -101,6 +111,59 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
     setComplement(client.complement || '');
     setContacts(client.contacts || []);
     setShowModal(true);
+  };
+
+  const handleInitiateDeleteClient = async () => {
+    if (!editingClient) return;
+
+    const permCheck = canUserDeletePermanently(currentUser, currentUser.workspaceId);
+    if (!permCheck.allowed) {
+      alert(permCheck.reason || 'Apenas administradores podem excluir clientes.');
+      return;
+    }
+
+    setIsCheckingDependencies(true);
+    try {
+      // 1. Verificar dependências na memória local (incluindo todas as revisões carregadas)
+      const localCheck = evaluateClientDeletionEligibility(editingClient.id, currentUser.workspaceId, db.projects);
+      if (!localCheck.canDelete) {
+        setBlockedDependenciesCount(localCheck.linkedProjectsCount);
+        setBlockedProjects(localCheck.linkedProjects);
+        setShowBlockedModal(true);
+        return;
+      }
+
+      // 2. Verificar dependências no backend Supabase
+      const remoteCheck = await checkClientDeletionEligibility(editingClient.id, currentUser.workspaceId);
+      if (!remoteCheck.canDelete) {
+        setBlockedDependenciesCount(remoteCheck.linkedProjectsCount);
+        setBlockedProjects(remoteCheck.linkedProjects);
+        setShowBlockedModal(true);
+        return;
+      }
+
+      // 3. Nenhuma dependência: abrir confirmação explícita
+      setShowDeleteConfirmModal(true);
+    } catch (err: any) {
+      console.error('Erro ao verificar vínculos do cliente:', err);
+      alert('Erro ao verificar vínculos do cliente: ' + (err?.message || 'Erro desconhecido'));
+    } finally {
+      setIsCheckingDependencies(false);
+    }
+  };
+
+  const handleConfirmDeleteClient = async () => {
+    if (!editingClient) return;
+
+    await deleteClientPermanently(editingClient.id, currentUser.workspaceId, currentUser.id);
+
+    // Atualiza estado local de forma atômica
+    const newDb = applyClientDeletionToState(db, editingClient.id);
+    setDb(newDb);
+
+    setShowDeleteConfirmModal(false);
+    setShowModal(false);
+    resetForm();
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -599,15 +662,41 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
                 </div>
               )}
 
-              <div className="pt-6 flex space-x-3">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-200 dark:hover:text-white transition-all">
-                  {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
-                </button>
-                {currentUser.role !== UserRole.VIEWER && (
-                  <button type="submit" className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition active:scale-95">
-                    Confirmar Alterações
+              <div className="pt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 dark:border-white/5">
+                {editingClient && currentUser.role === UserRole.ADMIN ? (
+                  <button
+                    type="button"
+                    disabled={isCheckingDependencies}
+                    onClick={handleInitiateDeleteClient}
+                    className="py-4 px-5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 border border-rose-200/50 dark:border-rose-500/20 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50"
+                    title="Excluir Cliente Permanentemente"
+                  >
+                    {isCheckingDependencies ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                    <span>Excluir Cliente</span>
                   </button>
-                )}
+                ) : <div />}
+
+                <div className="flex items-center space-x-3 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="py-4 px-6 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-200 dark:hover:text-white transition-all"
+                  >
+                    {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
+                  </button>
+                  {currentUser.role !== UserRole.VIEWER && (
+                    <button
+                      type="submit"
+                      className="py-4 px-6 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/20 hover:bg-indigo-700 transition active:scale-95"
+                    >
+                      Confirmar Alterações
+                    </button>
+                  )}
+                </div>
               </div>
             </form>
           </div>
@@ -737,6 +826,30 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de confirmação administrativa para exclusão de cliente */}
+      {editingClient && (
+        <AdministrativeDeleteModal
+          isOpen={showDeleteConfirmModal}
+          onClose={() => setShowDeleteConfirmModal(false)}
+          onConfirm={handleConfirmDeleteClient}
+          entityType="CLIENT"
+          entityCode={editingClient.code.padStart(3, '0')}
+          entityName={editingClient.name}
+        />
+      )}
+
+      {/* Modal informativo quando a exclusão for bloqueada por dependências */}
+      {editingClient && (
+        <ClientDeletionBlockedModal
+          isOpen={showBlockedModal}
+          onClose={() => setShowBlockedModal(false)}
+          clientCode={editingClient.code.padStart(3, '0')}
+          clientName={editingClient.name}
+          linkedProjectsCount={blockedDependenciesCount}
+          linkedProjects={blockedProjects}
+        />
       )}
     </div>
   );

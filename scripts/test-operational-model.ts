@@ -1648,6 +1648,323 @@ assert(projectUnitPlanning.historicalThroughput.totalConcludedDeliveries === 0, 
 assert(projectUnitPlanning.historicalThroughput.confidence === ProjectionConfidence.INSUFFICIENT, 'Confidence is INSUFFICIENT for projects');
 assert(projectUnitPlanning.weeklyBuckets[0].status === WeekDemandStatus.INSUFFICIENT_DATA, 'Week status is INSUFFICIENT_DATA without quantitative false alarms');
 
+// 15. Administrative Deletion of Clients and Projects
+console.log('\n15. Administrative Deletion of Clients and Projects');
+import {
+  canUserDeletePermanently,
+  evaluateClientDeletionEligibility,
+  calculateProjectDeletionImpact,
+  isProjectConfirmationCodeValid,
+  isClientConfirmationValid,
+  applyProjectDeletionToState,
+  applyClientDeletionToState,
+  formatAuditLogDetailsForProjectDeletion,
+  formatAuditLogDetailsForClientDeletion
+} from '../utils/administrativeDeletion';
+import type { AppDB } from '../storage';
+
+const testWorkspaceId = 'ws-adm-01';
+const otherWorkspaceId = 'ws-adm-02';
+
+const adminUser: InternalUser = {
+  id: 'u-admin-1',
+  workspaceId: testWorkspaceId,
+  username: 'carlos.admin',
+  passwordHash: 'hash',
+  role: UserRole.ADMIN,
+  isActive: true
+};
+
+const standardUser: InternalUser = {
+  id: 'u-user-1',
+  workspaceId: testWorkspaceId,
+  username: 'marcos.dev',
+  passwordHash: 'hash',
+  role: UserRole.USER,
+  isActive: true
+};
+
+const viewerUser: InternalUser = {
+  id: 'u-viewer-1',
+  workspaceId: testWorkspaceId,
+  username: 'lucia.viewer',
+  passwordHash: 'hash',
+  role: UserRole.VIEWER,
+  isActive: true
+};
+
+const inactiveAdminUser: InternalUser = {
+  id: 'u-admin-inativo',
+  workspaceId: testWorkspaceId,
+  username: 'antonio.inativo',
+  passwordHash: 'hash',
+  role: UserRole.ADMIN,
+  isActive: false
+};
+
+// 15.1 Permissions Tests
+assert(canUserDeletePermanently(adminUser, testWorkspaceId).allowed === true, 'Authorized workspace admin is allowed');
+assert(canUserDeletePermanently(standardUser, testWorkspaceId).allowed === false, 'Standard USER is blocked from deletion');
+assert(canUserDeletePermanently(viewerUser, testWorkspaceId).allowed === false, 'VIEWER is blocked from deletion');
+assert(canUserDeletePermanently(inactiveAdminUser, testWorkspaceId).allowed === false, 'Inactive admin is blocked from deletion');
+assert(canUserDeletePermanently(adminUser, otherWorkspaceId).allowed === false, 'Cross-workspace deletion attempt is strictly blocked');
+assert(canUserDeletePermanently(null, testWorkspaceId).allowed === false, 'Unauthenticated user (null) is blocked from deletion');
+assert(canUserDeletePermanently(undefined, testWorkspaceId).allowed === false, 'Undefined user is blocked from deletion');
+
+// 15.2 Clients Eligibility Tests
+const clientA: Client = {
+  id: 'cli-01',
+  workspaceId: testWorkspaceId,
+  code: '001',
+  name: 'Construtora Alfa',
+  type: 'PJ',
+  status: 'ACTIVE'
+};
+
+const clientB: Client = {
+  id: 'cli-02',
+  workspaceId: testWorkspaceId,
+  code: '002',
+  name: 'Beta Incorporações',
+  type: 'PJ',
+  status: 'ACTIVE'
+};
+
+const clientWithoutProjects: Client = {
+  id: 'cli-03',
+  workspaceId: testWorkspaceId,
+  code: '003',
+  name: 'Gama Engenharia',
+  type: 'PJ',
+  status: 'ACTIVE'
+};
+
+const prjAlfaRev00: Project = {
+  id: 'prj-alfa-r0',
+  workspaceId: testWorkspaceId,
+  familyId: 'fam-alfa',
+  familyCode: 'ALF-01-26',
+  familyName: 'Torre Alfa Residencial',
+  revision: 'Rev.00',
+  revisionNumber: 0,
+  isCurrentRevision: false,
+  clientId: 'cli-01',
+  code: 'ALF-01-26',
+  name: 'Torre Alfa Residencial',
+  status: ProjectStatus.DONE,
+  createdAt: 1000
+};
+
+const prjAlfaRev01: Project = {
+  id: 'prj-alfa-r1',
+  workspaceId: testWorkspaceId,
+  familyId: 'fam-alfa',
+  familyCode: 'ALF-01-26',
+  familyName: 'Torre Alfa Residencial',
+  revision: 'Rev.01',
+  revisionNumber: 1,
+  isCurrentRevision: true,
+  clientId: 'cli-01',
+  code: 'ALF-01-26',
+  name: 'Torre Alfa Residencial',
+  status: ProjectStatus.IN_PROGRESS,
+  createdAt: 2000
+};
+
+const prjBetaOnlyRev00: Project = {
+  id: 'prj-beta-r0',
+  workspaceId: testWorkspaceId,
+  familyId: 'fam-beta',
+  familyCode: 'BET-01-26',
+  familyName: 'Edifício Beta Prime',
+  revision: 'Rev.00',
+  revisionNumber: 0,
+  isCurrentRevision: true,
+  clientId: 'cli-02',
+  code: 'BET-01-26',
+  name: 'Edifício Beta Prime',
+  photoUrl: 'data:image/jpeg;base64,sample...',
+  status: ProjectStatus.QUEUE,
+  createdAt: 3000
+};
+
+const allTestProjects = [prjAlfaRev00, prjAlfaRev01, prjBetaOnlyRev00];
+
+// Client without dependencies
+const checkClientClean = evaluateClientDeletionEligibility(clientWithoutProjects.id, testWorkspaceId, allTestProjects);
+assert(checkClientClean.canDelete === true, 'Client without linked projects is eligible for deletion');
+assert(checkClientClean.linkedProjectsCount === 0, 'Clean client has 0 linked projects');
+
+// Client with multiple projects / historical revisions
+const checkClientWithProjects = evaluateClientDeletionEligibility(clientA.id, testWorkspaceId, allTestProjects);
+assert(checkClientWithProjects.canDelete === false, 'Client with linked projects cannot be deleted');
+assert(checkClientWithProjects.linkedProjectsCount === 2, 'Detects both active and historical linked revisions (2)');
+assert(checkClientWithProjects.reason?.includes('2 projeto(s) vinculado(s)') === true, 'Block message states exact number of linked projects');
+
+// Client with single active project
+const checkClientBeta = evaluateClientDeletionEligibility(clientB.id, testWorkspaceId, allTestProjects);
+assert(checkClientBeta.canDelete === false, 'Client with 1 project is blocked');
+assert(checkClientBeta.linkedProjectsCount === 1, 'Beta has 1 linked project');
+
+// Non-existent client
+const checkClientMissing = evaluateClientDeletionEligibility('cli-inexistente', testWorkspaceId, allTestProjects);
+assert(checkClientMissing.canDelete === true, 'Non-existent client has 0 dependencies');
+
+// 15.3 Project Deletion Impact Calculation Tests
+const actAlfa1: ProjectActivity = {
+  id: 'act-alfa-1',
+  workspaceId: testWorkspaceId,
+  projectId: 'prj-alfa-r0', // historical revision
+  name: 'Estrutural Preliminar',
+  status: ActivityCanonicalStatus.COMPLETED,
+  orderIndex: 0,
+  deadlineChangesCount: 0,
+  createdAt: 1100,
+  updatedAt: 1200
+};
+
+const actAlfa2: ProjectActivity = {
+  id: 'act-alfa-2',
+  workspaceId: testWorkspaceId,
+  projectId: 'prj-alfa-r1', // current revision
+  name: 'Fundação e Sondagem',
+  status: ActivityCanonicalStatus.IN_PROGRESS,
+  orderIndex: 1,
+  deadlineChangesCount: 1,
+  createdAt: 2100,
+  updatedAt: 2200
+};
+
+const actAlfa3: ProjectActivity = {
+  id: 'act-alfa-3',
+  workspaceId: testWorkspaceId,
+  projectId: 'prj-alfa-r1', // current revision
+  name: 'Alvenaria',
+  status: ActivityCanonicalStatus.TO_DO,
+  orderIndex: 2,
+  deadlineChangesCount: 0,
+  createdAt: 2300,
+  updatedAt: 2300
+};
+
+const actBeta1: ProjectActivity = {
+  id: 'act-beta-1',
+  workspaceId: testWorkspaceId,
+  projectId: 'prj-beta-r0',
+  name: 'Estudo de Viabilidade',
+  status: ActivityCanonicalStatus.TO_DO,
+  orderIndex: 0,
+  deadlineChangesCount: 0,
+  createdAt: 3100,
+  updatedAt: 3100
+};
+
+const allTestActivities = [actAlfa1, actAlfa2, actAlfa3, actBeta1];
+
+const evAlfa1: ProjectActivityEvent = {
+  id: 'ev-1',
+  workspaceId: testWorkspaceId,
+  activityId: 'act-alfa-1',
+  eventType: 'STARTED',
+  createdAt: 1150
+};
+
+const evAlfa2: ProjectActivityEvent = {
+  id: 'ev-2',
+  workspaceId: testWorkspaceId,
+  activityId: 'act-alfa-1',
+  eventType: 'COMPLETED',
+  createdAt: 1200
+};
+
+const evAlfa3: ProjectActivityEvent = {
+  id: 'ev-3',
+  workspaceId: testWorkspaceId,
+  activityId: 'act-alfa-2',
+  eventType: 'RESCHEDULED',
+  createdAt: 2150
+};
+
+const evBeta1: ProjectActivityEvent = {
+  id: 'ev-beta-1',
+  workspaceId: testWorkspaceId,
+  activityId: 'act-beta-1',
+  eventType: 'CREATED',
+  createdAt: 3110
+};
+
+const allTestEvents = [evAlfa1, evAlfa2, evAlfa3, evBeta1];
+
+// Project Alfa: multiple revisions, multiple activities across revisions, multiple events
+const impactAlfa = calculateProjectDeletionImpact('fam-alfa', testWorkspaceId, allTestProjects, allTestActivities, allTestEvents);
+assert(impactAlfa.familyId === 'fam-alfa', 'Impact family ID resolved');
+assert(impactAlfa.revisionsCount === 2, 'Impact includes all 2 revisions (historical + current)');
+assert(impactAlfa.activitiesCount === 3, 'Impact includes all 3 activities from both revisions');
+assert(impactAlfa.eventsCount === 3, 'Impact includes all 3 events belonging exclusively to Alfa activities');
+assert(impactAlfa.familyCode === 'ALF-01-26', 'Canonical family code preserved');
+
+// Project Beta: single revision, with photo attachment
+const impactBeta = calculateProjectDeletionImpact('fam-beta', testWorkspaceId, allTestProjects, allTestActivities, allTestEvents);
+assert(impactBeta.revisionsCount === 1, 'Beta has single revision');
+assert(impactBeta.activitiesCount === 1, 'Beta has 1 activity');
+assert(impactBeta.eventsCount === 1, 'Beta has 1 event');
+assert(impactBeta.attachmentsCount === 1, 'Beta tracks 1 attachment photo');
+
+// 15.4 Typed Confirmation Validation Tests
+// Project code matching (strict)
+assert(isProjectConfirmationCodeValid('ALF-01-26', 'ALF-01-26') === true, 'Exact project code confirms');
+assert(isProjectConfirmationCodeValid('  ALF-01-26  ', 'ALF-01-26') === true, 'Trims whitespace on project code confirmation');
+assert(isProjectConfirmationCodeValid('alf-01-26', 'ALF-01-26') === false, 'Case mismatch fails project code confirmation');
+assert(isProjectConfirmationCodeValid('ALF-01', 'ALF-01-26') === false, 'Partial project code fails confirmation');
+assert(isProjectConfirmationCodeValid('', 'ALF-01-26') === false, 'Empty code fails confirmation');
+
+// Client code / name matching
+assert(isClientConfirmationValid('001', '001', 'Construtora Alfa') === true, 'Client code matches');
+assert(isClientConfirmationValid('1', '001', 'Construtora Alfa') === true, 'Padded client code matches');
+assert(isClientConfirmationValid('Construtora Alfa', '001', 'Construtora Alfa') === true, 'Client name matches');
+assert(isClientConfirmationValid('construtora alfa', '001', 'Construtora Alfa') === true, 'Client name matches case-insensitively');
+assert(isClientConfirmationValid('Outro', '001', 'Construtora Alfa') === false, 'Incorrect client confirmation fails');
+
+// 15.5 State Immutability & Application Reducer Tests
+const initialDb: AppDB = {
+  company: null,
+  users: [adminUser, standardUser],
+  clients: [clientA, clientB, clientWithoutProjects],
+  projects: [prjAlfaRev00, prjAlfaRev01, prjBetaOnlyRev00],
+  tasks: []
+};
+
+// Apply project deletion: must remove BOTH revisions of fam-alfa, keeping fam-beta and all clients intact
+const dbAfterProjectDelete = applyProjectDeletionToState(initialDb, 'fam-alfa');
+assert(dbAfterProjectDelete.projects.length === 1, 'Exactly 1 project remains after family deletion');
+assert(dbAfterProjectDelete.projects[0].id === 'prj-beta-r0', 'Remaining project is Beta Prime');
+assert(dbAfterProjectDelete.projects.every(p => p.familyId !== 'fam-alfa'), 'All Alfa revisions deleted from state');
+assert(dbAfterProjectDelete.clients.length === 3, 'Clients intact after project deletion');
+assert(dbAfterProjectDelete.users.length === 2, 'Users intact after project deletion');
+
+// Apply client deletion: remove Gama Engenharia
+const dbAfterClientDelete = applyClientDeletionToState(dbAfterProjectDelete, clientWithoutProjects.id);
+assert(dbAfterClientDelete.clients.length === 2, 'Exactly 2 clients remain after deletion');
+assert(dbAfterClientDelete.clients.find(c => c.id === clientWithoutProjects.id) === undefined, 'Gama Engenharia deleted from state');
+assert(dbAfterClientDelete.projects.length === 1, 'Projects intact after client deletion');
+
+// 15.6 Administrative Audit Log Formatting Tests
+const projectLog = formatAuditLogDetailsForProjectDeletion({
+  code: 'ALF-01-26',
+  name: 'Torre Alfa Residencial',
+  revisionsCount: 2,
+  activitiesCount: 3
+});
+assert(projectLog.includes('Exclusão permanente do projeto ALF-01-26'), 'Audit log includes project code');
+assert(projectLog.includes('2 revisão(ões)'), 'Audit log includes revisions count');
+assert(projectLog.includes('3 atividade(s) excluídas'), 'Audit log includes activities count');
+
+const clientLog = formatAuditLogDetailsForClientDeletion({
+  code: '003',
+  name: 'Gama Engenharia'
+});
+assert(clientLog.includes('Exclusão permanente do cliente 003 (Gama Engenharia)'), 'Client audit log formats correctly');
+
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {
   process.exit(1);

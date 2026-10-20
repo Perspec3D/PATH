@@ -17,10 +17,14 @@ import {
   AlertCircle,
   Eye,
   CalendarDays,
-  ExternalLink
+  ExternalLink,
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import { Project, ProjectStatus, Client, InternalUser, UserRole, LogModule, LogAction, ActivityType, ProjectActivity, ActivityExecution, ActivityExecutionStatus, ActiveWorkSessionContext, WorkSession, ActivityOvertimeEntry, ActivityCanonicalStatus, ActivityDeadlineStatus, ProjectActivityEvent } from '../types';
-import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, AppDB, logAction, logActionsBatch, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision, fetchProjectActivityEvents, fetchProjectActivitiesEventsBatch, logProjectActivityEvent, transitionProjectActivityWithEvent } from '../storage';
+import { getNextGlobalProjectSeq, syncProject, createProjectRevision, deleteProject, deleteProjectPermanently, fetchProjectDeletionSummary, AppDB, logAction, logActionsBatch, fetchActivityTypes, fetchProjectActivities, syncProjectActivity, deleteProjectActivity, getNextUserOrderIndex, reorderUserQueue, fetchActivityExecutions, fetchWorkSessions, fetchActivityOvertimeEntries, createActivityOvertimeEntry, updateActivityOvertimeEntry, deleteActivityOvertimeEntry, fetchActiveWorkSessionContext, startOrResumeActivity, pauseActivityExecution, completeActivityExecution, OperationalMetricsDataset, reactivateProjectRevision, hasActiveWorkSessionsForProject, activateProjectRevisionSimultaneously, deactivateProjectRevision, fetchProjectActivityEvents, fetchProjectActivitiesEventsBatch, logProjectActivityEvent, transitionProjectActivityWithEvent } from '../storage';
+import { AdministrativeDeleteModal } from './AdministrativeDeleteModal';
+import { canUserDeletePermanently, calculateProjectDeletionImpact, applyProjectDeletionToState, ProjectDeletionImpact } from '../utils/administrativeDeletion';
 import { generateDiffLogs, formatDateForLog } from '../utils/logDiff';
 import { calculateAccountedOperationalMs, calculateOvertimeMs, calculateRegularOperationalMs, calculatePauseMetrics } from '../utils/operationalTime';
 import { calculateProjectDeliveryPredictability, ProjectDeliveryPredictability, ProjectDeliveryPredictabilityStatus, getDeliveryPredictabilityBadge } from '../utils/deliveryForecast';
@@ -122,6 +126,11 @@ export const Projects: React.FC<ProjectsProps> = ({
   const [reopeningDialogActivity, setReopeningDialogActivity] = useState<ProjectActivity | null>(null);
   const [reopeningReasonInput, setReopeningReasonInput] = useState('');
   const [transitioningActivityId, setTransitioningActivityId] = useState<string | null>(null);
+
+  // Administrative Project Deletion States
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [projectDeletionImpact, setProjectDeletionImpact] = useState<ProjectDeletionImpact | null>(null);
+  const [isLoadingDeletionImpact, setIsLoadingDeletionImpact] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -1767,26 +1776,79 @@ export const Projects: React.FC<ProjectsProps> = ({
     }
   };
 
-  const handleDeleteProject = async () => {
+  const handleInitiateDeleteProject = async () => {
     if (!editingProject) return;
-    if (currentUser.role !== UserRole.ADMIN) {
-      alert("Apenas administradores podem excluir projetos.");
+
+    // 1. Validar permissões administrativas
+    const permCheck = canUserDeletePermanently(currentUser, currentUser.workspaceId);
+    if (!permCheck.allowed) {
+      alert(permCheck.reason || 'Apenas administradores podem excluir projetos.');
       return;
     }
-    if (confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o projeto "${editingProject.name}"?\nEsta ação não pode ser desfeita.`)) {
-      try {
-        await deleteProject(editingProject.id);
-        await logAction(currentUser.workspaceId, currentUser, LogModule.PROJECTS, LogAction.DELETE, `${currentUser.username} excluiu o projeto ${editingProject.code}`, editingProject.code);
-        setDb({
-          ...db,
-          projects: db.projects.filter(p => p.id !== editingProject.id)
+
+    const familyId = editingProject.familyId || editingProject.id;
+    setIsLoadingDeletionImpact(true);
+    setShowDeleteConfirmModal(true);
+
+    try {
+      // 1. Calcular impacto com base nos dados locais carregados
+      const localImpact = calculateProjectDeletionImpact(
+        familyId,
+        currentUser.workspaceId,
+        db.projects,
+        allWorkspaceActivities
+      );
+      setProjectDeletionImpact(localImpact);
+
+      // 2. Consultar o backend Supabase para obter contagens canônicas completas
+      const remoteSummary = await fetchProjectDeletionSummary(familyId, currentUser.workspaceId);
+      if (remoteSummary) {
+        setProjectDeletionImpact({
+          familyId,
+          familyCode: remoteSummary.familyCode || editingProject.familyCode || editingProject.code,
+          familyName: remoteSummary.familyName || editingProject.familyName || editingProject.name,
+          revisionsCount: remoteSummary.revisionsCount || localImpact.revisionsCount,
+          revisions: localImpact.revisions,
+          activitiesCount: remoteSummary.activitiesCount,
+          activities: localImpact.activities,
+          eventsCount: remoteSummary.eventsCount,
+          attachmentsCount: remoteSummary.attachmentsCount
         });
-        setShowModal(false);
-        resetForm();
-      } catch (err: any) {
-        alert("Erro ao excluir no Supabase: " + (err.message || "Erro desconhecido"));
       }
+    } catch (err) {
+      console.warn('Erro ao consultar impacto remoto do projeto, mantendo dados locais:', err);
+    } finally {
+      setIsLoadingDeletionImpact(false);
     }
+  };
+
+  const handleConfirmDeleteProject = async () => {
+    if (!editingProject) return;
+
+    const familyId = editingProject.familyId || editingProject.id;
+    await deleteProjectPermanently(familyId, currentUser.workspaceId, currentUser.id);
+
+    // Identificar todos os IDs de revisões pertencentes à família para limpar atividades locais
+    const familyProjectIds = db.projects
+      .filter(p => (p.familyId ? p.familyId === familyId : p.id === familyId))
+      .map(p => p.id);
+    if (!familyProjectIds.includes(editingProject.id)) {
+      familyProjectIds.push(editingProject.id);
+    }
+
+    // Filtrar atividades em memória
+    setAllWorkspaceActivities(prev => prev.filter(act => !familyProjectIds.includes(act.projectId)));
+
+    // Atualizar estado de db.projects de forma atômica
+    const newDb = applyProjectDeletionToState(db, familyId);
+    setDb(newDb);
+
+    // Limpar initialEditingProject se estiver ativo
+    clearInitialEditingProject?.();
+
+    setShowDeleteConfirmModal(false);
+    setShowModal(false);
+    resetForm();
   };
 
   const getDeliveryDateStyle = (dateStr: string, currentStatus: ProjectStatus) => {
@@ -3260,18 +3322,23 @@ export const Projects: React.FC<ProjectsProps> = ({
                 />
               </div>
 
-              <div className="pt-8 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-3 transition-colors bg-white dark:bg-[#0f172a] sticky bottom-0 z-10">
-                {editingProject && currentUser.role === UserRole.ADMIN && !isHistoricalRevision && editingFamilyRevisions.length === 1 && (
+              <div className="pt-8 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 transition-colors bg-white dark:bg-[#0f172a] sticky bottom-0 z-10">
+                {/* Ação Destrutiva Privilegiada no rodapé esquerdo */}
+                {editingProject && currentUser.role === UserRole.ADMIN ? (
                   <button
                     type="button"
-                    onClick={handleDeleteProject}
-                    className="py-4 px-6 bg-rose-100 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center hover:bg-rose-200 dark:hover:bg-rose-500/20 transition-all active:scale-[0.98]"
-                    title="Excluir Projeto"
+                    onClick={handleInitiateDeleteProject}
+                    className="py-4 px-5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 border border-rose-200/50 dark:border-rose-500/20 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 active:scale-95"
+                    title="Excluir Projeto e todas as suas revisões"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Excluir Projeto</span>
                   </button>
-                )}
-                {editingProject && !isHistoricalRevision && (
+                ) : <div />}
+
+                {/* Ações de Revisão, Pasta, Cancelamento e Salvamento */}
+                <div className="flex flex-wrap items-center gap-3 ml-auto">
+                  {editingProject && !isHistoricalRevision && (
                   <button
                     type="button"
                     onClick={openCreateRevisionModal}
@@ -3297,14 +3364,15 @@ export const Projects: React.FC<ProjectsProps> = ({
                 >
                   {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
                 </button>
-                {currentUser.role !== UserRole.VIEWER && !isHistoricalRevision && (
-                  <button
-                    type="submit"
-                    className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all active:scale-[0.98]"
-                  >
-                    {editingProject ? 'Salvar Alterações' : 'Criar Projeto'}
-                  </button>
-                )}
+                  {currentUser.role !== UserRole.VIEWER && !isHistoricalRevision && (
+                    <button
+                      type="submit"
+                      className="py-4 px-6 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all active:scale-[0.98]"
+                    >
+                      {editingProject ? 'Salvar Alterações' : 'Criar Projeto'}
+                    </button>
+                  )}
+                </div>
               </div>
             </form>
           </div>
@@ -4101,6 +4169,20 @@ export const Projects: React.FC<ProjectsProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de confirmação administrativa para exclusão de projeto */}
+      {editingProject && (
+        <AdministrativeDeleteModal
+          isOpen={showDeleteConfirmModal}
+          onClose={() => setShowDeleteConfirmModal(false)}
+          onConfirm={handleConfirmDeleteProject}
+          entityType="PROJECT"
+          entityCode={editingProject.familyCode || editingProject.code}
+          entityName={editingProject.familyName || editingProject.name}
+          impact={projectDeletionImpact}
+          isLoadingImpact={isLoadingDeletionImpact}
+        />
       )}
     </div>
   );

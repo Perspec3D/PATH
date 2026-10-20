@@ -23,6 +23,10 @@ export { supabase };
 let memoryCache: { timestamp: number, data: Partial<AppDB> | null, companyId: string } = { timestamp: 0, data: null, companyId: '' };
 const CACHE_TTL = 1000 * 60 * 5; // 5 minutes
 
+export const invalidateCache = () => {
+  memoryCache = { timestamp: 0, data: null, companyId: '' };
+};
+
 const mapProject = (p: any): Project => {
   const family = Array.isArray(p.project_families) ? p.project_families[0] : p.project_families;
   const parsedRevisionNumber = typeof p.revision_number === 'number'
@@ -190,6 +194,54 @@ export const syncClient = async (client: Client) => {
   if (error) throw error;
 };
 
+export const checkClientDeletionEligibility = async (
+  clientId: string,
+  workspaceId: string
+): Promise<{ canDelete: boolean; linkedProjectsCount: number; linkedProjects: { id: string; code: string; name: string }[]; reason?: string }> => {
+  const { data, count, error } = await supabase
+    .from('projects')
+    .select('id, code, name', { count: 'exact' })
+    .eq('workspace_id', workspaceId)
+    .eq('client_id', clientId);
+
+  if (error) {
+    console.error('Erro ao verificar dependências do cliente:', error);
+    throw error;
+  }
+
+  const total = count || 0;
+  if (total > 0) {
+    return {
+      canDelete: false,
+      linkedProjectsCount: total,
+      linkedProjects: data || [],
+      reason: `Este cliente possui ${total} projeto(s) vinculado(s) e não pode ser excluído. Os vínculos precisam ser resolvidos antes da exclusão.`
+    };
+  }
+
+  return {
+    canDelete: true,
+    linkedProjectsCount: 0,
+    linkedProjects: []
+  };
+};
+
+export const deleteClientPermanently = async (
+  clientId: string,
+  workspaceId: string,
+  actorUserId: string
+) => {
+  const { data, error } = await supabase.rpc('delete_client_administrative', {
+    p_client_id: clientId,
+    p_workspace_id: workspaceId,
+    p_actor_user_id: actorUserId
+  });
+
+  if (error) throw error;
+  invalidateCache();
+  return data;
+};
+
 export const syncProject = async (project: Project, actorInternalUserId?: string): Promise<Project> => {
   if (!project.familyId) {
     if (!actorInternalUserId) throw new Error('PROJECT_CREATOR_REQUIRED');
@@ -338,9 +390,84 @@ export const hasActiveWorkSessionsForProject = async (
 
 
 
-export const deleteProject = async (projectId: string) => {
+export interface ProjectDeletionSummary {
+  familyId: string;
+  familyCode: string;
+  familyName: string;
+  revisionsCount: number;
+  activitiesCount: number;
+  eventsCount: number;
+  attachmentsCount: number;
+}
+
+export const fetchProjectDeletionSummary = async (
+  familyId: string,
+  workspaceId: string
+): Promise<ProjectDeletionSummary> => {
+  const { data, error } = await supabase.rpc('get_project_deletion_summary', {
+    p_family_id: familyId,
+    p_workspace_id: workspaceId
+  });
+
+  if (error) {
+    console.warn('RPC get_project_deletion_summary falhou ou não existe, calculando via tabelas:', error);
+    const [{ data: projects }, { data: activities }] = await Promise.all([
+      supabase.from('projects').select('id, code, name, photo_url, family_id').eq('workspace_id', workspaceId).or(`family_id.eq.${familyId},id.eq.${familyId}`),
+      supabase.from('project_activities').select('id, project_id').eq('workspace_id', workspaceId)
+    ]);
+
+    const revs = projects || [];
+    const pIds = new Set(revs.map(p => p.id));
+    const acts = (activities || []).filter(a => pIds.has(a.project_id));
+    const actIds = acts.map(a => a.id);
+
+    let evCount = 0;
+    if (actIds.length > 0) {
+      const { count } = await supabase
+        .from('project_activity_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId)
+        .in('activity_id', actIds);
+      evCount = count || 0;
+    }
+
+    return {
+      familyId,
+      familyCode: revs[0]?.code || '',
+      familyName: revs[0]?.name || '',
+      revisionsCount: Math.max(revs.length, 1),
+      activitiesCount: acts.length,
+      eventsCount: evCount,
+      attachmentsCount: revs.filter(r => Boolean(r.photo_url)).length
+    };
+  }
+
+  return data;
+};
+
+export const deleteProjectPermanently = async (
+  familyId: string,
+  workspaceId: string,
+  actorUserId: string
+) => {
+  const { data, error } = await supabase.rpc('delete_project_family_administrative', {
+    p_family_id: familyId,
+    p_workspace_id: workspaceId,
+    p_actor_user_id: actorUserId
+  });
+
+  if (error) throw error;
+  invalidateCache();
+  return data;
+};
+
+export const deleteProject = async (projectId: string, workspaceId?: string, actorUserId?: string) => {
+  if (workspaceId && actorUserId) {
+    return deleteProjectPermanently(projectId, workspaceId, actorUserId);
+  }
   const { error } = await supabase.from('projects').delete().eq('id', projectId);
   if (error) throw error;
+  invalidateCache();
 };
 
 export const syncTeamTask = async (task: TeamTask) => {
