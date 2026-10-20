@@ -11,7 +11,7 @@ import {
 export interface AdministrativeDeleteModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => Promise<void>;
+  onConfirm: (adminPassword: string) => Promise<void>;
   entityType: 'PROJECT' | 'CLIENT';
   entityCode: string;
   entityName: string;
@@ -30,12 +30,14 @@ export const AdministrativeDeleteModal: React.FC<AdministrativeDeleteModalProps>
   isLoadingImpact = false
 }) => {
   const [typedValue, setTypedValue] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setTypedValue('');
+      setAdminPassword('');
       setIsDeleting(false);
       setErrorMessage(null);
     }
@@ -49,13 +51,16 @@ export const AdministrativeDeleteModal: React.FC<AdministrativeDeleteModalProps>
     ? isProjectConfirmationCodeValid(typedValue, entityCode)
     : isClientConfirmationValid(typedValue, entityCode, entityName);
 
+  const isPasswordValid = adminPassword.trim().length > 0;
+  const canExecute = isMatchValid && isPasswordValid && !isDeleting;
+
   const handleExecute = async () => {
-    if (!isMatchValid || isDeleting) return;
+    if (!canExecute) return;
 
     try {
       setIsDeleting(true);
       setErrorMessage(null);
-      await onConfirm();
+      await onConfirm(adminPassword.trim());
       onClose();
     } catch (err: any) {
       console.error('Erro na exclusão administrativa:', err);
@@ -206,6 +211,31 @@ export const AdministrativeDeleteModal: React.FC<AdministrativeDeleteModalProps>
               )}
             </div>
           </div>
+
+          {/* Campo de confirmação por Senha do Administrador */}
+          <div className="space-y-2">
+            <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
+              Senha Pessoal do Administrador
+            </label>
+            <div className="relative">
+              <input
+                type="password"
+                value={adminPassword}
+                disabled={isDeleting}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                placeholder="Digite sua senha de administrador"
+                className={`w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-900 border rounded-xl text-sm text-slate-900 dark:text-white outline-none transition-all ${
+                  adminPassword.trim().length > 0
+                    ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                    : 'border-slate-200 dark:border-slate-700 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20'
+                }`}
+                autoComplete="current-password"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+              A autenticação individual é obrigatória para autorizar operações administrativas destrutivas.
+            </p>
+          </div>
         </div>
 
         {/* Rodapé com ações */}
@@ -220,7 +250,7 @@ export const AdministrativeDeleteModal: React.FC<AdministrativeDeleteModalProps>
           </button>
           <button
             type="button"
-            disabled={!isMatchValid || isDeleting}
+            disabled={!canExecute}
             onClick={handleExecute}
             className="px-6 py-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-500/20 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
           >

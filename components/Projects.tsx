@@ -1822,11 +1822,11 @@ export const Projects: React.FC<ProjectsProps> = ({
     }
   };
 
-  const handleConfirmDeleteProject = async () => {
+  const handleConfirmDeleteProject = async (adminPassword: string) => {
     if (!editingProject) return;
 
     const familyId = editingProject.familyId || editingProject.id;
-    await deleteProjectPermanently(familyId, currentUser.workspaceId, currentUser.id, currentUser.passwordHash);
+    await deleteProjectPermanently(familyId, currentUser.workspaceId, currentUser.id, adminPassword);
 
     // Identificar todos os IDs de revisões pertencentes à família para limpar atividades locais
     const familyProjectIds = db.projects

@@ -230,9 +230,9 @@ export const deleteClientPermanently = async (
   clientId: string,
   workspaceId: string,
   actorUserId: string,
-  confirmationToken?: string
+  confirmationToken: string
 ) => {
-  if (!clientId || !workspaceId || !actorUserId) {
+  if (!clientId || !workspaceId || !actorUserId || !confirmationToken || !confirmationToken.trim()) {
     throw new Error(
       'EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC: Parâmetros obrigatórios ausentes para exclusão administrativa do cliente.'
     );
@@ -242,7 +242,7 @@ export const deleteClientPermanently = async (
     p_client_id: clientId,
     p_workspace_id: workspaceId,
     p_actor_user_id: actorUserId,
-    p_confirmation_token: confirmationToken || null
+    p_confirmation_token: confirmationToken.trim()
   });
 
   if (error) {
@@ -415,45 +415,23 @@ export interface ProjectDeletionSummary {
 export const fetchProjectDeletionSummary = async (
   familyId: string,
   workspaceId: string,
-  actorUserId?: string
+  actorUserId: string
 ): Promise<ProjectDeletionSummary> => {
+  if (!familyId || !workspaceId || !actorUserId) {
+    throw new Error(
+      'ADMIN_AUTHORIZATION_REQUIRED: Identificador do administrador é obrigatório para consultar o impacto.'
+    );
+  }
+
   const { data, error } = await supabase.rpc('get_project_deletion_summary', {
     p_family_id: familyId,
     p_workspace_id: workspaceId,
-    p_actor_user_id: actorUserId || null
+    p_actor_user_id: actorUserId
   });
 
   if (error) {
-    console.warn('RPC get_project_deletion_summary falhou ou não existe, calculando via tabelas:', error);
-    const [{ data: projects }, { data: activities }] = await Promise.all([
-      supabase.from('projects').select('id, code, name, photo_url, family_id').eq('workspace_id', workspaceId).or(`family_id.eq.${familyId},id.eq.${familyId}`),
-      supabase.from('project_activities').select('id, project_id').eq('workspace_id', workspaceId)
-    ]);
-
-    const revs = projects || [];
-    const pIds = new Set(revs.map(p => p.id));
-    const acts = (activities || []).filter(a => pIds.has(a.project_id));
-    const actIds = acts.map(a => a.id);
-
-    let evCount = 0;
-    if (actIds.length > 0) {
-      const { count } = await supabase
-        .from('project_activity_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('workspace_id', workspaceId)
-        .in('activity_id', actIds);
-      evCount = count || 0;
-    }
-
-    return {
-      familyId,
-      familyCode: revs[0]?.code || '',
-      familyName: revs[0]?.name || '',
-      revisionsCount: Math.max(revs.length, 1),
-      activitiesCount: acts.length,
-      eventsCount: evCount,
-      attachmentsCount: revs.filter(r => Boolean(r.photo_url)).length
-    };
+    console.error('Erro na RPC get_project_deletion_summary:', error);
+    throw new Error(error.message || 'Falha ao consultar resumo de exclusão do projeto.');
   }
 
   return data;
@@ -463,9 +441,9 @@ export const deleteProjectPermanently = async (
   familyId: string,
   workspaceId: string,
   actorUserId: string,
-  confirmationToken?: string
+  confirmationToken: string
 ) => {
-  if (!familyId || !workspaceId || !actorUserId) {
+  if (!familyId || !workspaceId || !actorUserId || !confirmationToken || !confirmationToken.trim()) {
     throw new Error(
       'EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC: Parâmetros obrigatórios ausentes para exclusão administrativa do projeto.'
     );
@@ -475,7 +453,7 @@ export const deleteProjectPermanently = async (
     p_family_id: familyId,
     p_workspace_id: workspaceId,
     p_actor_user_id: actorUserId,
-    p_confirmation_token: confirmationToken || null
+    p_confirmation_token: confirmationToken.trim()
   });
 
   if (error) {
@@ -493,9 +471,9 @@ export const deleteProject = async (
   actorUserId?: string,
   confirmationToken?: string
 ) => {
-  if (!workspaceId || !actorUserId) {
+  if (!workspaceId || !actorUserId || !confirmationToken) {
     throw new Error(
-      'EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC: A exclusão permanente de projetos exige workspaceId, autorização de administrador e execução exclusiva da RPC transacional. Operações diretas de exclusão em tabela foram desativadas.'
+      'EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC: A exclusão permanente de projetos exige workspaceId, autorização de administrador, token de confirmação e execução exclusiva da RPC transacional. Operações diretas de exclusão em tabela foram desativadas.'
     );
   }
   return deleteProjectPermanently(projectId, workspaceId, actorUserId, confirmationToken);

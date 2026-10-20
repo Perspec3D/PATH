@@ -281,8 +281,16 @@ export const sanitizeAdministrativeErrorMessage = (err: any): string => {
     return 'A função de exclusão administrativa não está habilitada no banco de dados. A operação foi cancelada com segurança.';
   }
 
-  if (raw.includes('ADMIN_CREDENTIAL_REQUIRED') || raw.includes('INVALID_ADMIN_CREDENTIAL')) {
+  if (
+    raw.includes('ADMIN_CREDENTIAL_REQUIRED') ||
+    raw.includes('INVALID_ADMIN_CREDENTIAL') ||
+    raw.includes('ADMIN_CREDENTIAL_NOT_CONFIGURED')
+  ) {
     return 'Credencial de confirmação do administrador inválida ou não informada. A operação foi cancelada com segurança.';
+  }
+
+  if (raw.includes('DIRECT_PROJECT_DELETION_PROHIBITED') || raw.includes('DIRECT_CLIENT_DELETION_PROHIBITED')) {
+    return 'A exclusão direta em tabelas é bloqueada por segurança. Utilize exclusivamente a interface de exclusão administrativa.';
   }
 
   if (raw.includes('ADMIN_AUTHORIZATION_REQUIRED') || raw.includes('42501')) {
