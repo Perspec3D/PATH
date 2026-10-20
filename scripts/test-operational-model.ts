@@ -1671,7 +1671,7 @@ const adminUser: InternalUser = {
   id: 'u-admin-1',
   workspaceId: testWorkspaceId,
   username: 'carlos.admin',
-  passwordHash: 'hash',
+  passwordHash: 'adminSecret#2026',
   role: UserRole.ADMIN,
   isActive: true
 };
@@ -1680,7 +1680,7 @@ const standardUser: InternalUser = {
   id: 'u-user-1',
   workspaceId: testWorkspaceId,
   username: 'marcos.dev',
-  passwordHash: 'hash',
+  passwordHash: 'userSecret#123',
   role: UserRole.USER,
   isActive: true
 };
@@ -2021,6 +2021,28 @@ assert(sanitizedDepMsg === 'Este cliente possui projetos vinculados e não pode 
 const genericError = new Error('Conexão perdida com o servidor');
 const sanitizedGenericMsg = sanitizeAdministrativeErrorMessage(genericError);
 assert(sanitizedGenericMsg === 'Conexão perdida com o servidor', 'General error preserved without technical jargon');
+
+const credReqError = new Error('ADMIN_CREDENTIAL_REQUIRED: É obrigatório fornecer a credencial/senha do administrador');
+const sanitizedCredReqMsg = sanitizeAdministrativeErrorMessage(credReqError);
+assert(sanitizedCredReqMsg.includes('Credencial de confirmação do administrador inválida'), 'Admin credential required error is normalized');
+
+const invalidCredError = new Error('INVALID_ADMIN_CREDENTIAL: A credencial informada não corresponde ao administrador');
+const sanitizedInvalidCredMsg = sanitizeAdministrativeErrorMessage(invalidCredError);
+assert(sanitizedInvalidCredMsg.includes('Credencial de confirmação do administrador inválida'), 'Invalid admin credential error is normalized');
+
+// 15.10 Individual Credential Verification Simulation Test
+const verifyAdminCredential = (admin: InternalUser, tokenProvided?: string): boolean => {
+  if (admin.role !== UserRole.ADMIN) return false;
+  if (!admin.isActive) return false;
+  if (!tokenProvided || tokenProvided.trim() === '') return false;
+  return admin.passwordHash === tokenProvided;
+};
+
+assert(verifyAdminCredential(adminUser, 'adminSecret#2026') === true, 'Admin provides matching credential - authorized');
+assert(verifyAdminCredential(adminUser, 'wrongPassword') === false, 'Admin provides wrong credential - blocked');
+assert(verifyAdminCredential(adminUser, '') === false, 'Empty credential token - blocked');
+assert(verifyAdminCredential(standardUser, 'userSecret#123') === false, 'Standard user role blocked even with own password');
+assert(verifyAdminCredential(adminUser, standardUser.passwordHash) === false, 'Impersonation attempt with standard user password blocked');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {

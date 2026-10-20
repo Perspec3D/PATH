@@ -229,7 +229,8 @@ export const checkClientDeletionEligibility = async (
 export const deleteClientPermanently = async (
   clientId: string,
   workspaceId: string,
-  actorUserId: string
+  actorUserId: string,
+  confirmationToken?: string
 ) => {
   if (!clientId || !workspaceId || !actorUserId) {
     throw new Error(
@@ -240,7 +241,8 @@ export const deleteClientPermanently = async (
   const { data, error } = await supabase.rpc('delete_client_administrative', {
     p_client_id: clientId,
     p_workspace_id: workspaceId,
-    p_actor_user_id: actorUserId
+    p_actor_user_id: actorUserId,
+    p_confirmation_token: confirmationToken || null
   });
 
   if (error) {
@@ -412,11 +414,13 @@ export interface ProjectDeletionSummary {
 
 export const fetchProjectDeletionSummary = async (
   familyId: string,
-  workspaceId: string
+  workspaceId: string,
+  actorUserId?: string
 ): Promise<ProjectDeletionSummary> => {
   const { data, error } = await supabase.rpc('get_project_deletion_summary', {
     p_family_id: familyId,
-    p_workspace_id: workspaceId
+    p_workspace_id: workspaceId,
+    p_actor_user_id: actorUserId || null
   });
 
   if (error) {
@@ -458,7 +462,8 @@ export const fetchProjectDeletionSummary = async (
 export const deleteProjectPermanently = async (
   familyId: string,
   workspaceId: string,
-  actorUserId: string
+  actorUserId: string,
+  confirmationToken?: string
 ) => {
   if (!familyId || !workspaceId || !actorUserId) {
     throw new Error(
@@ -469,7 +474,8 @@ export const deleteProjectPermanently = async (
   const { data, error } = await supabase.rpc('delete_project_family_administrative', {
     p_family_id: familyId,
     p_workspace_id: workspaceId,
-    p_actor_user_id: actorUserId
+    p_actor_user_id: actorUserId,
+    p_confirmation_token: confirmationToken || null
   });
 
   if (error) {
@@ -481,13 +487,18 @@ export const deleteProjectPermanently = async (
   return data;
 };
 
-export const deleteProject = async (projectId: string, workspaceId?: string, actorUserId?: string) => {
+export const deleteProject = async (
+  projectId: string,
+  workspaceId?: string,
+  actorUserId?: string,
+  confirmationToken?: string
+) => {
   if (!workspaceId || !actorUserId) {
     throw new Error(
       'EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC: A exclusão permanente de projetos exige workspaceId, autorização de administrador e execução exclusiva da RPC transacional. Operações diretas de exclusão em tabela foram desativadas.'
     );
   }
-  return deleteProjectPermanently(projectId, workspaceId, actorUserId);
+  return deleteProjectPermanently(projectId, workspaceId, actorUserId, confirmationToken);
 };
 
 export const syncTeamTask = async (task: TeamTask) => {

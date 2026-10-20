@@ -155,7 +155,7 @@ export const Clients: React.FC<ClientsProps> = ({ db, setDb, currentUser, theme 
   const handleConfirmDeleteClient = async () => {
     if (!editingClient) return;
 
-    await deleteClientPermanently(editingClient.id, currentUser.workspaceId, currentUser.id);
+    await deleteClientPermanently(editingClient.id, currentUser.workspaceId, currentUser.id, currentUser.passwordHash);
 
     // Atualiza estado local de forma atômica
     const newDb = applyClientDeletionToState(db, editingClient.id);

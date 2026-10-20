@@ -281,6 +281,10 @@ export const sanitizeAdministrativeErrorMessage = (err: any): string => {
     return 'A função de exclusão administrativa não está habilitada no banco de dados. A operação foi cancelada com segurança.';
   }
 
+  if (raw.includes('ADMIN_CREDENTIAL_REQUIRED') || raw.includes('INVALID_ADMIN_CREDENTIAL')) {
+    return 'Credencial de confirmação do administrador inválida ou não informada. A operação foi cancelada com segurança.';
+  }
+
   if (raw.includes('ADMIN_AUTHORIZATION_REQUIRED') || raw.includes('42501')) {
     return 'Operação restrita a administradores ativos do workspace.';
   }

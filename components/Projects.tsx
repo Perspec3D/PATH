@@ -1801,7 +1801,7 @@ export const Projects: React.FC<ProjectsProps> = ({
       setProjectDeletionImpact(localImpact);
 
       // 2. Consultar o backend Supabase para obter contagens canônicas completas
-      const remoteSummary = await fetchProjectDeletionSummary(familyId, currentUser.workspaceId);
+      const remoteSummary = await fetchProjectDeletionSummary(familyId, currentUser.workspaceId, currentUser.id);
       if (remoteSummary) {
         setProjectDeletionImpact({
           familyId,
@@ -1826,7 +1826,7 @@ export const Projects: React.FC<ProjectsProps> = ({
     if (!editingProject) return;
 
     const familyId = editingProject.familyId || editingProject.id;
-    await deleteProjectPermanently(familyId, currentUser.workspaceId, currentUser.id);
+    await deleteProjectPermanently(familyId, currentUser.workspaceId, currentUser.id, currentUser.passwordHash);
 
     // Identificar todos os IDs de revisões pertencentes à família para limpar atividades locais
     const familyProjectIds = db.projects

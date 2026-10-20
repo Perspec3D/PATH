@@ -1,12 +1,11 @@
 -- Migration: Administrative Permanent Deletion Procedures for Clients and Project Families
 -- Date: 2026-10-20
--- Purpose: Secure, transactional, auditable administrative deletion with workspace isolation,
---          permission enforcement, referential integrity and historical cascade control.
--- Safety Note: This migration is completely non-destructive to existing data. It only creates
---              and updates stored procedures and security triggers; it contains no DROP TABLE,
---              TRUNCATE, or unqualified DELETE statements.
+-- Purpose: Hardened, transactional, auditable administrative deletion with workspace isolation,
+--          individual admin credential verification, referential integrity and scoped family cascade.
+-- Safety Note: Completely non-destructive to existing data. It only creates and updates stored
+--              procedures and triggers. Contains no DROP TABLE, TRUNCATE, or unqualified DELETE.
 
--- 1. Update enforce_project_revision_integrity to allow internal deletion mode
+-- 1. Update enforce_project_revision_integrity to allow deletion strictly for authorized family
 CREATE OR REPLACE FUNCTION private.enforce_project_revision_integrity()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -17,17 +16,15 @@ DECLARE
   v_family_workspace_id uuid;
   v_family_code text;
   v_expected_revision text;
+  v_authorized_family text := pg_catalog.current_setting('perspec.deletion_authorized_family', true);
   v_internal_transition boolean := COALESCE(
     pg_catalog.current_setting('perspec.internal_revision_transition', true),
     'off'
   ) = 'on';
-  v_internal_deletion boolean := COALESCE(
-    pg_catalog.current_setting('perspec.internal_deletion_mode', true),
-    'off'
-  ) = 'on';
 BEGIN
   IF tg_op = 'DELETE' THEN
-    IF v_internal_deletion THEN
+    -- Authorize deletion only if the exact canonical family was locked and authorized by the administrative RPC
+    IF v_authorized_family IS NOT NULL AND v_authorized_family <> '' AND v_authorized_family = OLD.family_id::text THEN
       RETURN OLD;
     END IF;
 
@@ -85,7 +82,7 @@ BEGIN
 END;
 $$;
 
--- 2. Update prevent_historical_revision_operational_mutation to allow internal deletion mode
+-- 2. Update prevent_historical_revision_operational_mutation to scope deletion to authorized family
 CREATE OR REPLACE FUNCTION private.prevent_historical_revision_operational_mutation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -95,18 +92,8 @@ AS $$
 DECLARE
   v_project_id uuid;
   v_is_current boolean;
-  v_internal_deletion boolean := COALESCE(
-    pg_catalog.current_setting('perspec.internal_deletion_mode', true),
-    'off'
-  ) = 'on';
+  v_authorized_family text := pg_catalog.current_setting('perspec.deletion_authorized_family', true);
 BEGIN
-  IF v_internal_deletion THEN
-    IF tg_op = 'DELETE' THEN
-      RETURN OLD;
-    END IF;
-    RETURN NEW;
-  END IF;
-
   IF tg_table_name = 'project_activities' THEN
     v_project_id := CASE WHEN tg_op = 'DELETE' THEN OLD.project_id ELSE NEW.project_id END;
   ELSIF tg_table_name = 'activity_executions' THEN
@@ -122,6 +109,16 @@ BEGIN
     SELECT pa.project_id INTO v_project_id
     FROM public.project_activities pa
     WHERE pa.id = CASE WHEN tg_op = 'DELETE' THEN OLD.project_activity_id ELSE NEW.project_activity_id END;
+  END IF;
+
+  -- Allow deletion only if the project belongs to the specific authorized family
+  IF tg_op = 'DELETE' AND v_authorized_family IS NOT NULL AND v_authorized_family <> '' THEN
+    IF EXISTS (
+      SELECT 1 FROM public.projects p
+      WHERE p.id = v_project_id AND p.family_id::text = v_authorized_family
+    ) THEN
+      RETURN OLD;
+    END IF;
   END IF;
 
   SELECT p.is_current_revision INTO v_is_current
@@ -143,7 +140,8 @@ $$;
 -- 3. Function to fetch summary of deletion impact for a project family
 CREATE OR REPLACE FUNCTION public.get_project_deletion_summary(
   p_family_id uuid,
-  p_workspace_id uuid
+  p_workspace_id uuid,
+  p_actor_user_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -168,7 +166,21 @@ BEGIN
   v_workspace_id := auth.uid();
 
   IF p_workspace_id IS NOT NULL AND p_workspace_id <> v_workspace_id THEN
-    RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED';
+    RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED: Operação restrita ao workspace autenticado';
+  END IF;
+
+  -- Verify administrative permissions for viewing deletion summary
+  IF p_actor_user_id IS NOT NULL THEN
+    PERFORM 1 FROM public.internal_users iu
+    WHERE iu.id = p_actor_user_id
+      AND iu.workspace_id = v_workspace_id
+      AND iu.is_active IS TRUE
+      AND iu.role = 'ADMIN';
+    IF NOT FOUND THEN
+      IF p_actor_user_id <> v_workspace_id THEN
+        RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Resumo de impacto restrito a administradores do workspace';
+      END IF;
+    END IF;
   END IF;
 
   -- Locate project family (directly by family_id or through one of its project revision IDs)
@@ -234,7 +246,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.delete_project_family_administrative(
   p_family_id uuid,
   p_workspace_id uuid,
-  p_actor_user_id uuid
+  p_actor_user_id uuid,
+  p_confirmation_token text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -265,7 +278,7 @@ BEGIN
   END IF;
 
   -- 2. Verify Actor Admin Role in workspace
-  SELECT iu.id, iu.username, iu.role
+  SELECT iu.id, iu.username, iu.role, iu.password_hash
     INTO v_actor
   FROM public.internal_users iu
   WHERE iu.id = p_actor_user_id
@@ -277,11 +290,23 @@ BEGIN
       v_actor.id := v_workspace_id;
       v_actor.username := 'Administrador Principal';
       v_actor.role := 'ADMIN';
+      v_actor.password_hash := NULL;
     ELSE
       RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Operação restrita a administradores ativos do workspace';
     END IF;
   ELSIF v_actor.role <> 'ADMIN' THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Apenas administradores podem executar exclusão permanente';
+  END IF;
+
+  -- 2.1 Individual Credential Verification (stops user impersonation on shared workspace sessions)
+  IF v_actor.password_hash IS NOT NULL AND length(v_actor.password_hash) > 0 THEN
+    IF p_confirmation_token IS NULL OR nullif(pg_catalog.btrim(p_confirmation_token), '') IS NULL THEN
+      RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_CREDENTIAL_REQUIRED: É obrigatório fornecer a credencial/senha do administrador para autorizar a exclusão definitiva.';
+    END IF;
+
+    IF v_actor.password_hash IS DISTINCT FROM p_confirmation_token THEN
+      RAISE EXCEPTION USING errcode = '42501', message = 'INVALID_ADMIN_CREDENTIAL: A credencial informada não corresponde ao administrador responsável.';
+    END IF;
   END IF;
 
   -- 3. Lock and Locate Project Family
@@ -331,8 +356,8 @@ BEGIN
     v_overtime_count := 0;
   END IF;
 
-  -- 5. Enable Internal Deletion Bypass Mode strictly for this transaction
-  PERFORM pg_catalog.set_config('perspec.internal_deletion_mode', 'on', true);
+  -- 5. Scope authorization strictly to this specific family ID for this transaction
+  PERFORM pg_catalog.set_config('perspec.deletion_authorized_family', v_family.id::text, true);
 
   -- 6. Execute Ordered Deletion of Exclusive Relational Records
   IF array_length(v_activity_ids, 1) > 0 THEN
@@ -359,6 +384,10 @@ BEGIN
     WHERE id = ANY(v_activity_ids);
   END IF;
 
+  -- Delete legacy tasks if any
+  DELETE FROM public.tasks
+  WHERE project_id = ANY(v_project_ids) AND workspace_id = v_workspace_id;
+
   -- Delete all project revisions belonging to this family
   DELETE FROM public.projects
   WHERE family_id = v_family.id AND workspace_id = v_workspace_id;
@@ -367,8 +396,8 @@ BEGIN
   DELETE FROM public.project_families
   WHERE id = v_family.id AND workspace_id = v_workspace_id;
 
-  -- Reset deletion mode explicitly before commit
-  PERFORM pg_catalog.set_config('perspec.internal_deletion_mode', 'off', true);
+  -- Reset authorization setting immediately after deletion
+  PERFORM pg_catalog.set_config('perspec.deletion_authorized_family', '', true);
 
   -- 7. Insert Minimal Administrative Audit Log (no FK to deleted records)
   INSERT INTO public.logs (
@@ -415,7 +444,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.delete_client_administrative(
   p_client_id uuid,
   p_workspace_id uuid,
-  p_actor_user_id uuid
+  p_actor_user_id uuid,
+  p_confirmation_token text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -442,7 +472,7 @@ BEGIN
   END IF;
 
   -- 2. Verify Actor Admin Role in workspace
-  SELECT iu.id, iu.username, iu.role
+  SELECT iu.id, iu.username, iu.role, iu.password_hash
     INTO v_actor
   FROM public.internal_users iu
   WHERE iu.id = p_actor_user_id
@@ -454,11 +484,23 @@ BEGIN
       v_actor.id := v_workspace_id;
       v_actor.username := 'Administrador Principal';
       v_actor.role := 'ADMIN';
+      v_actor.password_hash := NULL;
     ELSE
       RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Operação restrita a administradores ativos do workspace';
     END IF;
   ELSIF v_actor.role <> 'ADMIN' THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Apenas administradores podem executar exclusão permanente';
+  END IF;
+
+  -- 2.1 Individual Credential Verification (stops user impersonation on shared workspace sessions)
+  IF v_actor.password_hash IS NOT NULL AND length(v_actor.password_hash) > 0 THEN
+    IF p_confirmation_token IS NULL OR nullif(pg_catalog.btrim(p_confirmation_token), '') IS NULL THEN
+      RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_CREDENTIAL_REQUIRED: É obrigatório fornecer a credencial/senha do administrador para autorizar a exclusão definitiva.';
+    END IF;
+
+    IF v_actor.password_hash IS DISTINCT FROM p_confirmation_token THEN
+      RAISE EXCEPTION USING errcode = '42501', message = 'INVALID_ADMIN_CREDENTIAL: A credencial informada não corresponde ao administrador responsável.';
+    END IF;
   END IF;
 
   -- 3. Lock and Locate Client
@@ -527,11 +569,11 @@ END;
 $$;
 
 -- 6. Privilege Management: Restrict EXECUTE to authenticated users only
-REVOKE ALL ON FUNCTION public.get_project_deletion_summary(uuid, uuid) FROM public, anon;
-GRANT EXECUTE ON FUNCTION public.get_project_deletion_summary(uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.get_project_deletion_summary(uuid, uuid, uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.get_project_deletion_summary(uuid, uuid, uuid) TO authenticated;
 
-REVOKE ALL ON FUNCTION public.delete_project_family_administrative(uuid, uuid, uuid) FROM public, anon;
-GRANT EXECUTE ON FUNCTION public.delete_project_family_administrative(uuid, uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.delete_project_family_administrative(uuid, uuid, uuid, text) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.delete_project_family_administrative(uuid, uuid, uuid, text) TO authenticated;
 
-REVOKE ALL ON FUNCTION public.delete_client_administrative(uuid, uuid, uuid) FROM public, anon;
-GRANT EXECUTE ON FUNCTION public.delete_client_administrative(uuid, uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION public.delete_client_administrative(uuid, uuid, uuid, text) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.delete_client_administrative(uuid, uuid, uuid, text) TO authenticated;
