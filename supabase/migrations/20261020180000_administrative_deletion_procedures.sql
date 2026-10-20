@@ -2,13 +2,16 @@
 -- Date: 2026-10-20
 -- Purpose: Secure, transactional, auditable administrative deletion with workspace isolation,
 --          permission enforcement, referential integrity and historical cascade control.
+-- Safety Note: This migration is completely non-destructive to existing data. It only creates
+--              and updates stored procedures and security triggers; it contains no DROP TABLE,
+--              TRUNCATE, or unqualified DELETE statements.
 
 -- 1. Update enforce_project_revision_integrity to allow internal deletion mode
 CREATE OR REPLACE FUNCTION private.enforce_project_revision_integrity()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY INVOKER
-SET search_path = ''
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   v_family_workspace_id uuid;
@@ -87,7 +90,7 @@ CREATE OR REPLACE FUNCTION private.prevent_historical_revision_operational_mutat
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY INVOKER
-SET search_path = ''
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   v_project_id uuid;
@@ -145,9 +148,10 @@ CREATE OR REPLACE FUNCTION public.get_project_deletion_summary(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = ''
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
+  v_workspace_id uuid;
   v_family public.project_families%ROWTYPE;
   v_project_ids uuid[];
   v_revisions_count integer;
@@ -156,21 +160,27 @@ DECLARE
   v_events_count integer;
   v_attachments_count integer;
 BEGIN
-  -- Workspace isolation check
-  IF auth.uid() IS NOT NULL AND p_workspace_id <> auth.uid() THEN
+  -- Strict authentication & workspace isolation
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'AUTH_REQUIRED: Autenticação obrigatória';
+  END IF;
+
+  v_workspace_id := auth.uid();
+
+  IF p_workspace_id IS NOT NULL AND p_workspace_id <> v_workspace_id THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED';
   END IF;
 
   -- Locate project family (directly by family_id or through one of its project revision IDs)
   SELECT * INTO v_family
   FROM public.project_families pf
-  WHERE pf.id = p_family_id AND pf.workspace_id = p_workspace_id;
+  WHERE pf.id = p_family_id AND pf.workspace_id = v_workspace_id;
 
   IF NOT FOUND THEN
     SELECT pf.* INTO v_family
     FROM public.projects p
     JOIN public.project_families pf ON pf.id = p.family_id
-    WHERE p.id = p_family_id AND p.workspace_id = p_workspace_id;
+    WHERE p.id = p_family_id AND p.workspace_id = v_workspace_id;
   END IF;
 
   IF NOT FOUND THEN
@@ -186,7 +196,7 @@ BEGIN
   SELECT COALESCE(array_agg(id), ARRAY[]::uuid[]), count(*)
     INTO v_project_ids, v_revisions_count
   FROM public.projects
-  WHERE family_id = v_family.id AND workspace_id = p_workspace_id;
+  WHERE family_id = v_family.id AND workspace_id = v_workspace_id;
 
   -- Attachments / Photos
   SELECT count(*) INTO v_attachments_count
@@ -197,13 +207,13 @@ BEGIN
   SELECT COALESCE(array_agg(id), ARRAY[]::uuid[]), count(*)
     INTO v_activity_ids, v_activities_count
   FROM public.project_activities
-  WHERE project_id = ANY(v_project_ids) AND workspace_id = p_workspace_id;
+  WHERE project_id = ANY(v_project_ids) AND workspace_id = v_workspace_id;
 
   -- Events
   IF array_length(v_activity_ids, 1) > 0 THEN
     SELECT count(*) INTO v_events_count
     FROM public.project_activity_events
-    WHERE activity_id = ANY(v_activity_ids) AND workspace_id = p_workspace_id;
+    WHERE activity_id = ANY(v_activity_ids) AND workspace_id = v_workspace_id;
   ELSE
     v_events_count := 0;
   END IF;
@@ -229,9 +239,10 @@ CREATE OR REPLACE FUNCTION public.delete_project_family_administrative(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = ''
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
+  v_workspace_id uuid;
   v_actor record;
   v_family public.project_families%ROWTYPE;
   v_project_ids uuid[];
@@ -240,26 +251,31 @@ DECLARE
   v_activities_count integer;
   v_events_count integer;
   v_executions_count integer;
-  v_work_sessions_count integer;
   v_overtime_count integer;
 BEGIN
-  -- 1. Workspace Isolation
-  IF auth.uid() IS NOT NULL AND p_workspace_id <> auth.uid() THEN
-    RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED';
+  -- 1. Authentication & Workspace Isolation
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'AUTH_REQUIRED: Autenticação obrigatória';
   END IF;
 
-  -- 2. Verify Actor Admin Role
+  v_workspace_id := auth.uid();
+
+  IF p_workspace_id IS NOT NULL AND p_workspace_id <> v_workspace_id THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED: Operação restrita ao workspace autenticado';
+  END IF;
+
+  -- 2. Verify Actor Admin Role in workspace
   SELECT iu.id, iu.username, iu.role
     INTO v_actor
   FROM public.internal_users iu
   WHERE iu.id = p_actor_user_id
-    AND iu.workspace_id = p_workspace_id
+    AND iu.workspace_id = v_workspace_id
     AND iu.is_active IS TRUE;
 
   IF NOT FOUND THEN
-    IF p_actor_user_id = p_workspace_id AND (auth.uid() IS NULL OR auth.uid() = p_workspace_id) THEN
-      v_actor.id := p_actor_user_id;
-      v_actor.username := 'Administrador';
+    IF p_actor_user_id = v_workspace_id THEN
+      v_actor.id := v_workspace_id;
+      v_actor.username := 'Administrador Principal';
       v_actor.role := 'ADMIN';
     ELSE
       RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Operação restrita a administradores ativos do workspace';
@@ -271,14 +287,14 @@ BEGIN
   -- 3. Lock and Locate Project Family
   SELECT * INTO v_family
   FROM public.project_families pf
-  WHERE pf.id = p_family_id AND pf.workspace_id = p_workspace_id
+  WHERE pf.id = p_family_id AND pf.workspace_id = v_workspace_id
   FOR UPDATE;
 
   IF NOT FOUND THEN
     SELECT pf.* INTO v_family
     FROM public.projects p
     JOIN public.project_families pf ON pf.id = p.family_id
-    WHERE p.id = p_family_id AND p.workspace_id = p_workspace_id
+    WHERE p.id = p_family_id AND p.workspace_id = v_workspace_id
     FOR UPDATE;
 
     IF NOT FOUND THEN
@@ -290,32 +306,32 @@ BEGIN
   SELECT COALESCE(array_agg(id), ARRAY[]::uuid[]), count(*)
     INTO v_project_ids, v_revisions_count
   FROM public.projects
-  WHERE family_id = v_family.id AND workspace_id = p_workspace_id;
+  WHERE family_id = v_family.id AND workspace_id = v_workspace_id;
 
   SELECT COALESCE(array_agg(id), ARRAY[]::uuid[]), count(*)
     INTO v_activity_ids, v_activities_count
   FROM public.project_activities
-  WHERE project_id = ANY(v_project_ids) AND workspace_id = p_workspace_id;
+  WHERE project_id = ANY(v_project_ids) AND workspace_id = v_workspace_id;
 
   IF array_length(v_activity_ids, 1) > 0 THEN
     SELECT count(*) INTO v_events_count
     FROM public.project_activity_events
-    WHERE activity_id = ANY(v_activity_ids) AND workspace_id = p_workspace_id;
+    WHERE activity_id = ANY(v_activity_ids) AND workspace_id = v_workspace_id;
 
     SELECT count(*) INTO v_executions_count
     FROM public.activity_executions
-    WHERE project_activity_id = ANY(v_activity_ids) AND workspace_id = p_workspace_id;
+    WHERE project_activity_id = ANY(v_activity_ids) AND workspace_id = v_workspace_id;
 
     SELECT count(*) INTO v_overtime_count
     FROM public.activity_overtime_entries
-    WHERE project_activity_id = ANY(v_activity_ids) AND workspace_id = p_workspace_id;
+    WHERE project_activity_id = ANY(v_activity_ids) AND workspace_id = v_workspace_id;
   ELSE
     v_events_count := 0;
     v_executions_count := 0;
     v_overtime_count := 0;
   END IF;
 
-  -- 5. Enable Internal Deletion Bypass Mode for this transaction
+  -- 5. Enable Internal Deletion Bypass Mode strictly for this transaction
   PERFORM pg_catalog.set_config('perspec.internal_deletion_mode', 'on', true);
 
   -- 6. Execute Ordered Deletion of Exclusive Relational Records
@@ -345,11 +361,14 @@ BEGIN
 
   -- Delete all project revisions belonging to this family
   DELETE FROM public.projects
-  WHERE family_id = v_family.id AND workspace_id = p_workspace_id;
+  WHERE family_id = v_family.id AND workspace_id = v_workspace_id;
 
   -- Delete the canonical project family record
   DELETE FROM public.project_families
-  WHERE id = v_family.id AND workspace_id = p_workspace_id;
+  WHERE id = v_family.id AND workspace_id = v_workspace_id;
+
+  -- Reset deletion mode explicitly before commit
+  PERFORM pg_catalog.set_config('perspec.internal_deletion_mode', 'off', true);
 
   -- 7. Insert Minimal Administrative Audit Log (no FK to deleted records)
   INSERT INTO public.logs (
@@ -362,7 +381,7 @@ BEGIN
     details,
     item_id
   ) VALUES (
-    p_workspace_id,
+    v_workspace_id,
     v_actor.id,
     v_actor.username,
     v_actor.role,
@@ -401,32 +420,39 @@ CREATE OR REPLACE FUNCTION public.delete_client_administrative(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = ''
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
+  v_workspace_id uuid;
   v_actor record;
   v_client public.clients%ROWTYPE;
   v_linked_families_count integer := 0;
   v_linked_projects_count integer := 0;
   v_total_dependencies integer := 0;
 BEGIN
-  -- 1. Workspace Isolation
-  IF auth.uid() IS NOT NULL AND p_workspace_id <> auth.uid() THEN
-    RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED';
+  -- 1. Authentication & Workspace Isolation
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'AUTH_REQUIRED: Autenticação obrigatória';
   END IF;
 
-  -- 2. Verify Actor Admin Role
+  v_workspace_id := auth.uid();
+
+  IF p_workspace_id IS NOT NULL AND p_workspace_id <> v_workspace_id THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED: Operação restrita ao workspace autenticado';
+  END IF;
+
+  -- 2. Verify Actor Admin Role in workspace
   SELECT iu.id, iu.username, iu.role
     INTO v_actor
   FROM public.internal_users iu
   WHERE iu.id = p_actor_user_id
-    AND iu.workspace_id = p_workspace_id
+    AND iu.workspace_id = v_workspace_id
     AND iu.is_active IS TRUE;
 
   IF NOT FOUND THEN
-    IF p_actor_user_id = p_workspace_id AND (auth.uid() IS NULL OR auth.uid() = p_workspace_id) THEN
-      v_actor.id := p_actor_user_id;
-      v_actor.username := 'Administrador';
+    IF p_actor_user_id = v_workspace_id THEN
+      v_actor.id := v_workspace_id;
+      v_actor.username := 'Administrador Principal';
       v_actor.role := 'ADMIN';
     ELSE
       RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Operação restrita a administradores ativos do workspace';
@@ -438,7 +464,7 @@ BEGIN
   -- 3. Lock and Locate Client
   SELECT * INTO v_client
   FROM public.clients c
-  WHERE c.id = p_client_id AND c.workspace_id = p_workspace_id
+  WHERE c.id = p_client_id AND c.workspace_id = v_workspace_id
   FOR UPDATE;
 
   IF NOT FOUND THEN
@@ -448,11 +474,11 @@ BEGIN
   -- 4. Check for Dependencies (linked project families or projects)
   SELECT count(*) INTO v_linked_families_count
   FROM public.project_families pf
-  WHERE pf.client_id = p_client_id AND pf.workspace_id = p_workspace_id;
+  WHERE pf.client_id = p_client_id AND pf.workspace_id = v_workspace_id;
 
   SELECT count(*) INTO v_linked_projects_count
   FROM public.projects p
-  WHERE p.client_id = p_client_id AND p.workspace_id = p_workspace_id;
+  WHERE p.client_id = p_client_id AND p.workspace_id = v_workspace_id;
 
   v_total_dependencies := GREATEST(v_linked_families_count, v_linked_projects_count);
 
@@ -467,7 +493,7 @@ BEGIN
 
   -- 5. Delete Client Record
   DELETE FROM public.clients
-  WHERE id = p_client_id AND workspace_id = p_workspace_id;
+  WHERE id = p_client_id AND workspace_id = v_workspace_id;
 
   -- 6. Insert Minimal Administrative Audit Log (no FK to deleted records)
   INSERT INTO public.logs (
@@ -480,7 +506,7 @@ BEGIN
     details,
     item_id
   ) VALUES (
-    p_workspace_id,
+    v_workspace_id,
     v_actor.id,
     v_actor.username,
     v_actor.role,
@@ -500,7 +526,12 @@ BEGIN
 END;
 $$;
 
--- 6. Grant Permissions to Authenticated Users
+-- 6. Privilege Management: Restrict EXECUTE to authenticated users only
+REVOKE ALL ON FUNCTION public.get_project_deletion_summary(uuid, uuid) FROM public, anon;
 GRANT EXECUTE ON FUNCTION public.get_project_deletion_summary(uuid, uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.delete_project_family_administrative(uuid, uuid, uuid) FROM public, anon;
 GRANT EXECUTE ON FUNCTION public.delete_project_family_administrative(uuid, uuid, uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.delete_client_administrative(uuid, uuid, uuid) FROM public, anon;
 GRANT EXECUTE ON FUNCTION public.delete_client_administrative(uuid, uuid, uuid) TO authenticated;

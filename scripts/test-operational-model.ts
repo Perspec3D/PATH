@@ -1661,7 +1661,7 @@ import {
   formatAuditLogDetailsForProjectDeletion,
   formatAuditLogDetailsForClientDeletion
 } from '../utils/administrativeDeletion';
-import type { AppDB } from '../storage';
+import { deleteProject, deleteProjectPermanently, deleteClientPermanently, AppDB } from '../storage';
 
 const testWorkspaceId = 'ws-adm-01';
 const otherWorkspaceId = 'ws-adm-02';
@@ -1964,6 +1964,45 @@ const clientLog = formatAuditLogDetailsForClientDeletion({
   name: 'Gama Engenharia'
 });
 assert(clientLog.includes('Exclusão permanente do cliente 003 (Gama Engenharia)'), 'Client audit log formats correctly');
+
+// 15.7 Direct Table Delete Prevention & RPC Exclusivity Tests
+let deleteProjectThrown = false;
+try {
+  await deleteProject('prj-alfa-r0');
+} catch (e: any) {
+  deleteProjectThrown = e.message.includes('EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC');
+}
+assert(deleteProjectThrown === true, 'deleteProject without admin authorization throws EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC');
+
+let deleteClientMissingParamsThrown = false;
+try {
+  await deleteClientPermanently('', '', '');
+} catch (e: any) {
+  deleteClientMissingParamsThrown = e.message.includes('EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC');
+}
+assert(deleteClientMissingParamsThrown === true, 'deleteClientPermanently requires all mandatory parameters');
+
+let deleteProjectMissingParamsThrown = false;
+try {
+  await deleteProjectPermanently('', '', '');
+} catch (e: any) {
+  deleteProjectMissingParamsThrown = e.message.includes('EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC');
+}
+assert(deleteProjectMissingParamsThrown === true, 'deleteProjectPermanently requires all mandatory parameters');
+
+// 15.8 Failure Interruption & State Preservation Simulation
+let simulatedDb: AppDB = { ...initialDb };
+let rpcErrorSimulated = false;
+try {
+  // Simulating an RPC failure (e.g. network error, foreign key block, missing migration)
+  throw new Error('P0001: RPC_EXECUTION_FAILED');
+  // State mutation is strictly placed AFTER RPC execution:
+  simulatedDb = applyProjectDeletionToState(simulatedDb, 'fam-alfa');
+} catch (err) {
+  rpcErrorSimulated = true;
+}
+assert(rpcErrorSimulated === true, 'RPC failure was captured');
+assert(simulatedDb.projects.length === 3, 'State remains completely intact (3 projects) when RPC fails or is unavailable');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {

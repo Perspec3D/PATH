@@ -231,13 +231,23 @@ export const deleteClientPermanently = async (
   workspaceId: string,
   actorUserId: string
 ) => {
+  if (!clientId || !workspaceId || !actorUserId) {
+    throw new Error(
+      'EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC: Parâmetros obrigatórios ausentes para exclusão administrativa do cliente.'
+    );
+  }
+
   const { data, error } = await supabase.rpc('delete_client_administrative', {
     p_client_id: clientId,
     p_workspace_id: workspaceId,
     p_actor_user_id: actorUserId
   });
 
-  if (error) throw error;
+  if (error) {
+    console.error('Erro na RPC delete_client_administrative:', error);
+    throw new Error(error.message || 'Falha ao executar exclusão administrativa de cliente no Supabase.');
+  }
+
   invalidateCache();
   return data;
 };
@@ -450,24 +460,34 @@ export const deleteProjectPermanently = async (
   workspaceId: string,
   actorUserId: string
 ) => {
+  if (!familyId || !workspaceId || !actorUserId) {
+    throw new Error(
+      'EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC: Parâmetros obrigatórios ausentes para exclusão administrativa do projeto.'
+    );
+  }
+
   const { data, error } = await supabase.rpc('delete_project_family_administrative', {
     p_family_id: familyId,
     p_workspace_id: workspaceId,
     p_actor_user_id: actorUserId
   });
 
-  if (error) throw error;
+  if (error) {
+    console.error('Erro na RPC delete_project_family_administrative:', error);
+    throw new Error(error.message || 'Falha ao executar exclusão administrativa de projeto no Supabase.');
+  }
+
   invalidateCache();
   return data;
 };
 
 export const deleteProject = async (projectId: string, workspaceId?: string, actorUserId?: string) => {
-  if (workspaceId && actorUserId) {
-    return deleteProjectPermanently(projectId, workspaceId, actorUserId);
+  if (!workspaceId || !actorUserId) {
+    throw new Error(
+      'EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC: A exclusão permanente de projetos exige workspaceId, autorização de administrador e execução exclusiva da RPC transacional. Operações diretas de exclusão em tabela foram desativadas.'
+    );
   }
-  const { error } = await supabase.from('projects').delete().eq('id', projectId);
-  if (error) throw error;
-  invalidateCache();
+  return deleteProjectPermanently(projectId, workspaceId, actorUserId);
 };
 
 export const syncTeamTask = async (task: TeamTask) => {
