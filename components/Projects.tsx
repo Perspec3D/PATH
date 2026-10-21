@@ -3323,59 +3323,57 @@ export const Projects: React.FC<ProjectsProps> = ({
                 />
               </div>
 
-              <div className="pt-4 pb-1 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-[#0f172a] sticky bottom-0 z-10 w-full min-w-0 max-w-full flex flex-col gap-2.5 transition-colors">
-                {/* Linha superior — ações secundárias */}
-                <div className="flex flex-wrap items-center justify-between gap-2 w-full min-w-0">
-                  {/* Excluir Projeto, à esquerda */}
-                  {editingProject && currentUser.role === UserRole.ADMIN ? (
+              <div className="pt-4 pb-1 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-[#0f172a] sticky bottom-0 z-10 w-full min-w-0 flex items-center justify-between gap-2 transition-colors">
+                {/* Ações secundárias à esquerda */}
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                  {editingProject && currentUser.role === UserRole.ADMIN && (
                     <button
                       type="button"
                       onClick={handleInitiateDeleteProject}
-                      className="h-9 px-3 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 border border-rose-200/50 dark:border-rose-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shrink-0 active:scale-95"
-                      title="Excluir Projeto e todas as suas revisões"
+                      className="h-9 w-9 rounded-xl flex items-center justify-center text-rose-500 hover:text-rose-600 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/20 border border-rose-200/60 dark:border-rose-500/25 transition-all active:scale-95 shrink-0"
+                      title="Excluir Projeto"
+                      aria-label="Excluir Projeto"
                     >
-                      <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                      <span>Excluir Projeto</span>
+                      <Trash2 className="w-4 h-4 shrink-0" />
                     </button>
-                  ) : <div />}
+                  )}
 
-                  {/* Ações secundárias à direita (Nova Revisão, Criar Pasta do Projeto) */}
-                  <div className="flex items-center gap-2 flex-wrap ml-auto justify-end min-w-0">
-                    {editingProject && !isHistoricalRevision && (
-                      <button
-                        type="button"
-                        onClick={openCreateRevisionModal}
-                        className="h-9 px-3 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 whitespace-nowrap shrink-0"
-                        title="Criar nova revisão operacional"
-                      >
-                        Nova Revisão
-                      </button>
-                    )}
+                  {editingProject && !isHistoricalRevision && (
                     <button
                       type="button"
-                      onClick={handleCreateFolder}
-                      className="h-9 px-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 dark:hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap shrink-0"
-                      title="Criar pasta do projeto"
+                      onClick={openCreateRevisionModal}
+                      className="h-9 px-3 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 whitespace-nowrap shrink-0"
+                      title="Criar nova revisão operacional"
                     >
-                      <svg className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-                      <span>Criar Pasta do Projeto</span>
+                      Nova Revisão
                     </button>
-                  </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleCreateFolder}
+                    className="h-9 px-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 dark:hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                    title="Criar pasta do projeto"
+                  >
+                    <svg className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                    <span className="hidden sm:inline">Criar Pasta do Projeto</span>
+                    <span className="sm:hidden">Criar Pasta</span>
+                  </button>
                 </div>
 
-                {/* Linha inferior — ações principais, alinhadas à direita */}
-                <div className="flex items-center justify-end gap-2.5 w-full min-w-0 pt-0.5">
+                {/* Ações principais à direita */}
+                <div className="flex items-center gap-2 shrink-0 ml-auto">
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
-                    className="h-9 px-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 whitespace-nowrap shrink-0"
+                    className="h-9 px-3.5 sm:px-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 whitespace-nowrap shrink-0"
                   >
                     {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
                   </button>
                   {currentUser.role !== UserRole.VIEWER && !isHistoricalRevision && (
                     <button
                       type="submit"
-                      className="h-9 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider shadow-md shadow-indigo-500/20 transition-all active:scale-95 whitespace-nowrap shrink-0"
+                      className="h-9 px-4 sm:px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider shadow-md shadow-indigo-500/20 transition-all active:scale-95 whitespace-nowrap shrink-0"
                     >
                       {editingProject ? 'Salvar Alterações' : 'Criar Projeto'}
                     </button>
