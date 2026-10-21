@@ -547,7 +547,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
   };
 
   return (
-    <div className="space-y-8 max-w-4xl animate-in fade-in duration-500">
+    <div className="space-y-8 max-w-5xl w-full animate-in fade-in duration-500">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight transition-colors">Configurações do Sistema</h1>
       </div>
@@ -906,7 +906,7 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
                 <th className="px-8 py-4">Username</th>
                 <th className="px-8 py-4">Função</th>
                 <th className="px-8 py-4">Status</th>
-                <th className="px-8 py-4 text-right">Ações</th>
+                <th className="px-8 py-4 text-right whitespace-nowrap">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors">
@@ -917,16 +917,16 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
                   <td className="px-8 py-5">
                     <span className={`inline-block w-2 h-2 rounded-full ${user.isActive ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-300 dark:bg-slate-700 transition-colors'}`}></span>
                   </td>
-                  <td className="px-8 py-5 text-right space-x-4">
+                  <td className="px-8 py-5 text-right space-x-4 whitespace-nowrap">
                     <button
                       onClick={() => { setEditingUser(user); setUsername(user.username); setRole(user.role); setIsActive(user.isActive); setShowUserModal(true); }}
-                      className="text-[10px] text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-widest hover:text-indigo-700 dark:hover:text-indigo-300 transition"
+                      className="text-[10px] text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-widest hover:text-indigo-700 dark:hover:text-indigo-300 transition whitespace-nowrap"
                     >
                       Editar
                     </button>
                     <button
                       onClick={() => toggleUserStatus(user)}
-                      className={`text-[10px] font-black uppercase tracking-widest transition ${user.isActive ? 'text-rose-500 hover:text-rose-400' : 'text-emerald-500 hover:text-emerald-400'}`}
+                      className={`text-[10px] font-black uppercase tracking-widest transition whitespace-nowrap ${user.isActive ? 'text-rose-500 hover:text-rose-400' : 'text-emerald-500 hover:text-emerald-400'}`}
                     >
                       {user.isActive ? 'Desativar' : 'Reativar'}
                     </button>
@@ -1121,21 +1121,21 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
               )}
             </div>
           ) : (
-            <table className="w-full text-left">
+            <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-900/30 text-[9px] uppercase tracking-widest text-slate-500 dark:text-slate-600 font-black border-b border-slate-100 dark:border-slate-800 transition-colors">
-                  <th className="px-8 py-4 w-12 text-center">Posição</th>
-                  <th className="px-8 py-4">Nome</th>
-                  <th className="px-8 py-4">Categoria</th>
-                  <th className="px-8 py-4">Descrição</th>
-                  <th className="px-8 py-4 text-center">Status</th>
-                  <th className="px-8 py-4 text-right">Ações</th>
+                  <th className="pl-6 pr-3 py-4 w-16 text-center whitespace-nowrap">Posição</th>
+                  <th className="px-4 py-4 min-w-[140px]">Nome</th>
+                  <th className="px-4 py-4 min-w-[120px]">Categoria</th>
+                  <th className="px-4 py-4 min-w-[180px]">Descrição</th>
+                  <th className="px-4 py-4 text-center w-28 min-w-[90px] whitespace-nowrap">Status</th>
+                  <th className="pl-4 pr-6 py-4 text-right w-40 min-w-[150px] whitespace-nowrap">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 transition-colors">
                 {filteredActivityTypes.map((activity, index) => (
                   <tr key={activity.id} className="text-sm hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                    <td className="px-8 py-4 text-center">
+                    <td className="pl-6 pr-3 py-4 text-center w-16">
                       <div className="flex flex-col items-center space-y-1">
                         <button
                           type="button"
@@ -1158,48 +1158,54 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
                         </button>
                       </div>
                     </td>
-                    <td className="px-8 py-4 font-bold text-slate-900 dark:text-slate-100 transition-colors">
-                      {activity.name}
+                    <td className="px-4 py-4 font-bold text-slate-900 dark:text-slate-100 transition-colors">
+                      <div className="max-w-[180px] lg:max-w-[220px] truncate" title={activity.name}>
+                        {activity.name}
+                      </div>
                     </td>
-                    <td className="px-8 py-4">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       {activity.category ? (
-                        <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-500 dark:text-slate-400 rounded-lg">
+                        <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-500 dark:text-slate-400 rounded-lg inline-block max-w-[140px] truncate" title={activity.category}>
                           {activity.category}
                         </span>
                       ) : (
                         <span className="text-xs text-slate-400 italic">Sem Categoria</span>
                       )}
                     </td>
-                    <td className="px-8 py-4 text-xs text-slate-500 dark:text-slate-400 max-w-xs truncate" title={activity.description}>
-                      {activity.description || <span className="italic opacity-60">Sem descrição</span>}
+                    <td className="px-4 py-4 text-xs text-slate-500 dark:text-slate-400">
+                      <div className="max-w-[220px] lg:max-w-xs truncate" title={activity.description}>
+                        {activity.description || <span className="italic opacity-60">Sem descrição</span>}
+                      </div>
                     </td>
-                    <td className="px-8 py-4 text-center">
+                    <td className="px-4 py-4 text-center whitespace-nowrap w-28 min-w-[90px]">
                       <span className={`inline-block px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider ${activity.isActive ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700/50'}`}>
                         {activity.isActive ? 'Ativa' : 'Inativa'}
                       </span>
                     </td>
-                    <td className="px-8 py-4 text-right space-x-4">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingActivity(activity);
-                          setActivityName(activity.name);
-                          setActivityDescription(activity.description || '');
-                          setActivityCategory(activity.category || '');
-                          setActivityIsActive(activity.isActive);
-                          setShowActivityModal(true);
-                        }}
-                        className="text-[10px] text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-widest hover:text-indigo-700 dark:hover:text-indigo-300 transition"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteActivity(activity)}
-                        className="text-[10px] text-rose-500 hover:text-rose-400 font-black uppercase tracking-widest transition"
-                      >
-                        Excluir
-                      </button>
+                    <td className="pl-4 pr-6 py-4 text-right w-40 min-w-[150px] whitespace-nowrap">
+                      <div className="flex items-center justify-end space-x-4 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingActivity(activity);
+                            setActivityName(activity.name);
+                            setActivityDescription(activity.description || '');
+                            setActivityCategory(activity.category || '');
+                            setActivityIsActive(activity.isActive);
+                            setShowActivityModal(true);
+                          }}
+                          className="text-[10px] text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-widest hover:text-indigo-700 dark:hover:text-indigo-300 transition shrink-0 whitespace-nowrap"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteActivity(activity)}
+                          className="text-[10px] text-rose-500 hover:text-rose-400 font-black uppercase tracking-widest transition shrink-0 whitespace-nowrap"
+                        >
+                          Excluir
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
