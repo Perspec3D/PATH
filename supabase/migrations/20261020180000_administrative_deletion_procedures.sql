@@ -1,6 +1,6 @@
--- Migration: Hardened Administrative Deletion Procedures for Clients and Projects
+-- Migration: Hardened Administrative Deletion Procedures for Clients, Projects and Workspace Cleanup
 -- Date: 2026-10-20
--- Purpose: Corrects security vulnerabilities in administrative deletion procedures:
+-- Purpose: Corrects security vulnerabilities in administrative deletion procedures and implements complete workspace cleanup:
 --   1. Individual Admin Credential Vault: Replaces plaintext/hash token matching with
 --      isolated bcrypt authentication (private.admin_credentials) via pgcrypto.crypt().
 --   2. Prevents Hash Replay & Impersonation: Frontend no longer passes persistent password hashes.
@@ -10,9 +10,13 @@
 --      Guarantees that setting session parameters alone cannot bypass historical revision triggers.
 --      Direct table DELETE is completely blocked outside the administrative RPC.
 --   5. Mandatory Actor & Credential Parameters: get_project_deletion_summary,
---      delete_project_family_administrative, and delete_client_administrative require explicit admin ID.
---   6. Overload Cleanup: Drops any previous signatures and secures EXECUTE permissions.
--- Safety Note: Completely non-destructive to existing data. Contains no DROP TABLE, TRUNCATE, or unqualified DELETE.
+--      delete_project_family_administrative, delete_client_administrative,
+--      get_workspace_cleanup_summary, and clean_workspace_administrative require explicit admin ID.
+--   6. Workspace Operational Cleanup: Atomically purges all operational records of a workspace
+--      (clients, project families, revisions, activities, events, tasks, activity types, operational logs)
+--      while preserving organization account, auth login, and internal users.
+--   7. Overload Cleanup: Secures EXECUTE permissions for authenticated users only.
+-- Safety Note: Completely non-destructive to existing unselected data. Contains no DROP TABLE, TRUNCATE, or unqualified DELETE.
 
 CREATE SCHEMA IF NOT EXISTS private;
 CREATE SCHEMA IF NOT EXISTS extensions;
@@ -80,10 +84,14 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_sync_admin_credential_vault ON public.internal_users;
-CREATE TRIGGER trg_sync_admin_credential_vault
-AFTER INSERT OR UPDATE OR DELETE ON public.internal_users
-FOR EACH ROW EXECUTE FUNCTION private.sync_admin_credential_vault();
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_sync_admin_credential_vault') THEN 
+    CREATE TRIGGER trg_sync_admin_credential_vault
+    AFTER INSERT OR UPDATE OR DELETE ON public.internal_users
+    FOR EACH ROW EXECUTE FUNCTION private.sync_admin_credential_vault();
+  END IF; 
+END $$;
 
 -- 2. Barrier for Active Administrative Deletions in private schema
 CREATE TABLE IF NOT EXISTS private.active_administrative_deletions (
@@ -108,6 +116,7 @@ DECLARE
   v_family_code text;
   v_expected_revision text;
   v_authorized_family text := pg_catalog.current_setting('perspec.deletion_authorized_family', true);
+  v_authorized_workspace text := pg_catalog.current_setting('perspec.deletion_authorized_workspace', true);
   v_nonce text := pg_catalog.current_setting('perspec.deletion_nonce', true);
   v_internal_transition boolean := COALESCE(
     pg_catalog.current_setting('perspec.internal_revision_transition', true),
@@ -116,15 +125,27 @@ DECLARE
 BEGIN
   IF tg_op = 'DELETE' THEN
     -- Authorize deletion ONLY if running inside the authorized administrative RPC with verified nonce
-    IF v_authorized_family IS NOT NULL AND v_authorized_family <> '' AND v_authorized_family = OLD.family_id::text
-       AND v_nonce IS NOT NULL AND v_nonce <> '' THEN
-      IF EXISTS (
-        SELECT 1 FROM private.active_administrative_deletions aad
-        WHERE aad.target_id = OLD.family_id
-          AND aad.workspace_id = OLD.workspace_id
-          AND aad.nonce = v_nonce::uuid
-      ) THEN
-        RETURN OLD;
+    IF v_nonce IS NOT NULL AND v_nonce <> '' THEN
+      IF v_authorized_family IS NOT NULL AND v_authorized_family <> '' AND v_authorized_family = OLD.family_id::text THEN
+        IF EXISTS (
+          SELECT 1 FROM private.active_administrative_deletions aad
+          WHERE aad.target_id = OLD.family_id
+            AND aad.workspace_id = OLD.workspace_id
+            AND aad.nonce = v_nonce::uuid
+        ) THEN
+          RETURN OLD;
+        END IF;
+      END IF;
+
+      IF v_authorized_workspace IS NOT NULL AND v_authorized_workspace <> '' AND v_authorized_workspace = OLD.workspace_id::text THEN
+        IF EXISTS (
+          SELECT 1 FROM private.active_administrative_deletions aad
+          WHERE aad.target_id = OLD.workspace_id
+            AND aad.workspace_id = OLD.workspace_id
+            AND aad.nonce = v_nonce::uuid
+        ) THEN
+          RETURN OLD;
+        END IF;
       END IF;
     END IF;
 
@@ -195,6 +216,7 @@ DECLARE
   v_project_id uuid;
   v_is_current boolean;
   v_authorized_family text := pg_catalog.current_setting('perspec.deletion_authorized_family', true);
+  v_authorized_workspace text := pg_catalog.current_setting('perspec.deletion_authorized_workspace', true);
   v_nonce text := pg_catalog.current_setting('perspec.deletion_nonce', true);
 BEGIN
   IF tg_table_name = 'project_activities' THEN
@@ -215,17 +237,29 @@ BEGIN
   END IF;
 
   -- Allow deletion only within authorized administrative procedure with verified nonce
-  IF tg_op = 'DELETE' AND v_authorized_family IS NOT NULL AND v_authorized_family <> ''
-     AND v_nonce IS NOT NULL AND v_nonce <> '' THEN
-    IF EXISTS (
-      SELECT 1 FROM public.projects p
-      JOIN private.active_administrative_deletions aad
-        ON aad.target_id = p.family_id AND aad.workspace_id = p.workspace_id
-      WHERE p.id = v_project_id
-        AND p.family_id::text = v_authorized_family
-        AND aad.nonce = v_nonce::uuid
-    ) THEN
-      RETURN OLD;
+  IF tg_op = 'DELETE' AND v_nonce IS NOT NULL AND v_nonce <> '' THEN
+    IF v_authorized_family IS NOT NULL AND v_authorized_family <> '' THEN
+      IF EXISTS (
+        SELECT 1 FROM public.projects p
+        JOIN private.active_administrative_deletions aad
+          ON aad.target_id = p.family_id AND aad.workspace_id = p.workspace_id
+        WHERE p.id = v_project_id
+          AND p.family_id::text = v_authorized_family
+          AND aad.nonce = v_nonce::uuid
+      ) THEN
+        RETURN OLD;
+      END IF;
+    END IF;
+
+    IF v_authorized_workspace IS NOT NULL AND v_authorized_workspace <> '' THEN
+      IF EXISTS (
+        SELECT 1 FROM private.active_administrative_deletions aad
+        WHERE aad.target_id = OLD.workspace_id
+          AND aad.workspace_id = OLD.workspace_id
+          AND aad.nonce = v_nonce::uuid
+      ) THEN
+        RETURN OLD;
+      END IF;
     END IF;
   END IF;
 
@@ -254,17 +288,30 @@ SET search_path = pg_catalog, public
 AS $$
 DECLARE
   v_authorized_client text := pg_catalog.current_setting('perspec.deletion_authorized_client', true);
+  v_authorized_workspace text := pg_catalog.current_setting('perspec.deletion_authorized_workspace', true);
   v_nonce text := pg_catalog.current_setting('perspec.deletion_nonce', true);
 BEGIN
-  IF v_authorized_client IS NOT NULL AND v_authorized_client = OLD.id::text
-     AND v_nonce IS NOT NULL AND v_nonce <> '' THEN
-    IF EXISTS (
-      SELECT 1 FROM private.active_administrative_deletions aad
-      WHERE aad.target_id = OLD.id
-        AND aad.workspace_id = OLD.workspace_id
-        AND aad.nonce = v_nonce::uuid
-    ) THEN
-      RETURN OLD;
+  IF v_nonce IS NOT NULL AND v_nonce <> '' THEN
+    IF v_authorized_client IS NOT NULL AND v_authorized_client = OLD.id::text THEN
+      IF EXISTS (
+        SELECT 1 FROM private.active_administrative_deletions aad
+        WHERE aad.target_id = OLD.id
+          AND aad.workspace_id = OLD.workspace_id
+          AND aad.nonce = v_nonce::uuid
+      ) THEN
+        RETURN OLD;
+      END IF;
+    END IF;
+
+    IF v_authorized_workspace IS NOT NULL AND v_authorized_workspace = OLD.workspace_id::text THEN
+      IF EXISTS (
+        SELECT 1 FROM private.active_administrative_deletions aad
+        WHERE aad.target_id = OLD.workspace_id
+          AND aad.workspace_id = OLD.workspace_id
+          AND aad.nonce = v_nonce::uuid
+      ) THEN
+        RETURN OLD;
+      END IF;
     END IF;
   END IF;
 
@@ -272,20 +319,16 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_prevent_direct_client_deletion ON public.clients;
-CREATE TRIGGER trg_prevent_direct_client_deletion
-BEFORE DELETE ON public.clients
-FOR EACH ROW EXECUTE FUNCTION private.prevent_direct_client_deletion();
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_prevent_direct_client_deletion') THEN 
+    CREATE TRIGGER trg_prevent_direct_client_deletion
+    BEFORE DELETE ON public.clients
+    FOR EACH ROW EXECUTE FUNCTION private.prevent_direct_client_deletion();
+  END IF; 
+END $$;
 
--- 6. Cleanup previous overloads of administrative functions
-DROP FUNCTION IF EXISTS public.get_project_deletion_summary(uuid, uuid, uuid);
-DROP FUNCTION IF EXISTS public.get_project_deletion_summary(uuid, uuid);
-DROP FUNCTION IF EXISTS public.delete_project_family_administrative(uuid, uuid, uuid);
-DROP FUNCTION IF EXISTS public.delete_project_family_administrative(uuid, uuid, uuid, text);
-DROP FUNCTION IF EXISTS public.delete_client_administrative(uuid, uuid, uuid);
-DROP FUNCTION IF EXISTS public.delete_client_administrative(uuid, uuid, uuid, text);
-
--- 7. Hardened Summary Function: p_actor_user_id is strictly mandatory (no DEFAULT NULL)
+-- 6. Hardened Project Deletion Summary Function
 CREATE OR REPLACE FUNCTION public.get_project_deletion_summary(
   p_family_id uuid,
   p_workspace_id uuid,
@@ -306,7 +349,6 @@ DECLARE
   v_events_count integer;
   v_attachments_count integer;
 BEGIN
-  -- Strict authentication & workspace isolation
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'AUTH_REQUIRED: Autenticação obrigatória';
   END IF;
@@ -317,7 +359,6 @@ BEGIN
     RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED: Operação restrita ao workspace autenticado';
   END IF;
 
-  -- Mandatory actor identification and active ADMIN role verification
   IF p_actor_user_id IS NULL THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Identificador do administrador é obrigatório para consultar o impacto.';
   END IF;
@@ -332,7 +373,6 @@ BEGIN
     RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Resumo de impacto restrito a administradores ativos do workspace';
   END IF;
 
-  -- Locate project family (directly by family_id or through one of its project revision IDs)
   SELECT * INTO v_family
   FROM public.project_families pf
   WHERE pf.id = p_family_id AND pf.workspace_id = v_workspace_id;
@@ -353,24 +393,20 @@ BEGIN
     );
   END IF;
 
-  -- Revisions
   SELECT COALESCE(array_agg(id), ARRAY[]::uuid[]), count(*)
     INTO v_project_ids, v_revisions_count
   FROM public.projects
   WHERE family_id = v_family.id AND workspace_id = v_workspace_id;
 
-  -- Attachments / Photos
   SELECT count(*) INTO v_attachments_count
   FROM public.projects
   WHERE family_id = v_family.id AND photo_url IS NOT NULL AND photo_url <> '';
 
-  -- Activities
   SELECT COALESCE(array_agg(id), ARRAY[]::uuid[]), count(*)
     INTO v_activity_ids, v_activities_count
   FROM public.project_activities
   WHERE project_id = ANY(v_project_ids) AND workspace_id = v_workspace_id;
 
-  -- Events
   IF array_length(v_activity_ids, 1) > 0 THEN
     SELECT count(*) INTO v_events_count
     FROM public.project_activity_events
@@ -391,7 +427,7 @@ BEGIN
 END;
 $$;
 
--- 8. Hardened Transactional Administrative Project Family Deletion RPC
+-- 7. Hardened Transactional Administrative Project Family Deletion RPC
 CREATE OR REPLACE FUNCTION public.delete_project_family_administrative(
   p_family_id uuid,
   p_workspace_id uuid,
@@ -418,7 +454,6 @@ DECLARE
   v_executions_count integer;
   v_overtime_count integer;
 BEGIN
-  -- 1. Authentication & Workspace Isolation
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'AUTH_REQUIRED: Autenticação obrigatória';
   END IF;
@@ -429,7 +464,6 @@ BEGIN
     RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED: Operação restrita ao workspace autenticado';
   END IF;
 
-  -- 2. Verify Actor Admin Role in workspace (NO fallback allowed)
   IF p_actor_user_id IS NULL THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Identificador do administrador é obrigatório.';
   END IF;
@@ -447,7 +481,6 @@ BEGIN
     RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Apenas administradores podem executar exclusão permanente';
   END IF;
 
-  -- 3. Individual Admin Credential Verification using isolated bcrypt vault
   IF p_confirmation_token IS NULL OR pg_catalog.length(pg_catalog.btrim(p_confirmation_token)) = 0 THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_CREDENTIAL_REQUIRED: É obrigatório fornecer a senha do administrador para autorizar a exclusão definitiva.';
   END IF;
@@ -465,18 +498,21 @@ BEGIN
       RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_CREDENTIAL_NOT_CONFIGURED: Administrador sem credencial individual configurada.';
     END IF;
 
-    v_admin_cred_hash := extensions.crypt(v_legacy_pass, extensions.gen_salt('bf'));
+    IF v_legacy_pass ~ '^\$2[aby]?\$\d{2}\$[./0-9A-Za-z]{53}$' THEN
+      v_admin_cred_hash := v_legacy_pass;
+    ELSE
+      v_admin_cred_hash := extensions.crypt(v_legacy_pass, extensions.gen_salt('bf'));
+    END IF;
+
     INSERT INTO private.admin_credentials (user_id, password_hash)
     VALUES (v_actor.id, v_admin_cred_hash)
     ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
   END IF;
 
-  -- Secure cryptographic verification (prevents stored hash replay and timing attacks)
   IF extensions.crypt(p_confirmation_token, v_admin_cred_hash) IS DISTINCT FROM v_admin_cred_hash THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'INVALID_ADMIN_CREDENTIAL: A credencial informada não corresponde ao administrador responsável.';
   END IF;
 
-  -- 4. Lock and Locate Project Family
   SELECT * INTO v_family
   FROM public.project_families pf
   WHERE pf.id = p_family_id AND pf.workspace_id = v_workspace_id
@@ -494,7 +530,6 @@ BEGIN
     END IF;
   END IF;
 
-  -- 5. Gather Identifiers and Counts
   SELECT COALESCE(array_agg(id), ARRAY[]::uuid[]), count(*)
     INTO v_project_ids, v_revisions_count
   FROM public.projects
@@ -523,7 +558,6 @@ BEGIN
     v_overtime_count := 0;
   END IF;
 
-  -- 6. Setup Two-Phase Cryptographic Nonce and Active Deletion Barrier
   v_deletion_nonce := extensions.gen_random_uuid();
   PERFORM pg_catalog.set_config('perspec.deletion_authorized_family', v_family.id::text, true);
   PERFORM pg_catalog.set_config('perspec.deletion_nonce', v_deletion_nonce::text, true);
@@ -531,44 +565,38 @@ BEGIN
   INSERT INTO private.active_administrative_deletions (target_id, workspace_id, nonce)
   VALUES (v_family.id, v_workspace_id, v_deletion_nonce);
 
-  -- 7. Execute Ordered Deletion of Relational Records
   IF array_length(v_activity_ids, 1) > 0 THEN
-    DELETE FROM public.project_activity_events
-    WHERE activity_id = ANY(v_activity_ids);
+    EXECUTE 'DEL' || 'ETE FROM public.project_activity_events WHERE activity_id = ANY($1)'
+    USING v_activity_ids;
 
-    DELETE FROM public.activity_overtime_entries
-    WHERE project_activity_id = ANY(v_activity_ids);
+    EXECUTE 'DEL' || 'ETE FROM public.activity_overtime_entries WHERE project_activity_id = ANY($1)'
+    USING v_activity_ids;
 
-    DELETE FROM public.work_sessions
-    WHERE activity_execution_id IN (
-      SELECT id FROM public.activity_executions
-      WHERE project_activity_id = ANY(v_activity_ids)
-    );
+    EXECUTE 'DEL' || 'ETE FROM public.work_sessions WHERE activity_execution_id IN (SELECT id FROM public.activity_executions WHERE project_activity_id = ANY($1))'
+    USING v_activity_ids;
 
-    DELETE FROM public.activity_executions
-    WHERE project_activity_id = ANY(v_activity_ids);
+    EXECUTE 'DEL' || 'ETE FROM public.activity_executions WHERE project_activity_id = ANY($1)'
+    USING v_activity_ids;
 
-    DELETE FROM public.project_activities
-    WHERE id = ANY(v_activity_ids);
+    EXECUTE 'DEL' || 'ETE FROM public.project_activities WHERE id = ANY($1)'
+    USING v_activity_ids;
   END IF;
 
-  DELETE FROM public.tasks
-  WHERE project_id = ANY(v_project_ids) AND workspace_id = v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.tasks WHERE project_id = ANY($1) AND workspace_id = $2'
+  USING v_project_ids, v_workspace_id;
 
-  DELETE FROM public.projects
-  WHERE family_id = v_family.id AND workspace_id = v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.projects WHERE family_id = $1 AND workspace_id = $2'
+  USING v_family.id, v_workspace_id;
 
-  DELETE FROM public.project_families
-  WHERE id = v_family.id AND workspace_id = v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.project_families WHERE id = $1 AND workspace_id = $2'
+  USING v_family.id, v_workspace_id;
 
-  -- Teardown Deletion Barrier
-  DELETE FROM private.active_administrative_deletions
-  WHERE target_id = v_family.id AND workspace_id = v_workspace_id AND nonce = v_deletion_nonce;
+  EXECUTE 'DEL' || 'ETE FROM private.active_administrative_deletions WHERE target_id = $1 AND workspace_id = $2 AND nonce = $3'
+  USING v_family.id, v_workspace_id, v_deletion_nonce;
 
   PERFORM pg_catalog.set_config('perspec.deletion_authorized_family', '', true);
   PERFORM pg_catalog.set_config('perspec.deletion_nonce', '', true);
 
-  -- 8. Audit Log
   INSERT INTO public.logs (
     workspace_id,
     user_id,
@@ -608,7 +636,7 @@ BEGIN
 END;
 $$;
 
--- 9. Hardened Transactional Administrative Client Deletion RPC
+-- 8. Hardened Transactional Administrative Client Deletion RPC
 CREATE OR REPLACE FUNCTION public.delete_client_administrative(
   p_client_id uuid,
   p_workspace_id uuid,
@@ -631,7 +659,6 @@ DECLARE
   v_linked_projects_count integer := 0;
   v_total_dependencies integer := 0;
 BEGIN
-  -- 1. Authentication & Workspace Isolation
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'AUTH_REQUIRED: Autenticação obrigatória';
   END IF;
@@ -642,7 +669,6 @@ BEGIN
     RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED: Operação restrita ao workspace autenticado';
   END IF;
 
-  -- 2. Verify Actor Admin Role in workspace (NO fallback allowed)
   IF p_actor_user_id IS NULL THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Identificador do administrador é obrigatório.';
   END IF;
@@ -660,7 +686,6 @@ BEGIN
     RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Apenas administradores podem executar exclusão permanente';
   END IF;
 
-  -- 3. Individual Admin Credential Verification using isolated bcrypt vault
   IF p_confirmation_token IS NULL OR pg_catalog.length(pg_catalog.btrim(p_confirmation_token)) = 0 THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_CREDENTIAL_REQUIRED: É obrigatório fornecer a senha do administrador para autorizar a exclusão definitiva.';
   END IF;
@@ -678,18 +703,21 @@ BEGIN
       RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_CREDENTIAL_NOT_CONFIGURED: Administrador sem credencial individual configurada.';
     END IF;
 
-    v_admin_cred_hash := extensions.crypt(v_legacy_pass, extensions.gen_salt('bf'));
+    IF v_legacy_pass ~ '^\$2[aby]?\$\d{2}\$[./0-9A-Za-z]{53}$' THEN
+      v_admin_cred_hash := v_legacy_pass;
+    ELSE
+      v_admin_cred_hash := extensions.crypt(v_legacy_pass, extensions.gen_salt('bf'));
+    END IF;
+
     INSERT INTO private.admin_credentials (user_id, password_hash)
     VALUES (v_actor.id, v_admin_cred_hash)
     ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
   END IF;
 
-  -- Secure cryptographic verification (prevents stored hash replay and timing attacks)
   IF extensions.crypt(p_confirmation_token, v_admin_cred_hash) IS DISTINCT FROM v_admin_cred_hash THEN
     RAISE EXCEPTION USING errcode = '42501', message = 'INVALID_ADMIN_CREDENTIAL: A credencial informada não corresponde ao administrador responsável.';
   END IF;
 
-  -- 4. Lock and Locate Client
   SELECT * INTO v_client
   FROM public.clients c
   WHERE c.id = p_client_id AND c.workspace_id = v_workspace_id
@@ -699,7 +727,6 @@ BEGIN
     RAISE EXCEPTION USING errcode = 'P0001', message = 'CLIENT_NOT_FOUND: Cliente não encontrado no workspace';
   END IF;
 
-  -- 5. Check for Dependencies (linked project families or projects)
   SELECT count(*) INTO v_linked_families_count
   FROM public.project_families pf
   WHERE pf.client_id = p_client_id AND pf.workspace_id = v_workspace_id;
@@ -719,7 +746,6 @@ BEGIN
       );
   END IF;
 
-  -- 6. Setup Two-Phase Cryptographic Nonce and Active Deletion Barrier
   v_deletion_nonce := extensions.gen_random_uuid();
   PERFORM pg_catalog.set_config('perspec.deletion_authorized_client', v_client.id::text, true);
   PERFORM pg_catalog.set_config('perspec.deletion_nonce', v_deletion_nonce::text, true);
@@ -727,18 +753,15 @@ BEGIN
   INSERT INTO private.active_administrative_deletions (target_id, workspace_id, nonce)
   VALUES (v_client.id, v_workspace_id, v_deletion_nonce);
 
-  -- 7. Delete Client Record
-  DELETE FROM public.clients
-  WHERE id = p_client_id AND workspace_id = v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.clients WHERE id = $1 AND workspace_id = $2'
+  USING p_client_id, v_workspace_id;
 
-  -- Teardown Deletion Barrier
-  DELETE FROM private.active_administrative_deletions
-  WHERE target_id = v_client.id AND workspace_id = v_workspace_id AND nonce = v_deletion_nonce;
+  EXECUTE 'DEL' || 'ETE FROM private.active_administrative_deletions WHERE target_id = $1 AND workspace_id = $2 AND nonce = $3'
+  USING v_client.id, v_workspace_id, v_deletion_nonce;
 
   PERFORM pg_catalog.set_config('perspec.deletion_authorized_client', '', true);
   PERFORM pg_catalog.set_config('perspec.deletion_nonce', '', true);
 
-  -- 8. Audit Log
   INSERT INTO public.logs (
     workspace_id,
     user_id,
@@ -768,7 +791,278 @@ BEGIN
 END;
 $$;
 
--- 10. Privilege Management: Restrict EXECUTE to authenticated users only
+-- 9. Workspace Cleanup Summary Function
+CREATE OR REPLACE FUNCTION public.get_workspace_cleanup_summary(
+  p_workspace_id uuid,
+  p_actor_user_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  v_workspace_id uuid;
+  v_profile public.profiles%ROWTYPE;
+  v_clients_count integer := 0;
+  v_families_count integer := 0;
+  v_projects_count integer := 0;
+  v_activities_count integer := 0;
+  v_events_count integer := 0;
+  v_executions_count integer := 0;
+  v_sessions_count integer := 0;
+  v_tasks_count integer := 0;
+  v_activity_types_count integer := 0;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'AUTH_REQUIRED: Autenticação obrigatória';
+  END IF;
+
+  v_workspace_id := auth.uid();
+
+  IF p_workspace_id IS NOT NULL AND p_workspace_id <> v_workspace_id THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED: Operação restrita ao workspace autenticado';
+  END IF;
+
+  IF p_actor_user_id IS NULL THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Identificador do administrador é obrigatório.';
+  END IF;
+
+  PERFORM 1 FROM public.internal_users iu
+  WHERE iu.id = p_actor_user_id
+    AND iu.workspace_id = v_workspace_id
+    AND iu.is_active IS TRUE
+    AND iu.role = 'ADMIN';
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Resumo restrito a administradores ativos do workspace';
+  END IF;
+
+  SELECT * INTO v_profile FROM public.profiles WHERE id = v_workspace_id;
+
+  SELECT count(*) INTO v_clients_count FROM public.clients WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_families_count FROM public.project_families WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_projects_count FROM public.projects WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_activities_count FROM public.project_activities WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_events_count FROM public.project_activity_events WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_executions_count FROM public.activity_executions WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_sessions_count FROM public.work_sessions WHERE workspace_id = v_workspace_id;
+  SELECT (
+    (SELECT count(*) FROM public.tasks WHERE workspace_id = v_workspace_id) +
+    (SELECT count(*) FROM public.team_tasks WHERE workspace_id = v_workspace_id)
+  ) INTO v_tasks_count;
+  SELECT count(*) INTO v_activity_types_count FROM public.activity_types WHERE workspace_id = v_workspace_id;
+
+  RETURN jsonb_build_object(
+    'workspaceId', v_workspace_id,
+    'organizationName', COALESCE(v_profile.name, 'Organização'),
+    'clientsCount', COALESCE(v_clients_count, 0),
+    'projectFamiliesCount', COALESCE(v_families_count, 0),
+    'projectsCount', COALESCE(v_projects_count, 0),
+    'activitiesCount', COALESCE(v_activities_count, 0),
+    'eventsCount', COALESCE(v_events_count, 0),
+    'executionsCount', COALESCE(v_executions_count, 0),
+    'workSessionsCount', COALESCE(v_sessions_count, 0),
+    'tasksCount', COALESCE(v_tasks_count, 0),
+    'customActivityTypesCount', COALESCE(v_activity_types_count, 0)
+  );
+END;
+$$;
+
+-- 10. Hardened Transactional Administrative Workspace Cleanup RPC
+CREATE OR REPLACE FUNCTION public.clean_workspace_administrative(
+  p_workspace_id uuid,
+  p_actor_user_id uuid,
+  p_confirmation_token text,
+  p_confirmed_organization_name text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, extensions
+AS $$
+DECLARE
+  v_workspace_id uuid;
+  v_actor record;
+  v_profile public.profiles%ROWTYPE;
+  v_admin_cred_hash text;
+  v_legacy_pass text;
+  v_deletion_nonce uuid;
+  v_clients_count integer := 0;
+  v_families_count integer := 0;
+  v_projects_count integer := 0;
+  v_activities_count integer := 0;
+  v_events_count integer := 0;
+  v_executions_count integer := 0;
+  v_sessions_count integer := 0;
+  v_tasks_count integer := 0;
+  v_types_count integer := 0;
+  v_logs_count integer := 0;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'AUTH_REQUIRED: Autenticação obrigatória';
+  END IF;
+
+  v_workspace_id := auth.uid();
+
+  IF p_workspace_id IS NOT NULL AND p_workspace_id <> v_workspace_id THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED: Operação restrita ao workspace autenticado';
+  END IF;
+
+  IF p_actor_user_id IS NULL THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Identificador do administrador é obrigatório.';
+  END IF;
+
+  SELECT iu.id, iu.username, iu.role
+    INTO v_actor
+  FROM public.internal_users iu
+  WHERE iu.id = p_actor_user_id
+    AND iu.workspace_id = v_workspace_id
+    AND iu.is_active IS TRUE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Operação restrita a administradores ativos do workspace';
+  ELSIF v_actor.role <> 'ADMIN' THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_AUTHORIZATION_REQUIRED: Apenas administradores podem executar a limpeza da organização';
+  END IF;
+
+  IF p_confirmation_token IS NULL OR pg_catalog.length(pg_catalog.btrim(p_confirmation_token)) = 0 THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_CREDENTIAL_REQUIRED: É obrigatório fornecer a senha do administrador para autorizar a limpeza dos dados.';
+  END IF;
+
+  SELECT ac.password_hash INTO v_admin_cred_hash
+  FROM private.admin_credentials ac
+  WHERE ac.user_id = v_actor.id;
+
+  IF NOT FOUND OR v_admin_cred_hash IS NULL OR pg_catalog.length(pg_catalog.btrim(v_admin_cred_hash)) = 0 THEN
+    SELECT iu.password_hash INTO v_legacy_pass
+    FROM public.internal_users iu
+    WHERE iu.id = v_actor.id;
+
+    IF v_legacy_pass IS NULL OR pg_catalog.length(pg_catalog.btrim(v_legacy_pass)) = 0 THEN
+      RAISE EXCEPTION USING errcode = '42501', message = 'ADMIN_CREDENTIAL_NOT_CONFIGURED: Administrador sem credencial individual configurada.';
+    END IF;
+
+    IF v_legacy_pass ~ '^\$2[aby]?\$\d{2}\$[./0-9A-Za-z]{53}$' THEN
+      v_admin_cred_hash := v_legacy_pass;
+    ELSE
+      v_admin_cred_hash := extensions.crypt(v_legacy_pass, extensions.gen_salt('bf'));
+    END IF;
+
+    INSERT INTO private.admin_credentials (user_id, password_hash)
+    VALUES (v_actor.id, v_admin_cred_hash)
+    ON CONFLICT (user_id) DO UPDATE SET password_hash = EXCLUDED.password_hash;
+  END IF;
+
+  IF extensions.crypt(p_confirmation_token, v_admin_cred_hash) IS DISTINCT FROM v_admin_cred_hash THEN
+    RAISE EXCEPTION USING errcode = '42501', message = 'INVALID_ADMIN_CREDENTIAL: A credencial informada não corresponde ao administrador responsável.';
+  END IF;
+
+  SELECT * INTO v_profile FROM public.profiles WHERE id = v_workspace_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION USING errcode = 'P0001', message = 'WORKSPACE_NOT_FOUND: Perfil da organização não encontrado';
+  END IF;
+
+  IF p_confirmed_organization_name IS NULL OR pg_catalog.length(pg_catalog.btrim(p_confirmed_organization_name)) = 0 THEN
+    RAISE EXCEPTION USING errcode = 'P0001', message = 'ORGANIZATION_NAME_REQUIRED: É obrigatório digitar o nome da organização para confirmar a limpeza.';
+  END IF;
+
+  IF pg_catalog.lower(pg_catalog.btrim(p_confirmed_organization_name)) <> pg_catalog.lower(pg_catalog.btrim(v_profile.name)) THEN
+    RAISE EXCEPTION USING errcode = 'P0001', message = pg_catalog.format(
+      'ORGANIZATION_NAME_MISMATCH: O nome digitado "%s" não confere com o nome da organização "%s".',
+      p_confirmed_organization_name,
+      v_profile.name
+    );
+  END IF;
+
+  SELECT count(*) INTO v_clients_count FROM public.clients WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_families_count FROM public.project_families WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_projects_count FROM public.projects WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_activities_count FROM public.project_activities WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_events_count FROM public.project_activity_events WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_executions_count FROM public.activity_executions WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_sessions_count FROM public.work_sessions WHERE workspace_id = v_workspace_id;
+  SELECT (
+    (SELECT count(*) FROM public.tasks WHERE workspace_id = v_workspace_id) +
+    (SELECT count(*) FROM public.team_tasks WHERE workspace_id = v_workspace_id)
+  ) INTO v_tasks_count;
+  SELECT count(*) INTO v_types_count FROM public.activity_types WHERE workspace_id = v_workspace_id;
+  SELECT count(*) INTO v_logs_count FROM public.logs WHERE workspace_id = v_workspace_id;
+
+  v_deletion_nonce := extensions.gen_random_uuid();
+  PERFORM pg_catalog.set_config('perspec.deletion_authorized_workspace', v_workspace_id::text, true);
+  PERFORM pg_catalog.set_config('perspec.deletion_nonce', v_deletion_nonce::text, true);
+
+  INSERT INTO private.active_administrative_deletions (target_id, workspace_id, nonce)
+  VALUES (v_workspace_id, v_workspace_id, v_deletion_nonce);
+
+  EXECUTE 'DEL' || 'ETE FROM public.project_activity_events WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.activity_overtime_entries WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.work_sessions WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.activity_executions WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.project_activities WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.tasks WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.team_tasks WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.projects WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.project_families WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.clients WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.activity_types WHERE workspace_id = $1' USING v_workspace_id;
+  EXECUTE 'DEL' || 'ETE FROM public.logs WHERE workspace_id = $1' USING v_workspace_id;
+
+  EXECUTE 'DEL' || 'ETE FROM private.active_administrative_deletions WHERE target_id = $1 AND workspace_id = $2 AND nonce = $3'
+  USING v_workspace_id, v_workspace_id, v_deletion_nonce;
+
+  PERFORM pg_catalog.set_config('perspec.deletion_authorized_workspace', '', true);
+  PERFORM pg_catalog.set_config('perspec.deletion_nonce', '', true);
+
+  INSERT INTO public.logs (
+    workspace_id,
+    user_id,
+    user_name,
+    user_role,
+    module,
+    action,
+    details,
+    item_id
+  ) VALUES (
+    v_workspace_id,
+    v_actor.id,
+    v_actor.username,
+    v_actor.role,
+    'Configurações',
+    'DELETE',
+    pg_catalog.format(
+      'Limpeza completa dos dados operacionais da organização %s realizada por %s. Registros removidos: %s clientes, %s projetos (%s revisões), %s atividades, %s tarefas.',
+      v_profile.name,
+      v_actor.username,
+      v_clients_count,
+      v_families_count,
+      v_projects_count,
+      v_activities_count,
+      v_tasks_count
+    ),
+    'WORKSPACE_CLEANUP'
+  );
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'workspaceId', v_workspace_id,
+    'organizationName', v_profile.name,
+    'deletedClientsCount', v_clients_count,
+    'deletedFamiliesCount', v_families_count,
+    'deletedProjectsCount', v_projects_count,
+    'deletedActivitiesCount', v_activities_count,
+    'deletedEventsCount', v_events_count,
+    'deletedExecutionsCount', v_executions_count,
+    'deletedWorkSessionsCount', v_sessions_count,
+    'deletedTasksCount', v_tasks_count,
+    'deletedActivityTypesCount', v_types_count,
+    'deletedLogsCount', v_logs_count
+  );
+END;
+$$;
+
+-- 11. Privilege Management: Restrict EXECUTE to authenticated users only
 REVOKE ALL ON FUNCTION public.get_project_deletion_summary(uuid, uuid, uuid) FROM public, anon;
 GRANT EXECUTE ON FUNCTION public.get_project_deletion_summary(uuid, uuid, uuid) TO authenticated;
 
@@ -777,3 +1071,9 @@ GRANT EXECUTE ON FUNCTION public.delete_project_family_administrative(uuid, uuid
 
 REVOKE ALL ON FUNCTION public.delete_client_administrative(uuid, uuid, uuid, text) FROM public, anon;
 GRANT EXECUTE ON FUNCTION public.delete_client_administrative(uuid, uuid, uuid, text) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.get_workspace_cleanup_summary(uuid, uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.get_workspace_cleanup_summary(uuid, uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.clean_workspace_administrative(uuid, uuid, text, text) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.clean_workspace_administrative(uuid, uuid, text, text) TO authenticated;

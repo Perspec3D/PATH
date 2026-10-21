@@ -1,7 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { InternalUser, UserRole, LicenseStatus, LogModule, LogAction, ActivityType } from '../types';
-import { syncUser, syncCompany, AppDB, supabase, logAction, fetchActivityTypes, syncActivityType, deleteOrDeactivateActivityType } from '../storage';
+import {
+  syncUser,
+  syncCompany,
+  AppDB,
+  supabase,
+  logAction,
+  fetchActivityTypes,
+  syncActivityType,
+  deleteOrDeactivateActivityType,
+  fetchWorkspaceCleanupSummary,
+  cleanWorkspacePermanently,
+  WorkspaceCleanupSummary
+} from '../storage';
 import { generateDiffLogs, formatBooleanForLog } from '../utils/logDiff';
+import { applyWorkspaceCleanupToState } from '../utils/administrativeDeletion';
+import { WorkspaceCleanupModal } from './AdministrativeDeleteModal';
+import { ShieldAlert, Trash2 } from 'lucide-react';
 
 interface SettingsProps {
   db: AppDB;
@@ -46,6 +61,11 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
     const saved = localStorage.getItem('PATH_ADMIN_GENERAL_ALERTS');
     return saved ? JSON.parse(saved) : false;
   });
+
+  // Workspace Operational Cleanup States
+  const [showCleanupModal, setShowCleanupModal] = useState(false);
+  const [cleanupSummary, setCleanupSummary] = useState<WorkspaceCleanupSummary | null>(null);
+  const [isLoadingCleanupSummary, setIsLoadingCleanupSummary] = useState(false);
 
   const handleToggleAdminAlerts = (checked: boolean) => {
     setAdminGeneralAlerts(checked);
@@ -485,6 +505,45 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
     } finally {
       setIsProcessingSubscription(false);
     }
+  };
+
+  const handleOpenCleanupModal = async () => {
+    setIsLoadingCleanupSummary(true);
+    setShowCleanupModal(true);
+    try {
+      const summary = await fetchWorkspaceCleanupSummary(currentUser.workspaceId, currentUser.id);
+      setCleanupSummary(summary);
+    } catch (err) {
+      console.error("Erro ao carregar resumo de limpeza:", err);
+    } finally {
+      setIsLoadingCleanupSummary(false);
+    }
+  };
+
+  const handleConfirmCleanup = async (adminPassword: string, confirmedOrgName: string) => {
+    const result = await cleanWorkspacePermanently({
+      workspaceId: currentUser.workspaceId,
+      actorUserId: currentUser.id,
+      adminPassword,
+      confirmedOrganizationName: confirmedOrgName
+    });
+
+    if (!result?.success) {
+      throw new Error('Falha ao executar limpeza do workspace.');
+    }
+
+    // Atualiza estado local da aplicação
+    setDb(applyWorkspaceCleanupToState(db));
+
+    // Recarrega catálogo de atividades padrão
+    try {
+      const reloadedActivities = await fetchActivityTypes(currentUser.workspaceId);
+      setActivityTypes(reloadedActivities);
+    } catch (e) {
+      console.error("Erro ao recarregar atividades após limpeza:", e);
+    }
+
+    alert('Limpeza de dados operacionais concluída com sucesso! Todos os dados operacionais foram removidos e o workspace está pronto para novos cadastros.');
   };
 
   return (
@@ -1150,6 +1209,44 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
         </div>
       </section>
 
+      {/* Administração Section (Exclusivo para ADMIN) */}
+      {currentUser.role === UserRole.ADMIN && (
+        <section className="bg-white dark:bg-[#1e293b] rounded-3xl shadow-sm dark:shadow-xl border border-rose-500/20 overflow-hidden transition-colors">
+          <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-rose-500/5 flex justify-between items-center transition-colors">
+            <div className="flex items-center space-x-2.5">
+              <ShieldAlert className="w-4 h-4 text-rose-500" />
+              <h2 className="font-black text-xs text-rose-600 dark:text-rose-400 uppercase tracking-widest">
+                Administração
+              </h2>
+            </div>
+            <span className="text-[9px] font-black uppercase tracking-widest bg-rose-500/10 text-rose-600 dark:text-rose-400 px-2.5 py-1 rounded-full border border-rose-500/20">
+              Acesso Restrito
+            </span>
+          </div>
+          <div className="p-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 rounded-2xl bg-rose-500/5 border border-rose-500/15">
+              <div className="space-y-1.5 max-w-xl">
+                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                  Limpar dados da organização
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+                  Remove definitivamente todos os clientes, projetos, revisões, atividades operacionais e tarefas deste workspace (<strong className="text-slate-900 dark:text-white">{db.company?.name || 'Workspace Atual'}</strong>). 
+                  Sua conta, credenciais de login e usuários internos serão preservados intactos.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenCleanupModal}
+                className="px-5 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md shadow-rose-500/10 transition active:scale-95 flex items-center justify-center space-x-2 shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Limpar dados da organização</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Activity Modal */}
       {showActivityModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -1236,6 +1333,17 @@ export const Settings: React.FC<SettingsProps> = ({ db, setDb, currentUser, them
             </form>
           </div>
         </div>
+      )}
+
+      {showCleanupModal && (
+        <WorkspaceCleanupModal
+          isOpen={showCleanupModal}
+          onClose={() => setShowCleanupModal(false)}
+          onConfirm={handleConfirmCleanup}
+          organizationName={db.company?.name || 'Workspace Atual'}
+          summary={cleanupSummary}
+          isLoadingSummary={isLoadingCleanupSummary}
+        />
       )}
     </div>
   );

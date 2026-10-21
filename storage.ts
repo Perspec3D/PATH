@@ -479,6 +479,125 @@ export const deleteProject = async (
   return deleteProjectPermanently(projectId, workspaceId, actorUserId, confirmationToken);
 };
 
+export interface WorkspaceCleanupSummary {
+  workspaceId: string;
+  organizationName: string;
+  clientsCount: number;
+  projectFamiliesCount: number;
+  projectsCount: number;
+  activitiesCount: number;
+  eventsCount: number;
+  executionsCount: number;
+  workSessionsCount: number;
+  tasksCount: number;
+  customActivityTypesCount: number;
+}
+
+export interface WorkspaceCleanupResult {
+  success: boolean;
+  workspaceId: string;
+  organizationName: string;
+  deletedClientsCount: number;
+  deletedFamiliesCount: number;
+  deletedProjectsCount: number;
+  deletedActivitiesCount: number;
+  deletedEventsCount: number;
+  deletedExecutionsCount: number;
+  deletedWorkSessionsCount: number;
+  deletedTasksCount: number;
+  deletedActivityTypesCount: number;
+  deletedLogsCount: number;
+}
+
+export const fetchWorkspaceCleanupSummary = async (
+  workspaceId: string,
+  actorUserId: string
+): Promise<WorkspaceCleanupSummary> => {
+  if (!workspaceId) {
+    throw new Error(
+      'ADMIN_AUTHORIZATION_REQUIRED: Identificador do workspace é obrigatório para consultar o impacto da limpeza da organização.'
+    );
+  }
+
+  if (!actorUserId) {
+    throw new Error(
+      'ADMIN_AUTHORIZATION_REQUIRED: Identificador do administrador é obrigatório para consultar o impacto da limpeza da organização.'
+    );
+  }
+
+  const { data, error } = await supabase.rpc('get_workspace_cleanup_summary', {
+    p_workspace_id: workspaceId,
+    p_actor_user_id: actorUserId
+  });
+
+  if (error) {
+    console.error('Erro na RPC get_workspace_cleanup_summary:', error);
+    throw new Error(error.message || 'Falha ao consultar resumo de limpeza da organização.');
+  }
+
+  return data;
+};
+
+export interface CleanWorkspaceOptions {
+  workspaceId: string;
+  actorUserId: string;
+  confirmationToken?: string;
+  adminPassword?: string;
+  confirmedOrganizationName: string;
+}
+
+export const cleanWorkspacePermanently = async (
+  workspaceIdOrOptions: string | CleanWorkspaceOptions,
+  actorUserId?: string,
+  confirmationToken?: string,
+  confirmedOrganizationName?: string
+): Promise<WorkspaceCleanupResult> => {
+  let wsId = '';
+  let actorId = '';
+  let token = '';
+  let orgName = '';
+
+  if (typeof workspaceIdOrOptions === 'object' && workspaceIdOrOptions !== null) {
+    wsId = workspaceIdOrOptions.workspaceId || '';
+    actorId = workspaceIdOrOptions.actorUserId || '';
+    token = workspaceIdOrOptions.confirmationToken || workspaceIdOrOptions.adminPassword || '';
+    orgName = workspaceIdOrOptions.confirmedOrganizationName || '';
+  } else if (typeof workspaceIdOrOptions === 'string') {
+    wsId = workspaceIdOrOptions;
+    actorId = actorUserId || '';
+    token = confirmationToken || '';
+    orgName = confirmedOrganizationName || '';
+  }
+
+  if (
+    !wsId ||
+    !actorId ||
+    !token ||
+    !token.trim() ||
+    !orgName ||
+    !orgName.trim()
+  ) {
+    throw new Error(
+      'EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC: Parâmetros obrigatórios ausentes para limpeza administrativa da organização.'
+    );
+  }
+
+  const { data, error } = await supabase.rpc('clean_workspace_administrative', {
+    p_workspace_id: wsId,
+    p_actor_user_id: actorId,
+    p_confirmation_token: token.trim(),
+    p_confirmed_organization_name: orgName.trim()
+  });
+
+  if (error) {
+    console.error('Erro na RPC clean_workspace_administrative:', error);
+    throw new Error(error.message || 'Falha ao executar limpeza administrativa da organização no Supabase.');
+  }
+
+  invalidateCache();
+  return data;
+};
+
 export const syncTeamTask = async (task: TeamTask) => {
   const { error } = await supabase.from('team_tasks').upsert({
     id: task.id,

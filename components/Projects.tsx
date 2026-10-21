@@ -3323,52 +3323,52 @@ export const Projects: React.FC<ProjectsProps> = ({
                 />
               </div>
 
-              <div className="pt-8 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 transition-colors bg-white dark:bg-[#0f172a] sticky bottom-0 z-10">
+              <div className="-mx-8 -mb-8 mt-6 px-6 py-3.5 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-[#0f172a] sticky bottom-0 z-10 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 transition-colors">
                 {/* Ação Destrutiva Privilegiada no rodapé esquerdo */}
-                {editingProject && currentUser.role === UserRole.ADMIN ? (
+                {editingProject && currentUser.role === UserRole.ADMIN && (
                   <button
                     type="button"
                     onClick={handleInitiateDeleteProject}
-                    className="py-4 px-5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 border border-rose-200/50 dark:border-rose-500/20 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2 active:scale-95"
+                    className="h-9 px-3 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 border border-rose-200/50 dark:border-rose-500/20 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shrink-0 active:scale-95"
                     title="Excluir Projeto e todas as suas revisões"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5 shrink-0" />
                     <span>Excluir Projeto</span>
                   </button>
-                ) : <div />}
+                )}
 
-                {/* Ações de Revisão, Pasta, Cancelamento e Salvamento */}
-                <div className="flex flex-wrap items-center gap-3 ml-auto">
+                {/* Ações de Revisão, Pasta, Cancelamento e Salvamento à direita */}
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap ml-auto justify-end">
                   {editingProject && !isHistoricalRevision && (
+                    <button
+                      type="button"
+                      onClick={openCreateRevisionModal}
+                      className="h-9 px-3 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 whitespace-nowrap shrink-0"
+                      title="Criar nova revisão operacional"
+                    >
+                      Nova Revisão
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={openCreateRevisionModal}
-                    className="py-4 px-5 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center hover:bg-indigo-600 hover:text-white transition-all active:scale-[0.98] font-black text-[9px] uppercase tracking-widest whitespace-nowrap"
-                    title="Criar nova revisão operacional"
+                    onClick={handleCreateFolder}
+                    className="h-9 px-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 dark:hover:text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                    title="Criar pasta do projeto"
                   >
-                    Nova revisão
+                    <svg className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                    <span>Criar Pasta do Projeto</span>
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={handleCreateFolder}
-                  className="py-4 px-6 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-2xl flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-700 dark:hover:text-white transition-all active:scale-[0.98] font-black text-[10px] uppercase tracking-[0.2em] whitespace-nowrap"
-                  title="Criar pasta do projeto"
-                >
-                  <svg className="w-5 h-5 sm:mr-2 text-amber-500" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-                  <span className="hidden sm:inline">Criar Pasta do Projeto</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-200 dark:hover:bg-slate-700 dark:hover:text-white transition-all active:scale-[0.98]"
-                >
-                  {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="h-9 px-3.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 whitespace-nowrap shrink-0"
+                  >
+                    {currentUser.role === UserRole.VIEWER ? 'Fechar' : 'Cancelar'}
+                  </button>
                   {currentUser.role !== UserRole.VIEWER && !isHistoricalRevision && (
                     <button
                       type="submit"
-                      className="py-4 px-6 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all active:scale-[0.98]"
+                      className="h-9 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider shadow-md shadow-indigo-500/20 transition-all active:scale-95 whitespace-nowrap shrink-0"
                     >
                       {editingProject ? 'Salvar Alterações' : 'Criar Projeto'}
                     </button>

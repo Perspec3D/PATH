@@ -207,6 +207,31 @@ export const isClientConfirmationValid = (
 };
 
 /**
+ * Validates typed confirmation for workspace operational cleanup.
+ * The administrator must type the exact organization name (case-insensitive, trimmed).
+ */
+export const isOrganizationNameConfirmationValid = (
+  typedInput: string,
+  expectedOrgName: string
+): boolean => {
+  if (!typedInput || !expectedOrgName) return false;
+  return typedInput.trim().toLowerCase() === expectedOrgName.trim().toLowerCase();
+};
+
+/**
+ * Pure state reducer function: removes all operational data (clients, projects, tasks)
+ * from the local application database state while preserving organization profile and users.
+ */
+export const applyWorkspaceCleanupToState = (prevState: AppDB): AppDB => {
+  return {
+    ...prevState,
+    clients: [],
+    projects: [],
+    tasks: []
+  };
+};
+
+/**
  * Pure state reducer function: removes all project revisions belonging to the deleted family
  * from the local application database state.
  */
@@ -311,6 +336,18 @@ export const sanitizeAdministrativeErrorMessage = (err: any): string => {
 
   if (raw.includes('CLIENT_NOT_FOUND')) {
     return 'Cliente não encontrado no workspace atual.';
+  }
+
+  if (raw.includes('ORGANIZATION_NAME_REQUIRED')) {
+    return 'O nome da organização é obrigatório para confirmar a limpeza.';
+  }
+
+  if (raw.includes('ORGANIZATION_NAME_MISMATCH')) {
+    return 'O nome da organização digitado não corresponde à organização selecionada.';
+  }
+
+  if (raw.includes('WORKSPACE_NOT_FOUND')) {
+    return 'Organização / Workspace não encontrado.';
   }
 
   if (raw.includes('EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC')) {

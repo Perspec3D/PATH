@@ -1656,13 +1656,23 @@ import {
   calculateProjectDeletionImpact,
   isProjectConfirmationCodeValid,
   isClientConfirmationValid,
+  isOrganizationNameConfirmationValid,
   applyProjectDeletionToState,
   applyClientDeletionToState,
+  applyWorkspaceCleanupToState,
   formatAuditLogDetailsForProjectDeletion,
   formatAuditLogDetailsForClientDeletion,
   sanitizeAdministrativeErrorMessage
 } from '../utils/administrativeDeletion';
-import { deleteProject, deleteProjectPermanently, deleteClientPermanently, fetchProjectDeletionSummary, AppDB } from '../storage';
+import {
+  deleteProject,
+  deleteProjectPermanently,
+  deleteClientPermanently,
+  fetchProjectDeletionSummary,
+  cleanWorkspacePermanently,
+  fetchWorkspaceCleanupSummary,
+  AppDB
+} from '../storage';
 
 const testWorkspaceId = 'ws-adm-01';
 const otherWorkspaceId = 'ws-adm-02';
@@ -2233,6 +2243,144 @@ try {
 assert(caughtTxError !== null, 'Security Test 9: Transactional failure was cleanly caught and sanitized');
 assert(testTransactionDb.projects.length === initialDb.projects.length,
   'Security Test 9b: Database state rollback completely preserves data integrity on transactional failure');
+
+// =========================================================================
+// 15.11 Workspace Operational Cleanup Unit Tests
+// =========================================================================
+console.log('\n15.11 Workspace Operational Cleanup Tests');
+
+// 1. Organization Name Confirmation Matching
+assert(isOrganizationNameConfirmationValid('ARTEJATO', 'ARTEJATO') === true,
+  'Workspace Cleanup: Exact organization name confirms');
+assert(isOrganizationNameConfirmationValid('artejato', 'ARTEJATO') === true,
+  'Workspace Cleanup: Case-insensitive organization name confirms');
+assert(isOrganizationNameConfirmationValid('  Perspec3D  ', 'Perspec3D') === true,
+  'Workspace Cleanup: Trims leading and trailing whitespace');
+assert(isOrganizationNameConfirmationValid('Outra Empresa', 'ARTEJATO') === false,
+  'Workspace Cleanup: Name mismatch is rejected');
+assert(isOrganizationNameConfirmationValid('', 'ARTEJATO') === false,
+  'Workspace Cleanup: Empty typed input is rejected');
+assert(isOrganizationNameConfirmationValid('ARTEJATO', '') === false,
+  'Workspace Cleanup: Empty target organization name is rejected');
+
+// 2. Pure State Reducer: applyWorkspaceCleanupToState
+const richStateDb: AppDB = {
+  company: {
+    id: testWorkspaceId,
+    name: 'Perspec3D Studio',
+    userLimit: 5
+  } as any,
+  users: [adminUser, standardUser, viewerUser],
+  clients: [clientA, clientB, clientWithoutProjects],
+  projects: allTestProjects,
+  tasks: [
+    { id: 'task-1', workspaceId: testWorkspaceId, title: 'Revisar tubulação' } as any,
+    { id: 'task-2', workspaceId: testWorkspaceId, title: 'Orçamento 3D' } as any
+  ]
+};
+
+const purgedStateDb = applyWorkspaceCleanupToState(richStateDb);
+
+// Operational data must be completely empty
+assert(purgedStateDb.clients.length === 0,
+  'Workspace Cleanup Reducer: Clients array is completely emptied');
+assert(purgedStateDb.projects.length === 0,
+  'Workspace Cleanup Reducer: Projects array is completely emptied');
+assert(purgedStateDb.tasks.length === 0,
+  'Workspace Cleanup Reducer: Tasks array is completely emptied');
+
+// Account, users, and company profile must be strictly preserved
+assert(purgedStateDb.company !== null && purgedStateDb.company.name === 'Perspec3D Studio',
+  'Workspace Cleanup Reducer: Company profile and account structure are preserved');
+assert(purgedStateDb.users.length === 3,
+  'Workspace Cleanup Reducer: All internal users and credentials are preserved');
+assert(purgedStateDb.users[0].username === 'carlos.admin',
+  'Workspace Cleanup Reducer: Admin login user remains intact');
+
+// 3. Technical Error Sanitization for Workspace Cleanup
+const orgReqError = new Error('ORGANIZATION_NAME_REQUIRED: O nome da organização deve ser digitado');
+assert(sanitizeAdministrativeErrorMessage(orgReqError) === 'O nome da organização é obrigatório para confirmar a limpeza.',
+  'Workspace Cleanup: ORGANIZATION_NAME_REQUIRED error sanitized to clear Portuguese message');
+
+const orgMismatchError = new Error('ORGANIZATION_NAME_MISMATCH: O nome digitado diverge do workspace');
+assert(sanitizeAdministrativeErrorMessage(orgMismatchError) === 'O nome da organização digitado não corresponde à organização selecionada.',
+  'Workspace Cleanup: ORGANIZATION_NAME_MISMATCH error sanitized');
+
+const wsNotFoundError = new Error('WORKSPACE_NOT_FOUND: Workspace inexistente');
+assert(sanitizeAdministrativeErrorMessage(wsNotFoundError) === 'Organização / Workspace não encontrado.',
+  'Workspace Cleanup: WORKSPACE_NOT_FOUND error sanitized');
+
+// 4. Client-side Parameter Guard Validations for cleanWorkspacePermanently
+let noWsThrown = false;
+try {
+  await cleanWorkspacePermanently({
+    workspaceId: '',
+    actorUserId: adminUser.id,
+    adminPassword: 'secretPassword',
+    confirmedOrganizationName: 'Perspec3D'
+  });
+} catch (e: any) {
+  noWsThrown = e.message.includes('EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC');
+}
+assert(noWsThrown === true, 'Workspace Cleanup Guard: Rejects call without workspaceId');
+
+let noActorThrown = false;
+try {
+  await cleanWorkspacePermanently({
+    workspaceId: testWorkspaceId,
+    actorUserId: '',
+    adminPassword: 'secretPassword',
+    confirmedOrganizationName: 'Perspec3D'
+  });
+} catch (e: any) {
+  noActorThrown = e.message.includes('EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC');
+}
+assert(noActorThrown === true, 'Workspace Cleanup Guard: Rejects call without actorUserId');
+
+let noPassThrown = false;
+try {
+  await cleanWorkspacePermanently({
+    workspaceId: testWorkspaceId,
+    actorUserId: adminUser.id,
+    adminPassword: '',
+    confirmedOrganizationName: 'Perspec3D'
+  });
+} catch (e: any) {
+  noPassThrown = e.message.includes('EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC');
+}
+assert(noPassThrown === true, 'Workspace Cleanup Guard: Rejects call without adminPassword');
+
+let noOrgNameThrown = false;
+try {
+  await cleanWorkspacePermanently({
+    workspaceId: testWorkspaceId,
+    actorUserId: adminUser.id,
+    adminPassword: 'secretPassword',
+    confirmedOrganizationName: ''
+  });
+} catch (e: any) {
+  noOrgNameThrown = e.message.includes('EXCLUSION_REQUIRES_ADMINISTRATIVE_RPC');
+}
+assert(noOrgNameThrown === true, 'Workspace Cleanup Guard: Rejects call without confirmedOrganizationName');
+
+// 5. Summary Parameter Guards
+let summaryMissingWsBlocked = false;
+try {
+  await fetchWorkspaceCleanupSummary('', adminUser.id);
+} catch (e: any) {
+  summaryMissingWsBlocked = e.message.includes('workspace');
+}
+assert(summaryMissingWsBlocked === true,
+  'Workspace Cleanup Summary Guard: Rejects call without workspaceId');
+
+let summaryMissingActorBlocked = false;
+try {
+  await fetchWorkspaceCleanupSummary(testWorkspaceId, '');
+} catch (e: any) {
+  summaryMissingActorBlocked = e.message.includes('administrador');
+}
+assert(summaryMissingActorBlocked === true,
+  'Workspace Cleanup Summary Guard: Rejects call without actorUserId');
 
 console.log(`\n=== RESULTS: ${passed} PASSED, ${failed} FAILED ===`);
 if (failed > 0) {
